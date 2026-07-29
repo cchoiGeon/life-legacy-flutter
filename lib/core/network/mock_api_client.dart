@@ -124,7 +124,7 @@ class MockApiClient implements ApiClient {
       id: 'i1',
       order: 1,
       text: '성함이\n어떻게 되세요?',
-      hint: '성함을 말씀해 주세요',
+      hint: '성함을 적어 주세요',
     ),
     IntroQuestion(
       id: 'i2',
