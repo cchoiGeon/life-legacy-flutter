@@ -40,6 +40,8 @@ class AppButton extends StatefulWidget {
     this.loading = false,
     this.enabled = true,
     this.icon,
+    this.minHeight,
+    this.labelStyle,
   });
 
   final String label;
@@ -60,6 +62,16 @@ class AppButton extends StatefulWidget {
 
   /// 글자 왼쪽 아이콘(이모지 텍스트도 가능)
   final Widget? icon;
+
+  /// 시안 기본 높이(패딩으로 정해진다)보다 크게 잡아야 할 때만 쓴다.
+  ///
+  /// ⚠️ 예외용이다. 화면 대부분은 [size]로 충분하다. 자기소개의 "예 / 아니요"
+  ///    처럼 **그 화면의 유일한 조작**이라 손에 잡히게 키워야 하는 경우만.
+  final double? minHeight;
+
+  /// 라벨 스타일 교체. [minHeight]로 버튼을 키우면 기본 글자가 작아 보여서
+  /// 같이 올려야 할 때가 있다. 굵기는 [AppButton]이 medium으로 덮는다.
+  final TextStyle? labelStyle;
 
   bool get _disabled => !enabled || loading || onPressed == null;
 
@@ -149,6 +161,9 @@ class _AppButtonState extends State<AppButton> {
               duration: AppMotion.fast,
               curve: AppMotion.standard,
               width: widget.block ? double.infinity : null,
+              constraints: widget.minHeight == null
+                  ? null
+                  : BoxConstraints(minHeight: widget.minHeight!),
               padding: EdgeInsets.symmetric(
                 horizontal: m.padX,
                 vertical: m.padY,
@@ -181,7 +196,7 @@ class _AppButtonState extends State<AppButton> {
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
                       style: AppTypography.weight(
-                        m.text,
+                        widget.labelStyle ?? m.text,
                         AppTypography.medium,
                       ).copyWith(height: 1.2, color: p.fg),
                     ),

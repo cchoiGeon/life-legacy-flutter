@@ -61,12 +61,10 @@ class IntroView extends GetView<IntroController> {
             ),
             Expanded(
               child: switch (question.type) {
-                // 고르기 문항은 음성·키보드 구분이 없다 — 버튼만 보여준다.
                 IntroAnswerType.choice => _ChoiceBody(question: question),
-                IntroAnswerType.text =>
-                  controller.mode.value == ComposeMode.voice
-                      ? _VoiceBody(question: question)
-                      : _KeyboardBody(question: question),
+                // 자기소개는 **키보드 전용**이다 — 성함처럼 짧은 답은
+                // 받아쓰기보다 직접 치는 편이 빠르다.
+                IntroAnswerType.text => _KeyboardBody(question: question),
               },
             ),
           ],
@@ -76,96 +74,29 @@ class IntroView extends GetView<IntroController> {
   }
 }
 
-/// 07 — 큰 마이크 버튼이 중심.
-class _VoiceBody extends GetView<IntroController> {
-  const _VoiceBody({required this.question});
-
-  final IntroQuestion question;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
-      child: Column(
-        children: [
-          const Spacer(flex: 2),
-          Text(
-            '몇 가지만 여쭤보고 목차를 만들어 드릴게요',
-            textAlign: TextAlign.center,
-            style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary),
-          ),
-          const SizedBox(height: AppDimens.space3),
-          Text(
-            question.text,
-            textAlign: TextAlign.center,
-            style: AppTypography.titlePage,
-          ),
-          const Spacer(),
-          Obx(
-            () => AppMicButton(
-              recording: controller.isRecording.value,
-              onTap: controller.toggleRecording,
-            ),
-          ),
-          Obx(
-            () => Text(
-              controller.isRecording.value ? '듣고 있어요…' : '누르고 말씀하세요',
-              style: AppTypography.bodySm.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          // 말하는 동안 인식된 글자를 보여준다.
-          Obx(() {
-            final heard = controller.liveTranscript;
-            if (!controller.isRecording.value || heard.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            return Padding(
-              padding: const EdgeInsets.only(top: AppDimens.space4),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(AppDimens.space4),
-                decoration: BoxDecoration(
-                  color: AppColors.bubbleSys,
-                  borderRadius: BorderRadius.circular(AppDimens.radiusBubble),
-                ),
-                child: Text(
-                  heard,
-                  textAlign: TextAlign.center,
-                  style: AppTypography.bodyChat.copyWith(
-                    color: AppColors.textStrong,
-                  ),
-                ),
-              ),
-            );
-          }),
-          const SizedBox(height: AppDimens.space5),
-          // 작성 탭(13)과 **같은 버튼 컴포넌트**다 (Figma 158:370).
-          AppKeyboardButton(onPressed: controller.useKeyboard),
-          const Spacer(flex: 2),
-        ],
-      ),
-    );
-  }
-}
-
 /// 고르기 문항 — 질문 + 선택지 두 개.
 ///
 /// 누르는 즉시 다음 문항으로 넘어간다. 시니어 사용자가 "고르고 → 다음 누르고"
 /// 두 번 조작하지 않게 한 것이다.
+///
+/// 질문은 위, 버튼은 아래에 둔다. 가운데로 모으면 두 덩어리가 붙어 버린다.
 class _ChoiceBody extends GetView<IntroController> {
   const _ChoiceBody({required this.question});
 
   final IntroQuestion question;
 
+  /// 이 화면의 **유일한 조작**이라 시안 CTA(56)보다 크게 잡는다.
+  static const _buttonHeight = 96.0;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        // stretch가 없으면 Column이 라벨 폭으로 줄어들어 버튼 Row도 같이 좁아진다.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const SizedBox(height: AppDimens.space16),
           Text(
             '몇 가지만 여쭤보고 목차를 만들어 드릴게요',
             textAlign: TextAlign.center,
@@ -177,29 +108,28 @@ class _ChoiceBody extends GetView<IntroController> {
             textAlign: TextAlign.center,
             style: AppTypography.titlePage,
           ),
-          const SizedBox(height: AppDimens.space10),
-          Obx(() {
-            final chosen = controller.chosen;
-            return Row(
-              children: [
-                for (final (i, choice) in question.choices.indexed) ...[
-                  if (i > 0) const SizedBox(width: AppDimens.space3),
-                  Expanded(
-                    child: AppButton(
-                      label: choice,
-                      // 뒤로 왔을 때 눌렀던 쪽을 채워서 보여준다.
-                      variant: chosen == choice
-                          ? AppButtonVariant.primary
-                          : AppButtonVariant.outline,
-                      size: AppButtonSize.lg,
-                      block: true,
-                      onPressed: () => controller.choose(choice),
-                    ),
+          const Spacer(flex: 3),
+          Row(
+            children: [
+              for (final (i, choice) in question.choices.indexed) ...[
+                if (i > 0) const SizedBox(width: AppDimens.space3),
+                Expanded(
+                  child: AppButton(
+                    label: choice,
+                    // ⚠️ 두 버튼은 **항상 같은 모양**이다. 고른 쪽을 채워서
+                    //    표시하면 한쪽만 색이 진해져 기본값처럼 보인다.
+                    variant: AppButtonVariant.outline,
+                    size: AppButtonSize.lg,
+                    block: true,
+                    minHeight: _buttonHeight,
+                    labelStyle: AppTypography.headingXl,
+                    onPressed: () => controller.choose(choice),
                   ),
-                ],
+                ),
               ],
-            );
-          }),
+            ],
+          ),
+          const Spacer(flex: 2),
         ],
       ),
     );
@@ -223,10 +153,7 @@ class _KeyboardBody extends GetView<IntroController> {
       canSubmit: controller.canGoNext,
       onSubmit: controller.next,
       ctaLabel: controller.step == controller.total ? '목차 만들기' : '다음',
-      isRecording: controller.isRecording.value,
-      // 작성 탭과 같은 규칙 — 마이크를 눌러도 곧바로 녹음하지 않고
-      // 음성 대기 화면("누르고 말씀하세요")으로 돌아간다.
-      onMic: controller.useVoice,
+      // onMic을 주지 않아 마이크 버튼과 "음성으로 바꾸려면…" 안내가 빠진다.
     ),
   );
 }

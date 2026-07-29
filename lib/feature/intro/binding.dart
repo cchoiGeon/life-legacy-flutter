@@ -9,11 +9,7 @@ class IntroBinding extends Bindings {
   @override
   void dependencies() {
     Get.lazyPut(
-      () => IntroController(
-        Get.find<ApiClient>(),
-        Get.find<SpeechService>(),
-        Get.find<ToastService>(),
-      ),
+      () => IntroController(Get.find<ApiClient>(), Get.find<ToastService>()),
     );
   }
 }
