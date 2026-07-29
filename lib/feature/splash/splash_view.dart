@@ -49,22 +49,6 @@ class SplashView extends GetView<SplashController> {
                   onPressed: controller.start,
                 ),
               ),
-              const SizedBox(height: AppDimens.space4),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: controller.alreadyUsing,
-                child: Padding(
-                  padding: const EdgeInsets.all(AppDimens.space2),
-                  child: Text(
-                    '이미 쓰고 있어요',
-                    style: AppTypography.bodySm.copyWith(
-                      color: AppColors.textSecondary,
-                      decoration: TextDecoration.underline,
-                      decorationColor: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ),
               const SizedBox(height: AppDimens.space6),
             ],
           ),

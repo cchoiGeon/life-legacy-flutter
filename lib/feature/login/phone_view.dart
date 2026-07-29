@@ -64,29 +64,18 @@ class PhoneView extends GetView<LoginController> {
               AppDimens.gutter,
               AppDimens.space5,
             ),
-            child: Column(
-              children: [
-                Obx(
-                  // phone을 읽어야 입력할 때마다 버튼 활성 상태가 갱신된다.
-                  () => AppButton(
-                    label: '인증번호 받기',
-                    size: AppButtonSize.lg,
-                    block: true,
-                    enabled:
-                        controller.phone.value.isNotEmpty &&
-                        controller.canRequestCode,
-                    loading: controller.isSubmitting.value,
-                    onPressed: controller.requestCode,
-                  ),
-                ),
-                const SizedBox(height: AppDimens.space3),
-                Text(
-                  '자녀 대신 가입했다면 도움받을 수 있어요',
-                  style: AppTypography.label.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
+            // phone을 읽어야 입력할 때마다 버튼 활성 상태가 갱신된다.
+            child: Obx(
+              () => AppButton(
+                label: '인증번호 받기',
+                size: AppButtonSize.lg,
+                block: true,
+                enabled:
+                    controller.phone.value.isNotEmpty &&
+                    controller.canRequestCode,
+                loading: controller.isSubmitting.value,
+                onPressed: controller.requestCode,
+              ),
             ),
           ),
         ],

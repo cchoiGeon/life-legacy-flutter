@@ -62,11 +62,6 @@ class LoginController extends GetxController {
 
   void goPhone() => Get.toNamed(AppRoutes.phone);
 
-  /// "자녀 계정으로 함께 쓰기" — 아직 화면이 없다.
-  /// 시안 A섹션에 대응 프레임이 없어서 안내만 띄운다.
-  void childAccount() =>
-      _toast.show('자녀 계정 연결은 준비 중이에요', description: '설정에서 나중에 연결할 수 있어요');
-
   // ── 03·04 전화번호 ────────────────────────────────────────
 
   /// 숫자만 남긴 값. 11자리면 인증 요청을 보낼 수 있다.

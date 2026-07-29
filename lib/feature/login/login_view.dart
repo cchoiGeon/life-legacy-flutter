@@ -48,22 +48,6 @@ class LoginView extends GetView<LoginController> {
                     block: true,
                     onPressed: controller.goPhone,
                   ),
-                  const SizedBox(height: AppDimens.space4),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: controller.childAccount,
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppDimens.space2),
-                      child: Text(
-                        '자녀 계정으로 함께 쓰기',
-                        style: AppTypography.bodySm.copyWith(
-                          color: AppColors.textSecondary,
-                          decoration: TextDecoration.underline,
-                          decorationColor: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: AppDimens.space8),
                 ],
               ),

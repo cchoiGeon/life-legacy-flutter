@@ -35,8 +35,4 @@ class SplashController extends GetxController {
   }
 
   void start() => Get.toNamed(AppRoutes.login);
-
-  /// "이미 쓰고 있어요" — 같은 로그인 화면으로 보낸다.
-  /// 시안에 별도 화면이 없어 진입 문구만 다른 셈이다.
-  void alreadyUsing() => Get.toNamed(AppRoutes.login);
 }
