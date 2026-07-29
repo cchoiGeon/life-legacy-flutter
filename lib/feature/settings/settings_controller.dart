@@ -50,11 +50,7 @@ class SettingsController extends GetxController {
   }
 
   /// 아래 항목들은 시안에 대응 화면이 없다. 자리만 만들어 뒀다.
-  void openChildAccount() => _toast.show('자녀 계정 연결은 준비 중이에요');
-
   void openShippingAddress() => _toast.show('인쇄본 배송지는 준비 중이에요');
-
-  void openNewsAlarm() => _toast.show('소식 및 이벤트 알림은 준비 중이에요');
 
   void openTerms() => _toast.show('이용약관은 준비 중이에요');
 

@@ -53,7 +53,6 @@ class SettingsView extends GetView<SettingsController> {
               const _SectionLabel('계정'),
               _Group(
                 children: [
-                  _Row(title: '자녀 계정 연결', onTap: controller.openChildAccount),
                   _Row(title: '인쇄본 배송지', onTap: controller.openShippingAddress),
                 ],
               ),
@@ -68,7 +67,6 @@ class SettingsView extends GetView<SettingsController> {
                       onChanged: controller.setDailyAlarm,
                     ),
                   ),
-                  _Row(title: '소식 및 이벤트 알림', onTap: controller.openNewsAlarm),
                 ],
               ),
 

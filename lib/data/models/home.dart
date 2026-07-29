@@ -88,28 +88,20 @@ class IntroQuestion {
 }
 
 /// 앱 설정(시안 22번).
+///
+/// 지금 켜고 끌 수 있는 건 "오늘의 질문 알림" 하나뿐이다.
 class AppSettings {
-  const AppSettings({
-    required this.dailyQuestionAlarm,
-    required this.newsAlarm,
-  });
+  const AppSettings({required this.dailyQuestionAlarm});
 
   final bool dailyQuestionAlarm;
-  final bool newsAlarm;
 
-  AppSettings copyWith({bool? dailyQuestionAlarm, bool? newsAlarm}) =>
-      AppSettings(
-        dailyQuestionAlarm: dailyQuestionAlarm ?? this.dailyQuestionAlarm,
-        newsAlarm: newsAlarm ?? this.newsAlarm,
-      );
+  AppSettings copyWith({bool? dailyQuestionAlarm}) => AppSettings(
+    dailyQuestionAlarm: dailyQuestionAlarm ?? this.dailyQuestionAlarm,
+  );
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
     dailyQuestionAlarm: json['daily_question_alarm'] as bool? ?? true,
-    newsAlarm: json['news_alarm'] as bool? ?? false,
   );
 
-  Map<String, dynamic> toJson() => {
-    'daily_question_alarm': dailyQuestionAlarm,
-    'news_alarm': newsAlarm,
-  };
+  Map<String, dynamic> toJson() => {'daily_question_alarm': dailyQuestionAlarm};
 }
