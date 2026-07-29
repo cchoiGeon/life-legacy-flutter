@@ -1,3 +1,5 @@
+import 'package:life_legacy/data/enums/enums.dart';
+
 /// 홈 대시보드가 한 번에 받아오는 요약(시안 11번 화면).
 ///
 /// 화면 하나가 필요한 값을 한 번에 준다는 가정이다. 서버가 쪼개서 준다면
@@ -59,6 +61,8 @@ class IntroQuestion {
     required this.order,
     required this.text,
     this.hint,
+    this.type = IntroAnswerType.text,
+    this.choices = const [],
   });
 
   final String id;
@@ -69,21 +73,36 @@ class IntroQuestion {
   /// "성함이 어떻게 되세요?"
   final String text;
 
-  /// 입력창 placeholder
+  /// 입력창 placeholder. [type]이 text일 때만 쓴다.
   final String? hint;
 
-  factory IntroQuestion.fromJson(Map<String, dynamic> json) => IntroQuestion(
-    id: json['id'] as String,
-    order: json['order'] as int? ?? 0,
-    text: json['text'] as String? ?? '',
-    hint: json['hint'] as String?,
-  );
+  final IntroAnswerType type;
+
+  /// 고르기 문항의 선택지. 화면은 이걸 가로로 나란히 그린다.
+  /// ⚠️ 두 개를 가정하고 배치한다 — 세 개 이상이 필요해지면 화면도 손봐야 한다.
+  final List<String> choices;
+
+  factory IntroQuestion.fromJson(Map<String, dynamic> json) {
+    final choices =
+        (json['choices'] as List?)?.map((e) => e as String).toList() ??
+        const <String>[];
+    return IntroQuestion(
+      id: json['id'] as String,
+      order: json['order'] as int? ?? 0,
+      text: json['text'] as String? ?? '',
+      hint: json['hint'] as String?,
+      // 서버가 type을 안 주면 선택지 유무로 판단한다.
+      type: choices.isEmpty ? IntroAnswerType.text : IntroAnswerType.choice,
+      choices: choices,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'order': order,
     'text': text,
     'hint': hint,
+    'choices': choices,
   };
 }
 

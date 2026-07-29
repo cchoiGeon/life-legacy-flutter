@@ -24,6 +24,18 @@ enum ChapterStatus {
       ChapterStatus.values.firstWhere((e) => e.wire == v, orElse: () => locked);
 }
 
+/// 자기소개 문항의 답변 방식.
+///
+/// 서버 계약이 정해지면 wire 값이 붙을 자리다. 지금은 화면이 어떤 입력을
+/// 그릴지 정하는 데만 쓴다.
+enum IntroAnswerType {
+  /// 성함처럼 직접 적거나 말해서 받는 문항
+  text,
+
+  /// 예/아니요처럼 버튼을 눌러 고르는 문항. 고르는 즉시 다음으로 넘어간다.
+  choice,
+}
+
 /// 작성 화면 입력 방식.
 ///
 /// 서버와 무관한 **클라이언트 전용** 상태다. 시니어 사용자가 음성을 기본으로

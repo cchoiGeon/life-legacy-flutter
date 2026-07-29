@@ -137,13 +137,32 @@ class IntroController extends GetxController {
 
   bool get canGoNext => draft.value.trim().isNotEmpty;
 
-  /// 답을 저장하고 다음 질문으로. 마지막이면 목차 생성으로 넘어간다.
+  /// 이 문항에 이미 고른 답. 뒤로 왔을 때 눌렀던 쪽을 표시해 준다.
+  String? get chosen {
+    final q = current;
+    return q == null ? null : answers[q.id];
+  }
+
+  /// 고르기 문항 — 누르는 즉시 저장하고 다음으로 넘어간다.
+  /// 텍스트 문항처럼 "다음" 버튼을 한 번 더 누르게 하지 않는다.
+  void choose(String value) {
+    final q = current;
+    if (q == null) return;
+    answers[q.id] = value;
+    _advance();
+  }
+
+  /// 텍스트 문항 — 적은 답을 저장하고 다음으로.
   void next() {
     final q = current;
     if (q == null || !canGoNext) return;
     answers[q.id] = answerController.text.trim();
-    answerController.clear();
+    _advance();
+  }
 
+  /// 다음 문항으로. 마지막이면 목차 생성으로 넘어간다.
+  void _advance() {
+    answerController.clear();
     if (index.value + 1 >= questions.length) {
       Get.offNamed(AppRoutes.tocLoading, arguments: answers);
       return;
@@ -160,7 +179,10 @@ class IntroController extends GetxController {
     }
     index.value--;
     final q = current;
-    answerController.text = q == null ? '' : (answers[q.id] ?? '');
+    // 고르기 문항은 입력칸이 없다 — 텍스트 문항일 때만 되살린다.
+    answerController.text = (q != null && q.type == IntroAnswerType.text)
+        ? (answers[q.id] ?? '')
+        : '';
     mode.value = ComposeMode.voice;
   }
 }

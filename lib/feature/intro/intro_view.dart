@@ -60,9 +60,14 @@ class IntroView extends GetView<IntroController> {
               ),
             ),
             Expanded(
-              child: controller.mode.value == ComposeMode.voice
-                  ? _VoiceBody(question: question)
-                  : _KeyboardBody(question: question),
+              child: switch (question.type) {
+                // 고르기 문항은 음성·키보드 구분이 없다 — 버튼만 보여준다.
+                IntroAnswerType.choice => _ChoiceBody(question: question),
+                IntroAnswerType.text =>
+                  controller.mode.value == ComposeMode.voice
+                      ? _VoiceBody(question: question)
+                      : _KeyboardBody(question: question),
+              },
             ),
           ],
         );
@@ -139,6 +144,62 @@ class _VoiceBody extends GetView<IntroController> {
           // 작성 탭(13)과 **같은 버튼 컴포넌트**다 (Figma 158:370).
           AppKeyboardButton(onPressed: controller.useKeyboard),
           const Spacer(flex: 2),
+        ],
+      ),
+    );
+  }
+}
+
+/// 고르기 문항 — 질문 + 선택지 두 개.
+///
+/// 누르는 즉시 다음 문항으로 넘어간다. 시니어 사용자가 "고르고 → 다음 누르고"
+/// 두 번 조작하지 않게 한 것이다.
+class _ChoiceBody extends GetView<IntroController> {
+  const _ChoiceBody({required this.question});
+
+  final IntroQuestion question;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '몇 가지만 여쭤보고 목차를 만들어 드릴게요',
+            textAlign: TextAlign.center,
+            style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary),
+          ),
+          const SizedBox(height: AppDimens.space3),
+          Text(
+            question.text,
+            textAlign: TextAlign.center,
+            style: AppTypography.titlePage,
+          ),
+          const SizedBox(height: AppDimens.space10),
+          Obx(() {
+            final chosen = controller.chosen;
+            return Row(
+              children: [
+                for (final (i, choice) in question.choices.indexed) ...[
+                  if (i > 0) const SizedBox(width: AppDimens.space3),
+                  Expanded(
+                    child: AppButton(
+                      label: choice,
+                      // 뒤로 왔을 때 눌렀던 쪽을 채워서 보여준다.
+                      variant: chosen == choice
+                          ? AppButtonVariant.primary
+                          : AppButtonVariant.outline,
+                      size: AppButtonSize.lg,
+                      block: true,
+                      onPressed: () => controller.choose(choice),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          }),
         ],
       ),
     );
