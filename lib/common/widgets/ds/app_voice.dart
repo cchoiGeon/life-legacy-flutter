@@ -5,6 +5,8 @@ import 'package:flutter/widgets.dart';
 import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 
+import 'app_icon.dart';
+
 /// 큰 원형 녹음 버튼 — 시안 07·13·14번의 중심 요소.
 ///
 /// 대기 상태는 브랜드 브라운, 녹음 중은 청록(accent-soft)으로 바뀌고
@@ -86,9 +88,11 @@ class _AppMicButtonState extends State<AppMicButton>
                 height: widget.size,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                child: CustomPaint(
-                  size: Size(widget.size * 0.34, widget.size * 0.34),
-                  painter: const _BigMicPainter(color: AppColors.brandFg),
+                // 시안 148:203 — 원 112 안에 아이콘 40 (비율 0.357)
+                child: AppIcon(
+                  AppIcons.mic,
+                  size: widget.size * 40 / 112,
+                  color: AppColors.brandFg,
                 ),
               ),
             ),
@@ -133,46 +137,6 @@ class _PulsePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PulsePainter old) => old.progress != progress;
-}
-
-class _BigMicPainter extends CustomPainter {
-  const _BigMicPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final stroke = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.09
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTRB(w * 0.34, h * 0.06, w * 0.66, h * 0.56),
-        Radius.circular(w * 0.16),
-      ),
-      Paint()..color = color,
-    );
-    canvas.drawArc(
-      Rect.fromLTRB(w * 0.18, h * 0.28, w * 0.82, h * 0.82),
-      0,
-      math.pi,
-      false,
-      stroke,
-    );
-    canvas.drawLine(
-      Offset(w * 0.5, h * 0.78),
-      Offset(w * 0.5, h * 0.96),
-      stroke,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_BigMicPainter old) => old.color != color;
 }
 
 /// 녹음 중 파형 — 시안 14번의 막대 그래프.
