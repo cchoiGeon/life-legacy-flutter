@@ -48,6 +48,24 @@ class MockApiClient implements ApiClient {
       timeLabel: '3일 전',
       isRead: true,
     ),
+    AppNotification(
+      id: 'n4',
+      title: '이번 주에 3개 질문에 답하셨어요',
+      timeLabel: '5일 전',
+      isRead: true,
+    ),
+    AppNotification(
+      id: 'n5',
+      title: '인쇄본 배송지를 등록해 주세요',
+      timeLabel: '1주 전',
+      isRead: true,
+    ),
+    AppNotification(
+      id: 'n6',
+      title: 'Life Legacy에 오신 걸 환영해요 · 첫 이야기를 시작해 보세요',
+      timeLabel: '2주 전',
+      isRead: true,
+    ),
   ];
 
   /// 인증번호 — 어떤 번호로 요청하든 이 값이 정답이다.

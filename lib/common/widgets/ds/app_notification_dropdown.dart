@@ -102,6 +102,7 @@ class AppNotificationDropdown extends StatelessWidget {
     required this.onMarkAllRead,
     required this.onSeeAll,
     this.isLoading = false,
+    this.visibleCount = 3,
   });
 
   final List<AppNotification> items;
@@ -109,6 +110,11 @@ class AppNotificationDropdown extends StatelessWidget {
   final VoidCallback onMarkAllRead;
   final VoidCallback onSeeAll;
   final bool isLoading;
+
+  /// 드롭다운에 보여줄 최대 개수. 나머지는 "전체 보기"로 넘긴다.
+  /// 시안(169:451)이 3건까지만 보여준다 — 헤더 아래로 길게 늘어지면
+  /// 뒤 화면을 다 덮어 드롭다운이 아니라 전체 화면처럼 보인다.
+  final int visibleCount;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +161,8 @@ class AppNotificationDropdown extends StatelessWidget {
                   else if (items.isEmpty)
                     const _Empty()
                   else
-                    for (final n in items) _Item(notification: n),
+                    for (final n in items.take(visibleCount))
+                      AppNotificationTile(notification: n),
                   _Footer(onSeeAll: onSeeAll),
                 ],
               ),
@@ -206,16 +213,24 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _Item extends StatelessWidget {
-  const _Item({required this.notification});
+/// 알림 한 줄 — 드롭다운과 알림 센터가 **같은 컴포넌트**를 쓴다.
+///
+/// 안 읽은 항목만 크림 배경 + 점으로 구분한다. 읽은 항목은 글자도 한 톤
+/// 흐리게 해서 목록에서 시선이 안 읽은 쪽으로 가게 한다.
+class AppNotificationTile extends StatelessWidget {
+  const AppNotificationTile({
+    super.key,
+    required this.notification,
+    this.onTap,
+  });
 
   final AppNotification notification;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final unread = !notification.isRead;
-    return Container(
-      // 안 읽은 항목만 크림 배경으로 구분한다.
+    final tile = Container(
       color: unread ? AppColors.cream : AppColors.background,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
@@ -241,10 +256,14 @@ class _Item extends StatelessWidget {
               children: [
                 Text(
                   notification.title,
-                  style: AppTypography.weight(
-                    AppTypography.bodySm,
-                    AppTypography.medium,
-                  ),
+                  style: unread
+                      ? AppTypography.weight(
+                          AppTypography.bodySm,
+                          AppTypography.medium,
+                        )
+                      : AppTypography.bodySm.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -269,6 +288,13 @@ class _Item extends StatelessWidget {
           ],
         ],
       ),
+    );
+
+    if (onTap == null) return tile;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: tile,
     );
   }
 }

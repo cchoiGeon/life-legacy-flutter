@@ -79,9 +79,11 @@ class HomeController extends GetxController {
     }
   }
 
-  /// "전체 보기" — 알림 전용 화면은 시안에 없다. 자리만 만들어 뒀다.
-  void openAllNotifications() {
+  /// "전체 보기" → 알림 센터(13). 돌아오면 목록을 다시 읽는다
+  /// (센터에서 "모두 읽음"을 눌렀을 수 있다).
+  Future<void> openAllNotifications() async {
     closeNotifications();
-    _toast.show('알림 전체 보기는 준비 중이에요');
+    await Get.toNamed(AppRoutes.notifications);
+    await loadNotifications();
   }
 }

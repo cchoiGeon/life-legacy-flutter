@@ -20,6 +20,7 @@ class AppTopBar extends StatelessWidget {
     this.leading,
     this.trailing,
     this.background,
+    this.centerTitle = true,
   });
 
   final String? title;
@@ -36,6 +37,9 @@ class AppTopBar extends StatelessWidget {
 
   final Color? background;
 
+  /// false면 뒤로가기 바로 오른쪽에 붙는다 (알림 센터처럼 목록형 화면).
+  final bool centerTitle;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -47,18 +51,23 @@ class AppTopBar extends StatelessWidget {
           child: Stack(
             children: [
               if (title != null)
-                Center(
+                Align(
+                  alignment: centerTitle
+                      ? Alignment.center
+                      : Alignment.centerLeft,
                   child: Padding(
                     // 좌우 액션과 겹치지 않게 여백을 준다.
-                    padding: const EdgeInsets.symmetric(horizontal: 72),
+                    padding: centerTitle
+                        ? const EdgeInsets.symmetric(horizontal: 72)
+                        : const EdgeInsets.only(left: 52, right: 60),
                     child: Text(
                       title!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.weight(
-                        AppTypography.bodyBase,
+                        AppTypography.titleSection,
                         AppTypography.bold,
-                      ).copyWith(color: AppColors.textStrong),
+                      ).copyWith(color: AppColors.textPrimary),
                     ),
                   ),
                 ),

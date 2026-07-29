@@ -19,6 +19,9 @@ abstract final class AppRoutes {
   static const book = '/book'; // 19
   static const settings = '/settings'; // 22
 
+  /// 홈 드롭다운의 "전체 보기"에서 들어온다.
+  static const notifications = '/notifications'; // 13 알림 센터
+
   // E 하위
   static const bookPreview = '/book/preview'; // 20
   static const bookComplete = '/book/complete'; // 21

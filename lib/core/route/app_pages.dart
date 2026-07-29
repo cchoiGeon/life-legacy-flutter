@@ -30,6 +30,10 @@ import 'package:life_legacy/feature/book/preview_binding.dart';
 import 'package:life_legacy/feature/book/preview_view.dart';
 import 'package:life_legacy/feature/book/complete_view.dart';
 
+// ── 알림 센터 ──────────────────────────────────────────────────
+import 'package:life_legacy/feature/notifications/binding.dart';
+import 'package:life_legacy/feature/notifications/notifications_view.dart';
+
 // ── F · 설정 ───────────────────────────────────────────────────
 import 'package:life_legacy/feature/settings/binding.dart';
 import 'package:life_legacy/feature/settings/settings_view.dart';
@@ -109,6 +113,13 @@ abstract final class AppPages {
       page: () => const SettingsView(),
       binding: SettingsBinding(),
       transition: Transition.noTransition,
+    ),
+
+    // ── 알림 센터 ────────────────────────────────────────────
+    GetPage(
+      name: AppRoutes.notifications,
+      page: () => const NotificationsView(),
+      binding: NotificationsBinding(),
     ),
 
     // ── E 하위 ───────────────────────────────────────────────
