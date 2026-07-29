@@ -30,21 +30,33 @@ class IntroView extends GetView<IntroController> {
         }
         return Column(
           children: [
-            AppTopBar(
-              title: '자기소개',
-              onBack: controller.back,
-              trailing: Text(
-                '${controller.step} / ${controller.total}',
-                style: AppTypography.bodySm.copyWith(
-                  color: AppColors.textTertiary,
-                ),
-              ),
-            ),
+            AppTopBar(title: '자기소개', onBack: controller.back),
+            // 작성 탭(13)과 **완전히 같은 진행률 블록** —
+            // 바가 위, "질문 N / M"이 아래. 여백·높이·색 모두 동일하다.
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
-              child: AppStepBar(
-                total: controller.total,
-                current: controller.step,
+              padding: const EdgeInsets.fromLTRB(20, 2, 20, 6),
+              child: Column(
+                // 바깥 Column이 center 정렬이라 stretch가 없으면
+                // 바가 라벨 폭으로 줄어든다 (작성 탭과 같은 이유).
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AppProgressBar(
+                    value: controller.total == 0
+                        ? 0
+                        : controller.step / controller.total,
+                  ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      controller.progressLabel,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.stone500,
+                        letterSpacing: -0.13,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             Expanded(

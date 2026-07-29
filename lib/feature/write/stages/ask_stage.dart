@@ -64,7 +64,7 @@ class _Header extends GetView<WriteController> {
 }
 
 /// 148:190 — 진행률 바가 **위**, "질문 3 / 6"이 아래. `px20 pt2 pb6`, gap 6.
-/// 트랙 `#f0ebe3` · 채움 `warm #c4a77d` · 높이 6 · 반경 3.
+/// 바 자체는 자기소개와 공유하는 [AppProgressBar]다.
 class _Progress extends GetView<WriteController> {
   @override
   Widget build(BuildContext context) {
@@ -76,18 +76,7 @@ class _Progress extends GetView<WriteController> {
         //    짧게 뜬다. 시안은 좌우 여백 20을 뺀 **가로 전체**다.
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: Container(
-              height: 6,
-              color: AppColors.bubbleSys,
-              child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: controller.chapterProgress.clamp(0.0, 1.0),
-                child: Container(color: AppColors.warm),
-              ),
-            ),
-          ),
+          AppProgressBar(value: controller.chapterProgress),
           const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerLeft,

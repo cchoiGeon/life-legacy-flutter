@@ -47,31 +47,49 @@ class AppCard extends StatelessWidget {
   }
 }
 
-/// 진행률 바 — Figma `progress`(130:2178).
+/// 진행률 바 — 앱의 **유일한** 진행률 표시.
 ///
-/// [onBrand]는 브랜드색 배경 위에 얹히는 변형이다(트랙이 반투명 흰색).
+/// 시안 실측(홈 11 · 자기소개 07·08 · 작성 13)에서 공통인 것:
+///   · 트랙 `#f0ebe3` (bubbleSys) — 세 곳이 모두 같다
+///   · 반경 = 높이 / 2
+/// 다른 것은 높이와 채움색뿐이라 그 둘만 파라미터로 뺐다.
+///
+/// ⚠️ 예전에는 자기소개가 5칸 분절 바를 따로 썼다(`AppStepBar`). 한 장의
+///    문항 수가 6~8개로 다르고 더 늘어날 수 있어서 분절은 칸이 실처럼
+///    얇아진다. 개수는 옆의 "1 / 5" · "질문 3 / 6" 텍스트가 알려주므로
+///    연속형 하나로 통일했다.
 class AppProgressBar extends StatelessWidget {
   const AppProgressBar({
     super.key,
     required this.value,
-    this.height = 8,
+    this.height = 6,
+    this.fill,
     this.onBrand = false,
   });
 
   /// 0.0 ~ 1.0
   final double value;
+
+  /// 시안: 상단 진행률 6 · 홈 카드 10
   final double height;
+
+  /// 기본은 warm. 홈 카드처럼 강조가 필요하면 brand를 넘긴다.
+  final Color? fill;
+
+  /// 브랜드색 배경 위에 얹히는 변형(트랙이 반투명 흰색).
   final bool onBrand;
 
   @override
   Widget build(BuildContext context) {
     final clamped = value.clamp(0.0, 1.0);
+    final radius = BorderRadius.circular(height / 2);
     return Semantics(
       value: '${(clamped * 100).round()}%',
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(height),
+        borderRadius: radius,
         child: Container(
           height: height,
+          width: double.infinity,
           color: onBrand
               ? AppColors.progressTrackOnBrand
               : AppColors.progressTrack,
@@ -84,45 +102,13 @@ class AppProgressBar extends StatelessWidget {
               decoration: BoxDecoration(
                 color: onBrand
                     ? AppColors.progressFillOnBrand
-                    : AppColors.progressFill,
-                borderRadius: BorderRadius.circular(height),
+                    : (fill ?? AppColors.progressFill),
+                borderRadius: radius,
               ),
             ),
           ),
         ),
       ),
-    );
-  }
-}
-
-/// 여러 칸으로 나뉜 단계 표시 — 시안 07·08번의 상단 5칸 바.
-class AppStepBar extends StatelessWidget {
-  const AppStepBar({super.key, required this.total, required this.current});
-
-  final int total;
-
-  /// 1부터. `current`번째까지 채워진다.
-  final int current;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (var i = 1; i <= total; i++) ...[
-          if (i > 1) const SizedBox(width: AppDimens.space2),
-          Expanded(
-            child: AnimatedContainer(
-              duration: AppMotion.base,
-              curve: AppMotion.standard,
-              height: 6,
-              decoration: BoxDecoration(
-                color: i <= current ? AppColors.warm : AppColors.cream,
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-          ),
-        ],
-      ],
     );
   }
 }

@@ -44,6 +44,10 @@ class IntroController extends GetxController {
   int get step => index.value + 1;
   int get total => questions.length;
 
+  /// "질문 1 / 5" — 작성 탭(WriteController.progressLabel)과 같은 형식이다.
+  /// 두 화면의 진행률 블록이 같은 모양이라 문구도 맞췄다.
+  String get progressLabel => total == 0 ? '' : '질문 $step / $total';
+
   @override
   void onInit() {
     super.onInit();

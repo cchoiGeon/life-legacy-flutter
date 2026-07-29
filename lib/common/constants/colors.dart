@@ -98,11 +98,13 @@ abstract final class AppColors {
   static const chatUserFg = brandFg;
 
   // Progress
-  static const progressTrack = stone200;
+  /// ⚠️ 시안의 진행률 트랙은 홈·자기소개·작성 **세 곳 모두** 이 색이다.
+  ///    stone200이 아니다 — 예전에 홈 카드만 다른 색으로 나가고 있었다.
+  static const progressTrack = bubbleSys;
 
-  /// ⚠️ 진행률 채움은 `warm`이 아니라 **브랜드색**이다(시안 130:2179).
-  ///    warm은 장식·구분선 쪽에 쓴다.
-  static const progressFill = brand;
+  /// 상단 진행률(자기소개·작성)의 기본 채움색.
+  /// 홈 카드는 강조를 위해 brand를 따로 넘긴다.
+  static const progressFill = warm;
 
   /// 브랜드 배경 위에 얹히는 진행률(홈 카드 안)
   static const progressTrackOnBrand = Color(0x33FDFCFB);

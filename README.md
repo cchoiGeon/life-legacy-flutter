@@ -145,11 +145,27 @@ lib/
 |---|---|
 | **가변 폰트 굵기** | Noto Sans KR은 가변 폰트 파일 **하나**로만 배포돼서 굵기별 등록이 불가능하다. `fontWeight` 만 주면 **굵기가 안 바뀐다**. 굵기를 조정할 땐 반드시 `AppTypography.weight(style, w)` 를 쓴다 |
 | **09 → 10 목차 전달** | `offNamed` 로 로딩 라우트가 빠지면 GetX가 컨트롤러를 폐기한다. 목차는 필드가 아니라 **라우트 인자**로 넘겨야 한다 (`toc_controller_test.dart` 가 잠가 뒀다) |
-| **Column 안의 좌측 정렬** | 바깥 Column이 center 정렬이면 안쪽 블록이 자식 폭으로 줄어든다. 가로 전체를 쓰려면 `SizedBox(width: double.infinity)` 로 감싼다 |
+| **Column 안의 좌측 정렬** | 바깥 Column이 center 정렬이면 안쪽 블록이 자식 폭으로 줄어든다. 가로 전체를 쓰려면 `CrossAxisAlignment.stretch` 나 `SizedBox(width: double.infinity)` 로 감싼다 |
 | **`dart analyze` 를 쓴다** | 경로에 한글(`회사`)이 있으면 `flutter analyze` 의 LSP 채널이 깨진다 |
 | **테스트의 GetStorage** | path_provider 플러그인이 없어 `MissingPluginException` 이 난다. 테스트에서 채널을 임시 디렉터리로 물려준다 |
 | **녹음 상태를 따로 들지 않는다** | 컨트롤러가 자체 `isRecording` 플래그를 두면 인식기가 스스로 멈췄을 때(무음 타임아웃) 화면이 "듣고 있어요…"에 갇힌다. `SpeechService.isListening` 을 그대로 본다 |
 | **핫 리스타트는 앱을 다시 띄우면 날아간다** | 살아 있는 VM에만 적용된다. `pm clear` + 재실행하면 **설치된 예전 빌드**가 뜬다. 네이티브(매니페스트·권한)를 건드렸으면 반드시 전체 재빌드 |
+
+## 진행률 바
+
+앱의 진행률 표시는 **`AppProgressBar` 하나**다. 예전에는 세 군데에 따로 있었다
+(홈 카드 · 자기소개 5칸 분절 · 작성 인라인).
+
+| 쓰는 곳 | 높이 | 채움 |
+|---|---|---|
+| 자기소개 07·08 · 작성 13 | 6 | `warm #c4a77d` |
+| 홈 카드 11 | 10 | `brand #6b5344` |
+
+트랙은 세 곳 모두 `#f0ebe3`, 반경은 항상 높이의 절반이다.
+
+⚠️ 자기소개의 5칸 분절 바(`AppStepBar`)는 없앴다. 한 장의 문항 수가 6~8개로
+다르고 더 늘어날 수 있어 분절은 칸이 실처럼 얇아진다. 개수는 바 아래
+"질문 N / M" 텍스트가 알려준다 — 자기소개와 작성이 같은 문구를 쓴다.
 
 ## 목업의 한계
 

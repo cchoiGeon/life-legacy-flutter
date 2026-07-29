@@ -179,7 +179,12 @@ class _Dashboard extends GetView<HomeController> {
                   ],
                 ),
                 const SizedBox(height: AppDimens.space3),
-                AppProgressBar(value: summary.progress),
+                // 시안 146:134 — 홈 카드만 높이 10 · 채움 brand로 강조한다.
+                AppProgressBar(
+                  value: summary.progress,
+                  height: 10,
+                  fill: AppColors.brand,
+                ),
                 const SizedBox(height: AppDimens.space3),
                 Text(
                   summary.progressCaption,
