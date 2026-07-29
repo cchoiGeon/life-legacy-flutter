@@ -71,8 +71,9 @@ class AskStage extends GetView<WriteController> {
                     color: AppColors.textSecondary,
                   ),
                 ),
-                const SizedBox(height: AppDimens.space4),
-                _Link(label: '글자로 입력할게요', onTap: controller.useChat),
+                const SizedBox(height: AppDimens.space5),
+                // 자기소개(07)와 **같은 버튼 컴포넌트**다 (Figma 158:370).
+                AppKeyboardButton(onPressed: controller.useKeyboard),
                 const SizedBox(height: AppDimens.space3),
                 _Link(label: '이 질문 건너뛰기', onTap: controller.skip, subtle: true),
                 const Spacer(flex: 2),

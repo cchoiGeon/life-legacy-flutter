@@ -47,7 +47,7 @@ class ConfirmStage extends GetView<WriteController> {
                       ),
                     ),
                     child: Text(
-                      controller.draft.value?.transcript ?? '',
+                      controller.transcript.value,
                       style: AppTypography.bodyBase.copyWith(
                         color: AppColors.textStrong,
                       ),

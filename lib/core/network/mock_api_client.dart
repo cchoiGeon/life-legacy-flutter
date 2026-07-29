@@ -29,22 +29,13 @@ class MockApiClient implements ApiClient {
 
   User _user = const User(id: 'u1', name: '김영희', phone: '01012345678');
 
-  AppSettings _settings = const AppSettings(
-    dailyQuestionAlarm: true,
-    newsAlarm: false,
-  );
+  AppSettings _settings = const AppSettings(dailyQuestionAlarm: true);
 
   /// 인증번호 — 어떤 번호로 요청하든 이 값이 정답이다.
   static const demoCode = '482915';
 
   late List<Chapter> _chapters = _seedChapters();
   late List<Question> _questions = _seedQuestions();
-
-  /// 질문별 대화 이력. 채팅 모드에서만 쓴다.
-  final Map<String, List<ChatMessage>> _chats = {};
-
-  int _seq = 0;
-  String _nextId(String prefix) => '$prefix${++_seq}';
 
   // ══════════════════════════════════════════════════════════
   // 인증
@@ -176,48 +167,8 @@ class MockApiClient implements ApiClient {
       _delay(_questions.firstWhere((q) => q.id == questionId));
 
   @override
-  Future<List<ChatMessage>> chatHistory(String questionId) {
-    final history = _chats.putIfAbsent(questionId, () {
-      final q = _questions.firstWhere((e) => e.id == questionId);
-      return [
-        ChatMessage(
-          id: _nextId('m'),
-          role: ChatRole.ai,
-          text: q.text,
-          speakable: true,
-        ),
-      ];
-    });
-    return _delay(List.unmodifiable(history));
-  }
-
-  @override
   Future<String> transcribe() =>
       _delay('마당에 큰 감나무가 있던 시골집이었어요. 가을이면 온 가족이 그 아래에 모여 이야기를 나눴죠.');
-
-  @override
-  Future<AnswerDraft> submitAnswer({
-    required String questionId,
-    required String transcript,
-  }) {
-    _chats
-        .putIfAbsent(questionId, () => [])
-        .add(
-          ChatMessage(id: _nextId('m'), role: ChatRole.user, text: transcript),
-        );
-    return _delay(
-      AnswerDraft(
-        questionId: questionId,
-        transcript: transcript,
-        polished: _polish(transcript),
-      ),
-    );
-  }
-
-  @override
-  Future<AnswerDraft> repolish(AnswerDraft draft) => _delay(
-    draft.copyWith(polished: _polish(draft.transcript, variant: true)),
-  );
 
   @override
   Future<Question?> saveAnswer({
@@ -343,19 +294,6 @@ class MockApiClient implements ApiClient {
       if (pending.isNotEmpty) return pending.first;
     }
     return null;
-  }
-
-  /// 원문을 자서전 문체로 "다듬은" 척한다.
-  /// 실제 AI 호출이 들어올 자리 — 문장 자체에 의미는 없다.
-  String _polish(String transcript, {bool variant = false}) {
-    if (variant) {
-      return '산 아래 자리한 작은 마을에서 나고 자랐다. 골목마다 아이들의 웃음소리가 그치지 '
-          '않았고, 감나무가 서 있던 마당에는 가을이면 온 가족이 둘러앉았다. '
-          '그 저녁의 온기가 아직도 손끝에 남아 있다.';
-    }
-    return '내가 나고 자란 동네는 산 아래 자리한 작은 마을이었다. 골목마다 아이들의 '
-        '웃음소리가 끊이지 않았고, 감나무가 서 있던 마당에는 가을이면 온 가족이 '
-        '둘러앉았다. 그 정겨운 저녁들이 지금도 눈에 선하다.';
   }
 
   // ── 초기 데이터 ────────────────────────────────────────────

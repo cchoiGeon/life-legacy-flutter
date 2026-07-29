@@ -6,6 +6,7 @@ import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/feature/shared/answer_keyboard_body.dart';
 
 import 'intro_controller.dart';
 
@@ -98,12 +99,8 @@ class _VoiceBody extends GetView<IntroController> {
             ),
           ),
           const SizedBox(height: AppDimens.space5),
-          AppButton(
-            label: '키보드로 입력할게요',
-            variant: AppButtonVariant.neutral,
-            size: AppButtonSize.sm,
-            onPressed: controller.useKeyboard,
-          ),
+          // 작성 탭(13)과 **같은 버튼 컴포넌트**다 (Figma 158:370).
+          AppKeyboardButton(onPressed: controller.useKeyboard),
           const Spacer(flex: 2),
         ],
       ),
@@ -112,84 +109,24 @@ class _VoiceBody extends GetView<IntroController> {
 }
 
 /// 08 — 입력칸 + 다음 버튼.
+///
+/// 작성 탭의 글자 입력과 **같은 컴포넌트**([AnswerKeyboardBody])를 쓴다.
 class _KeyboardBody extends GetView<IntroController> {
   const _KeyboardBody({required this.question});
 
   final IntroQuestion question;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              AppDimens.gutter,
-              AppDimens.space6,
-              AppDimens.gutter,
-              0,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  question.text.replaceAll('\n', ' '),
-                  style: AppTypography.weight(
-                    AppTypography.headingXl,
-                    AppTypography.bold,
-                  ),
-                ),
-                const SizedBox(height: AppDimens.space4),
-                AppField(
-                  controller: controller.answerController,
-                  hint: question.hint,
-                  autofocus: true,
-                  minLines: 1,
-                  maxLines: 4,
-                  suffix: Obx(
-                    () => AppCircleButton(
-                      size: 32,
-                      semanticLabel: '음성으로 바꾸기',
-                      onTap: controller.toggleRecording,
-                      child: Icon(
-                        Icons.mic_none_rounded,
-                        size: 20,
-                        color: controller.isRecording.value
-                            ? AppColors.accentSoft
-                            : AppColors.brand,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppDimens.space2),
-                Text(
-                  '음성으로 바꾸려면 마이크를 누르세요',
-                  style: AppTypography.label.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppDimens.gutter,
-            AppDimens.space3,
-            AppDimens.gutter,
-            AppDimens.space5,
-          ),
-          child: Obx(
-            () => AppButton(
-              label: controller.step == controller.total ? '목차 만들기' : '다음',
-              size: AppButtonSize.lg,
-              block: true,
-              enabled: controller.canGoNext,
-              onPressed: controller.next,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Obx(
+    () => AnswerKeyboardBody(
+      question: question.text,
+      controller: controller.answerController,
+      hint: question.hint,
+      canSubmit: controller.canGoNext,
+      onSubmit: controller.next,
+      ctaLabel: controller.step == controller.total ? '목차 만들기' : '다음',
+      isRecording: controller.isRecording.value,
+      onMic: controller.toggleRecording,
+    ),
+  );
 }

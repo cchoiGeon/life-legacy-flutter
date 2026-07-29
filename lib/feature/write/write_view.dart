@@ -8,14 +8,12 @@ import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/feature/shared/tab_scaffold.dart';
 
 import 'stages/ask_stage.dart';
-import 'stages/chat_stage.dart';
 import 'stages/confirm_stage.dart';
-import 'stages/edit_stage.dart';
-import 'stages/polish_stage.dart';
+import 'stages/keyboard_stage.dart';
 import 'stages/recording_stage.dart';
 import 'write_controller.dart';
 
-/// 13~18 작성 — Figma 148:170 ~ 152:246.
+/// 13~16 작성 — Figma 148:170 ~ 151:221.
 ///
 /// 단계에 따라 몸통이 바뀐다. 탭바는 13번(대기)에서만 보인다 — 나머지
 /// 단계는 답변 중이라 탭을 옮길 자리가 아니다(시안도 그렇게 그려져 있다).
@@ -45,23 +43,14 @@ class WriteView extends GetView<WriteController> {
           backgroundColor: AppColors.background,
           body: RecordingStage(),
         ),
-        WriteStage.chat => const Scaffold(
-          backgroundColor: AppColors.stone50,
+        WriteStage.keyboard => const Scaffold(
+          backgroundColor: AppColors.background,
           resizeToAvoidBottomInset: true,
-          body: ChatStage(),
+          body: KeyboardStage(),
         ),
         WriteStage.confirm => const Scaffold(
           backgroundColor: AppColors.background,
           body: ConfirmStage(),
-        ),
-        WriteStage.polish => const Scaffold(
-          backgroundColor: AppColors.background,
-          body: PolishStage(),
-        ),
-        WriteStage.edit => const Scaffold(
-          backgroundColor: AppColors.background,
-          resizeToAvoidBottomInset: true,
-          body: EditStage(),
         ),
       };
     });

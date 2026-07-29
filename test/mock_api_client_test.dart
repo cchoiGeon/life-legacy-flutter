@@ -71,17 +71,15 @@ void main() {
     expect(chapters[2].status, ChapterStatus.locked);
   });
 
-  test('다듬기를 다시 요청하면 다른 문장이 온다', () async {
+  test('키보드로 적은 답변도 같은 경로로 저장된다', () async {
     final api = MockApiClient();
     final q = await api.currentQuestion();
-    final draft = await api.submitAnswer(
-      questionId: q!.id,
-      transcript: '원문입니다',
-    );
-    final again = await api.repolish(draft);
 
-    expect(again.transcript, draft.transcript, reason: '원문은 그대로여야 한다');
-    expect(again.polished, isNot(draft.polished));
+    // AI 다듬기 단계가 없어졌으므로 saveAnswer 하나가 음성·키보드를 모두 받는다.
+    await api.saveAnswer(questionId: q!.id, text: '직접 적은 답변입니다');
+    final pages = await api.bookPages();
+
+    expect(pages.expand((p) => p.paragraphs), contains('직접 적은 답변입니다'));
   });
 
   test('책 미리보기는 답변한 장만 싣는다', () async {

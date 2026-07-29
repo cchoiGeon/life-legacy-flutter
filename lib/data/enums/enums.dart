@@ -24,19 +24,6 @@ enum ChapterStatus {
       ChapterStatus.values.firstWhere((e) => e.wire == v, orElse: () => locked);
 }
 
-/// 채팅 말풍선 주체.
-enum ChatRole {
-  ai('ai'),
-  user('user');
-
-  const ChatRole(this.wire);
-
-  final String wire;
-
-  static ChatRole fromWire(String? v) =>
-      ChatRole.values.firstWhere((e) => e.wire == v, orElse: () => ai);
-}
-
 /// 작성 화면 입력 방식.
 ///
 /// 서버와 무관한 **클라이언트 전용** 상태다. 시니어 사용자가 음성을 기본으로

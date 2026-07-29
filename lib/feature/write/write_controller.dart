@@ -8,7 +8,10 @@ import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/service/services.dart';
 
-/// 작성 화면의 단계 — 시안 13~18번이 각각 하나씩 대응한다.
+/// 작성 화면의 단계.
+///
+/// 시안의 "AI 글 다듬기"(17)와 "직접 고치기"(18)는 **없앴다.**
+/// 답변은 사용자가 말하거나 적은 그대로 저장된다.
 enum WriteStage {
   /// 13 음성 모드 · 기본
   ask,
@@ -16,39 +19,41 @@ enum WriteStage {
   /// 14 음성 모드 · 녹음 중
   recording,
 
-  /// 15 채팅 모드 (글자 입력)
-  chat,
+  /// 글자로 입력 — 자기소개(08)와 같은 컴포넌트를 쓴다
+  keyboard,
 
-  /// 16 답변 확인 — 받아쓴 원문이 맞는지
+  /// 16 답변 확인 — 받아쓴 원문이 맞는지 (음성 경로에서만 거친다)
   confirm,
-
-  /// 17 AI 글 다듬기 결과
-  polish,
-
-  /// 18 직접 고치기
-  edit,
 }
 
-/// 13~18 작성 — 앱의 핵심 흐름.
+/// 13~16 작성 — 앱의 핵심 흐름.
 ///
-/// 한 컨트롤러가 여섯 단계를 모두 들고 있다. 단계마다 라우트를 따로 두면
-/// 질문·원문·다듬은 글을 계속 넘겨야 하고, 뒤로가기 동작도 단계마다
-/// 달라져야 해서 한 화면 안에서 [stage]로 전환한다.
+/// 흐름은 두 갈래다:
+///   · 음성   : ask → recording → confirm → 저장 → 다음 질문
+///   · 키보드 : ask → keyboard → 저장 → 다음 질문
+///
+/// 키보드 경로에 확인 단계가 없는 이유: 방금 본인이 타이핑한 글이라
+/// "이렇게 들었어요"를 한 번 더 보여줄 이유가 없다.
 class WriteController extends GetxController {
   WriteController(this._api, this._toast);
 
   final ApiClient _api;
   final ToastService _toast;
 
-  final chatController = TextEditingController();
-  final editController = TextEditingController();
+  /// 키보드 입력칸
+  final answerController = TextEditingController();
 
   final Rx<WriteStage> stage = WriteStage.ask.obs;
 
   final Rxn<Question> question = Rxn<Question>();
   final Rxn<Chapter> chapter = Rxn<Chapter>();
-  final Rxn<AnswerDraft> draft = Rxn<AnswerDraft>();
-  final RxList<ChatMessage> messages = <ChatMessage>[].obs;
+
+  /// 받아쓴 답변 원문(음성 경로). 확인 화면이 이 값을 보여준다.
+  final RxString transcript = ''.obs;
+
+  /// 입력칸의 현재 값. `answerController.text`는 Rx가 아니라 Obx가 갱신되지
+  /// 않으므로 따로 둔다.
+  final RxString draft = ''.obs;
 
   final RxBool isLoading = true.obs;
   final RxBool isBusy = false.obs;
@@ -65,6 +70,7 @@ class WriteController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    answerController.addListener(_onDraftChanged);
     load();
   }
 
@@ -72,10 +78,12 @@ class WriteController extends GetxController {
   void onClose() {
     _tick?.cancel();
     _sttTimer?.cancel();
-    chatController.dispose();
-    editController.dispose();
+    answerController.removeListener(_onDraftChanged);
+    answerController.dispose();
     super.onClose();
   }
+
+  void _onDraftChanged() => draft.value = answerController.text;
 
   // ── 로딩 ──────────────────────────────────────────────────
 
@@ -135,12 +143,7 @@ class WriteController extends GetxController {
     _sttTimer?.cancel();
     isBusy.value = true;
     try {
-      final text = await _api.transcribe();
-      draft.value = AnswerDraft(
-        questionId: question.value!.id,
-        transcript: text,
-        polished: '',
-      );
+      transcript.value = await _api.transcribe();
       stage.value = WriteStage.confirm;
     } on ApiException catch (e) {
       _toast.showError(e);
@@ -156,134 +159,66 @@ class WriteController extends GetxController {
   void replayQuestion() =>
       _toast.show('음성 안내는 준비 중이에요', description: '질문은 화면에서 읽으실 수 있어요');
 
-  /// 15 채팅 모드로 전환 — "글자로 입력할게요"
-  Future<void> useChat() async {
-    final q = question.value;
-    if (q == null) return;
-    stage.value = WriteStage.chat;
-    try {
-      messages.value = await _api.chatHistory(q.id);
-    } on ApiException catch (e) {
-      _toast.showError(e);
-    }
+  // ── 키보드 입력 ───────────────────────────────────────────
+
+  /// "키보드로 입력할게요" — 자기소개(08)와 같은 화면으로 넘어간다.
+  void useKeyboard() {
+    answerController.clear();
+    stage.value = WriteStage.keyboard;
   }
 
-  void backToAsk() => stage.value = WriteStage.ask;
-
-  // ── 15 채팅 ───────────────────────────────────────────────
-
-  Future<void> sendChat() async {
-    final text = chatController.text.trim();
-    final q = question.value;
-    if (text.isEmpty || q == null || isBusy.value) return;
-
-    chatController.clear();
-    messages.add(
-      ChatMessage(
-        id: 'local-${messages.length}',
-        role: ChatRole.user,
-        text: text,
-      ),
-    );
-    isBusy.value = true;
-    try {
-      draft.value = await _api.submitAnswer(questionId: q.id, transcript: text);
-      stage.value = WriteStage.polish;
-    } on ApiException catch (e) {
-      _toast.showError(e);
-    } finally {
-      isBusy.value = false;
-    }
-  }
-
-  /// 채팅 입력줄의 마이크 — 음성 모드로 되돌린다.
-  void micFromChat() {
+  /// 키보드 입력칸의 마이크 — 음성 **대기** 화면으로 되돌린다.
+  ///
+  /// ⚠️ 여기서 바로 [startRecording]을 부르지 않는다. 마이크를 누른 순간
+  ///    녹음이 시작되면 사용자가 말할 준비를 하기 전에 듣기가 시작돼서,
+  ///    "누르고 말씀하세요" 화면을 한 번 거치게 한다.
+  void micFromKeyboard() {
+    answerController.clear();
     stage.value = WriteStage.ask;
-    startRecording();
   }
+
+  bool get canSubmitTyped => draft.value.trim().isNotEmpty;
+
+  /// 적은 그대로 저장한다. 확인 단계를 거치지 않는다.
+  Future<void> submitTyped() => _save(answerController.text.trim());
 
   // ── 16 답변 확인 ──────────────────────────────────────────
 
-  /// "네, 맞아요" → AI 다듬기로 넘어간다.
-  Future<void> confirmTranscript() async {
-    final d = draft.value;
-    if (d == null || isBusy.value) return;
-    isBusy.value = true;
-    try {
-      draft.value = await _api.submitAnswer(
-        questionId: d.questionId,
-        transcript: d.transcript,
-      );
-      stage.value = WriteStage.polish;
-    } on ApiException catch (e) {
-      _toast.showError(e);
-    } finally {
-      isBusy.value = false;
-    }
-  }
+  /// "네, 맞아요" — 받아쓴 원문을 그대로 저장한다.
+  Future<void> confirmTranscript() => _save(transcript.value);
 
   /// "다시 말할게요" → 13번으로 되돌린다.
   void retryAnswer() {
-    draft.value = null;
+    transcript.value = '';
     stage.value = WriteStage.ask;
   }
 
-  // ── 17 AI 글 다듬기 ───────────────────────────────────────
+  // ── 공통 ──────────────────────────────────────────────────
 
-  Future<void> repolish() async {
-    final d = draft.value;
-    if (d == null || isBusy.value) return;
+  Future<void> _save(String text) async {
+    final q = question.value;
+    if (q == null || text.isEmpty || isBusy.value) return;
     isBusy.value = true;
     try {
-      draft.value = await _api.repolish(d);
-    } on ApiException catch (e) {
-      _toast.showError(e);
-    } finally {
-      isBusy.value = false;
-    }
-  }
-
-  void startEditing() {
-    editController.text = draft.value?.polished ?? '';
-    stage.value = WriteStage.edit;
-  }
-
-  /// "좋아요, 다음 질문" — 확정 저장.
-  Future<void> save([String? overrideText]) async {
-    final d = draft.value;
-    if (d == null || isBusy.value) return;
-    isBusy.value = true;
-    try {
-      final next = await _api.saveAnswer(
-        questionId: d.questionId,
-        text: overrideText ?? d.polished,
-      );
+      final next = await _api.saveAnswer(questionId: q.id, text: text);
       _toast.show(
         '저장되었습니다.',
         description: next == null ? null : '다음 질문으로 이동합니다.',
       );
-      _moveTo(next);
+      await _moveTo(next);
     } on ApiException catch (e) {
       _toast.showError(e);
     } finally {
       isBusy.value = false;
     }
   }
-
-  // ── 18 직접 고치기 ────────────────────────────────────────
-
-  void cancelEditing() => stage.value = WriteStage.polish;
-
-  Future<void> saveEdited() => save(editController.text.trim());
-
-  // ── 공통 ──────────────────────────────────────────────────
 
   Future<void> skip() async {
     final q = question.value;
     if (q == null || isBusy.value) return;
     isBusy.value = true;
     try {
-      _moveTo(await _api.skipQuestion(q.id));
+      await _moveTo(await _api.skipQuestion(q.id));
     } on ApiException catch (e) {
       _toast.showError(e);
     } finally {
@@ -293,10 +228,8 @@ class WriteController extends GetxController {
 
   /// 다음 질문으로 상태를 갈아 끼운다. null이면 전부 끝났다는 뜻이다.
   Future<void> _moveTo(Question? next) async {
-    draft.value = null;
-    messages.clear();
-    chatController.clear();
-    editController.clear();
+    transcript.value = '';
+    answerController.clear();
     stage.value = WriteStage.ask;
 
     question.value = next;

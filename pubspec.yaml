@@ -20,6 +20,10 @@ dependencies:
   # ── 기타 ────────────────────────────────────────────────────
   intl: ^0.19.0
 
+  # Figma에서 내보낸 아이콘(assets/icons/*.svg)을 그대로 그린다.
+  # 직접 Path로 옮겨 그리면 시안과 미세하게 어긋나서 에셋을 쓴다.
+  flutter_svg: ^2.0.10
+
   # ⚠️ 네트워크 패키지(dio/retrofit)는 아직 넣지 않았다.
   #    지금은 MockApiClient가 ApiClient 인터페이스를 구현한다.
   #    실제 서버가 정해지면 dio + retrofit을 추가하고 같은 인터페이스를

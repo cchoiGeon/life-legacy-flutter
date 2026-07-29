@@ -54,11 +54,31 @@ lib/
 | `/intro/loading` | 09 | 뒤로가기 차단 |
 | `/intro/toc` | 10 | |
 | `/home` | 11 · 12 | 데이터 있음/빈 상태 |
-| `/write` | 13~18 | `WriteStage` 6단계 상태 기계 |
+| `/write` | 13 · 14 · 15 · 16 | `WriteStage` 4단계 상태 기계 |
 | `/book` | 19 | |
 | `/book/preview` | 20 | |
 | `/book/complete` | 21 | |
 | `/settings` | 22 | |
+
+### 자기소개와 작성이 공유하는 것
+
+두 화면의 글자 입력은 **같은 컴포넌트**를 쓴다. 한쪽만 고쳐지는 일을 막기 위해서다.
+
+| 공유물 | 위치 | 쓰는 곳 |
+|---|---|---|
+| "키보드로 입력할게요" 버튼 | `ds/app_keyboard_button.dart` (Figma 158:370) | 07 자기소개 · 13 작성 |
+| 질문 + 입력칸 + CTA | `feature/shared/answer_keyboard_body.dart` | 08 자기소개 · 15 작성 |
+
+### 뺀 화면
+
+시안에 있었지만 **없앤** 흐름이다. 답변은 사용자가 말하거나 적은 그대로 저장된다.
+
+- **AI 글 다듬기** — 원문을 문어체로 고쳐 보여주던 단계
+- **직접 고치기** — 다듬은 글을 손보던 편집 화면
+- **채팅 모드** — 말풍선으로 주고받던 글자 입력. 위의 공용 키보드 입력이 대신한다
+
+이에 맞춰 `ApiClient`에서 `submitAnswer` · `repolish` · `chatHistory` 를 뺐다.
+저장은 `saveAnswer` 하나만 지난다.
 
 ## API 갈아 끼우기
 

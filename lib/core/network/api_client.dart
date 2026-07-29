@@ -66,9 +66,6 @@ abstract interface class ApiClient {
 
   Future<Question> question(String questionId);
 
-  /// 이 질문까지의 대화 이력(채팅 모드 진입 시).
-  Future<List<ChatMessage>> chatHistory(String questionId);
-
   /// 음성 → 텍스트. 실제로는 녹음 파일을 올리게 될 자리다.
   ///
   /// ⚠️ 지금은 파라미터가 없다. STT를 단말에서 할지(speech_to_text)
@@ -76,17 +73,10 @@ abstract interface class ApiClient {
   ///    시그니처가 바뀌는 유일한 메서드가 될 가능성이 높다.
   Future<String> transcribe();
 
-  /// 답변 원문을 보내고 AI가 다듬은 문단을 받는다(시안 16 → 17).
-  Future<AnswerDraft> submitAnswer({
-    required String questionId,
-    required String transcript,
-  });
-
-  /// 다시 다듬기 — 같은 원문으로 다른 결과를 받는다.
-  Future<AnswerDraft> repolish(AnswerDraft draft);
-
-  /// 최종 문단을 확정 저장하고 다음 질문으로 넘어간다.
+  /// 답변을 확정 저장하고 다음 질문으로 넘어간다.
   /// 다음 질문이 없으면 null(장 완료).
+  ///
+  /// 음성이든 키보드든 최종 저장은 이 하나를 지난다.
   Future<Question?> saveAnswer({
     required String questionId,
     required String text,
