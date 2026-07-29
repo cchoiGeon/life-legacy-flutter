@@ -66,13 +66,6 @@ abstract interface class ApiClient {
 
   Future<Question> question(String questionId);
 
-  /// 음성 → 텍스트. 실제로는 녹음 파일을 올리게 될 자리다.
-  ///
-  /// ⚠️ 지금은 파라미터가 없다. STT를 단말에서 할지(speech_to_text)
-  ///    서버로 올릴지(파일 업로드) 정해지지 않았기 때문이다. 정해지면
-  ///    시그니처가 바뀌는 유일한 메서드가 될 가능성이 높다.
-  Future<String> transcribe();
-
   /// 답변을 확정 저장하고 다음 질문으로 넘어간다.
   /// 다음 질문이 없으면 null(장 완료).
   ///

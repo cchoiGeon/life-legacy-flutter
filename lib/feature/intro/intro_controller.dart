@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
@@ -13,9 +11,10 @@ import 'package:life_legacy/service/services.dart';
 /// 두 프레임은 같은 화면의 입력 방식 차이다. 시니어 사용자가 음성을 기본으로
 /// 쓰되 언제든 키보드로 바꿀 수 있어야 해서 [mode]로 전환한다.
 class IntroController extends GetxController {
-  IntroController(this._api, this._toast);
+  IntroController(this._api, this._speech, this._toast);
 
   final ApiClient _api;
+  final SpeechService _speech;
   final ToastService _toast;
 
   final answerController = TextEditingController();
@@ -27,15 +26,17 @@ class IntroController extends GetxController {
   final RxInt index = 0.obs;
 
   final Rx<ComposeMode> mode = ComposeMode.voice.obs;
-  final RxBool isRecording = false.obs;
+
+  /// ⚠️ 별도 플래그를 두지 않는다. 인식기가 스스로 멈추거나(무음 타임아웃)
+  ///    오류를 내면 서비스 쪽만 false가 되고 화면은 "듣고 있어요…"에
+  ///    멈춰 버린다. 서비스의 상태를 그대로 본다.
+  RxBool get isRecording => _speech.isListening;
 
   /// 입력창의 현재 값(반응형). "다음" 버튼 활성 판단에 쓴다.
   final RxString draft = ''.obs;
 
   /// 질문 id → 답변
   final Map<String, String> answers = {};
-
-  Timer? _recordTimer;
 
   IntroQuestion? get current =>
       index.value < questions.length ? questions[index.value] : null;
@@ -47,12 +48,20 @@ class IntroController extends GetxController {
   void onInit() {
     super.onInit();
     answerController.addListener(_onDraftChanged);
+    // 인식 오류(무음·권한·네트워크)를 화면에 알리고 키보드로 안내한다.
+    ever(_speech.error, _onSpeechError);
     load();
+  }
+
+  void _onSpeechError(String? message) {
+    if (message == null) return;
+    _toast.show(message, description: '키보드로 입력하실 수 있어요');
+    _speech.error.value = null;
   }
 
   @override
   void onClose() {
-    _recordTimer?.cancel();
+    _speech.cancel();
     answerController.removeListener(_onDraftChanged);
     answerController.dispose();
     super.onClose();
@@ -78,36 +87,49 @@ class IntroController extends GetxController {
   /// 돌던 받아쓰기 타이머가 있으면 여기서 끊는다. 안 끊으면 화면을 바꾼 뒤에
   /// 뒤늦게 결과가 도착해 입력칸이 제멋대로 채워진다.
   void useVoice() {
-    _recordTimer?.cancel();
-    isRecording.value = false;
+    _speech.cancel();
     mode.value = ComposeMode.voice;
     answerController.clear();
   }
 
-  /// 마이크 토글. 목업이라 실제 녹음은 없고, 2초 뒤 받아쓴 텍스트가 온다.
+  /// 마이크 토글 — 실제 음성 인식.
   ///
-  /// ⚠️ 실제 STT를 붙일 때 바뀌는 지점이다. 단말 STT(speech_to_text)를 쓰면
-  ///    부분 인식 결과가 계속 들어오므로 [draft]를 스트림으로 갱신하게 된다.
+  /// 인식 결과는 입력칸에 채워지고 키보드 모드로 바뀐다. 받아쓴 글을
+  /// 그대로 넘기지 않고 한 번 고칠 수 있게 하려는 것이다.
   Future<void> toggleRecording() async {
     if (isRecording.value) {
-      _recordTimer?.cancel();
+      await _speech.stop();
       isRecording.value = false;
+      final heard = _speech.partial.value.trim();
+      if (heard.isNotEmpty) _applyTranscript(heard);
+      return;
+    }
+
+    final started = await _speech.start(
+      onFinal: (text) {
+        isRecording.value = false;
+        _applyTranscript(text);
+      },
+    );
+    if (!started) {
+      // 음성으로 진행할 수 없으면 키보드로 안내한다.
+      _toast.show(
+        _speech.error.value ?? '음성 인식을 쓸 수 없어요',
+        description: '키보드로 입력하실 수 있어요',
+      );
+      mode.value = ComposeMode.keyboard;
       return;
     }
     isRecording.value = true;
-    _recordTimer = Timer(const Duration(seconds: 2), () async {
-      if (!isRecording.value) return;
-      try {
-        final text = await _api.transcribe();
-        answerController.text = text;
-        mode.value = ComposeMode.keyboard; // 받아쓴 결과를 고칠 수 있게 한다
-      } on ApiException catch (e) {
-        _toast.showError(e);
-      } finally {
-        isRecording.value = false;
-      }
-    });
   }
+
+  void _applyTranscript(String text) {
+    answerController.text = text;
+    mode.value = ComposeMode.keyboard;
+  }
+
+  /// 말하는 도중 화면에 뜨는 인식 결과.
+  String get liveTranscript => _speech.partial.value;
 
   bool get canGoNext => draft.value.trim().isNotEmpty;
 

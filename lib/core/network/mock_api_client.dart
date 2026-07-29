@@ -167,10 +167,6 @@ class MockApiClient implements ApiClient {
       _delay(_questions.firstWhere((q) => q.id == questionId));
 
   @override
-  Future<String> transcribe() =>
-      _delay('마당에 큰 감나무가 있던 시골집이었어요. 가을이면 온 가족이 그 아래에 모여 이야기를 나눴죠.');
-
-  @override
   Future<Question?> saveAnswer({
     required String questionId,
     required String text,

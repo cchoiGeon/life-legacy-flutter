@@ -38,15 +38,40 @@ class RecordingStage extends GetView<WriteController> {
                 AppTypography.medium,
               ).copyWith(color: AppColors.textSecondary),
             ),
+            // 인식된 글자를 실시간으로 보여준다. 시니어 사용자가 "제대로
+            // 알아듣고 있다"를 눈으로 확인할 수 있어야 한다.
+            Obx(() {
+              final heard = controller.liveTranscript;
+              if (heard.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: AppDimens.space5),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppDimens.space4),
+                  decoration: BoxDecoration(
+                    color: AppColors.bubbleSys,
+                    borderRadius: BorderRadius.circular(AppDimens.radiusBubble),
+                  ),
+                  child: Text(
+                    heard,
+                    style: AppTypography.bodyChat.copyWith(
+                      color: AppColors.textStrong,
+                    ),
+                  ),
+                ),
+              );
+            }),
             const Spacer(),
             AppMicButton(recording: true, onTap: controller.stopRecording),
             const SizedBox(height: AppDimens.space5),
             const SizedBox(width: 160, child: AppWaveform()),
             const SizedBox(height: AppDimens.space6),
-            Text(
-              '듣고 있어요…',
-              style: AppTypography.bodyBase.copyWith(
-                color: AppColors.textSecondary,
+            Obx(
+              () => Text(
+                controller.liveTranscript.isEmpty ? '듣고 있어요…' : '계속 말씀하세요',
+                style: AppTypography.bodyBase.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
             ),
             const SizedBox(height: AppDimens.space2),

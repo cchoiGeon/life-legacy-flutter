@@ -35,9 +35,10 @@ enum WriteStage {
 /// 키보드 경로에 확인 단계가 없는 이유: 방금 본인이 타이핑한 글이라
 /// "이렇게 들었어요"를 한 번 더 보여줄 이유가 없다.
 class WriteController extends GetxController {
-  WriteController(this._api, this._toast);
+  WriteController(this._api, this._speech, this._toast);
 
   final ApiClient _api;
+  final SpeechService _speech;
   final ToastService _toast;
 
   /// 키보드 입력칸
@@ -65,19 +66,37 @@ class WriteController extends GetxController {
   final RxBool isAllDone = false.obs;
 
   Timer? _tick;
-  Timer? _sttTimer;
 
   @override
   void onInit() {
     super.onInit();
     answerController.addListener(_onDraftChanged);
+    // 인식기가 오류로 멈추면(무음·권한·네트워크) 녹음 화면에 갇히지 않게
+    // 대기 화면으로 되돌린다.
+    ever(_speech.error, _onSpeechError);
     load();
+  }
+
+  void _onSpeechError(String? message) {
+    if (message == null) return;
+    _speech.error.value = null;
+    if (stage.value != WriteStage.recording) return;
+    _tick?.cancel();
+
+    // 오류 전까지 알아들은 게 있으면 버리지 않고 확인 화면으로 넘긴다.
+    final heard = _speech.partial.value.trim();
+    if (heard.isNotEmpty) {
+      _onTranscribed(heard);
+      return;
+    }
+    stage.value = WriteStage.ask;
+    _toast.show(message, description: '키보드로 입력하실 수 있어요');
   }
 
   @override
   void onClose() {
     _tick?.cancel();
-    _sttTimer?.cancel();
+    _speech.cancel();
     answerController.removeListener(_onDraftChanged);
     answerController.dispose();
     super.onClose();
@@ -127,31 +146,58 @@ class WriteController extends GetxController {
 
   // ── 13 · 14 음성 ──────────────────────────────────────────
 
-  void startRecording() {
+  /// 실제 음성 인식을 시작한다.
+  ///
+  /// 인식된 글자는 [SpeechService.partial]로 흘러들어와 녹음 화면에 그대로
+  /// 보인다. 말이 끝나면(침묵 6초 또는 "멈춤") 확인 화면으로 넘어간다.
+  Future<void> startRecording() async {
     stage.value = WriteStage.recording;
     elapsed.value = 0;
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => elapsed.value++);
 
-    // 목업: 4초 뒤 받아쓴 결과가 온다.
-    // ⚠️ 실제 STT를 붙일 때 바뀌는 유일한 지점이다.
-    _sttTimer = Timer(const Duration(seconds: 4), stopRecording);
+    final started = await _speech.start(onFinal: _onTranscribed);
+    if (!started) {
+      // 권한 거부·인식기 없음 — 음성으로는 진행할 수 없으니 되돌리고
+      // 키보드로 안내한다. 버튼만 눌리고 아무 일도 없는 상태를 만들지 않는다.
+      _tick?.cancel();
+      stage.value = WriteStage.ask;
+      _toast.show(
+        _speech.error.value ?? '음성 인식을 쓸 수 없어요',
+        description: '키보드로 입력하실 수 있어요',
+      );
+      _speech.error.value = null;
+    }
   }
 
+  /// 인식이 끝났다. 받아쓴 글을 확인 화면으로 넘긴다.
+  void _onTranscribed(String text) {
+    _tick?.cancel();
+    transcript.value = text;
+    stage.value = WriteStage.confirm;
+  }
+
+  /// "멈춤" — 지금까지 인식된 내용으로 마무리한다.
   Future<void> stopRecording() async {
     if (stage.value != WriteStage.recording) return;
     _tick?.cancel();
-    _sttTimer?.cancel();
-    isBusy.value = true;
-    try {
-      transcript.value = await _api.transcribe();
-      stage.value = WriteStage.confirm;
-    } on ApiException catch (e) {
-      _toast.showError(e);
+    await _speech.stop();
+
+    // stop() 뒤에도 최종 결과가 곧 도착하는 게 정상이다. 다만 한 마디도
+    // 못 알아들은 경우엔 콜백이 오지 않으므로 여기서 되돌린다.
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (stage.value != WriteStage.recording) return;
+
+    final heard = _speech.partial.value.trim();
+    if (heard.isEmpty) {
       stage.value = WriteStage.ask;
-    } finally {
-      isBusy.value = false;
+      _toast.show('말씀을 알아듣지 못했어요', description: '다시 한 번 말씀해 주세요');
+      return;
     }
+    _onTranscribed(heard);
   }
+
+  /// 녹음 화면에 실시간으로 뜨는 인식 결과.
+  String get liveTranscript => _speech.partial.value;
 
   /// "🔊 다시 들려줘" — 질문을 소리로 읽어준다.
   ///

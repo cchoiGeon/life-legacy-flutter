@@ -2,4 +2,5 @@
 library;
 
 export 'auth_service.dart';
+export 'speech_service.dart';
 export 'toast_service.dart';

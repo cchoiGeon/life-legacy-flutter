@@ -23,6 +23,7 @@ dependencies:
   # Figma에서 내보낸 아이콘(assets/icons/*.svg)을 그대로 그린다.
   # 직접 Path로 옮겨 그리면 시안과 미세하게 어긋나서 에셋을 쓴다.
   flutter_svg: ^2.0.10
+  speech_to_text: ^7.4.0
 
   # ⚠️ 네트워크 패키지(dio/retrofit)는 아직 넣지 않았다.
   #    지금은 MockApiClient가 ApiClient 인터페이스를 구현한다.

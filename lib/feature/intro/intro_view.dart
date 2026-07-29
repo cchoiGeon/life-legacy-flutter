@@ -98,6 +98,31 @@ class _VoiceBody extends GetView<IntroController> {
               ),
             ),
           ),
+          // 말하는 동안 인식된 글자를 보여준다.
+          Obx(() {
+            final heard = controller.liveTranscript;
+            if (!controller.isRecording.value || heard.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return Padding(
+              padding: const EdgeInsets.only(top: AppDimens.space4),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(AppDimens.space4),
+                decoration: BoxDecoration(
+                  color: AppColors.bubbleSys,
+                  borderRadius: BorderRadius.circular(AppDimens.radiusBubble),
+                ),
+                child: Text(
+                  heard,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.bodyChat.copyWith(
+                    color: AppColors.textStrong,
+                  ),
+                ),
+              ),
+            );
+          }),
           const SizedBox(height: AppDimens.space5),
           // 작성 탭(13)과 **같은 버튼 컴포넌트**다 (Figma 158:370).
           AppKeyboardButton(onPressed: controller.useKeyboard),

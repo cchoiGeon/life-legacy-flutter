@@ -9,7 +9,11 @@ class WriteBinding extends Bindings {
   @override
   void dependencies() {
     Get.lazyPut(
-      () => WriteController(Get.find<ApiClient>(), Get.find<ToastService>()),
+      () => WriteController(
+        Get.find<ApiClient>(),
+        Get.find<SpeechService>(),
+        Get.find<ToastService>(),
+      ),
     );
   }
 }

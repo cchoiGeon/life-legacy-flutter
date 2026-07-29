@@ -101,8 +101,28 @@ lib/
 
 | 메서드 | 이유 |
 |---|---|
-| `transcribe()` | STT를 단말에서 할지(speech_to_text) 서버로 올릴지 미정. 지금은 파라미터가 없다 |
 | `generateToc()` | 오래 걸리는 작업이라 폴링·웹소켓이 될 수도 있다 |
+
+## 음성 인식 (STT) — 목업 아님
+
+**여기만 실제로 동작한다.** `speech_to_text` 로 단말의 음성 인식을 쓴다
+(안드로이드 `SpeechRecognizer`, iOS Speech 프레임워크). 오디오를 서버로
+올리지 않으므로 `ApiClient`가 아니라 `SpeechService`(GetxService)에 있다.
+
+- 로케일은 기기에 설치된 한국어를 고르고, 없으면 시스템 기본으로 물러난다
+- 말하는 동안 부분 인식 결과가 화면에 그대로 뜬다
+- 침묵 6초 또는 "멈춤"을 누르면 끝난다 (어르신 말씀 속도를 감안한 값)
+- 권한 거부·인식기 없음·무음은 모두 **키보드 입력으로 안내**한다
+
+### 필요한 네이티브 설정
+
+| 플랫폼 | 설정 |
+|---|---|
+| Android | `RECORD_AUDIO` 권한 + `<queries>` 에 `android.speech.RecognitionService` |
+| iOS | `NSMicrophoneUsageDescription` · `NSSpeechRecognitionUsageDescription` |
+
+⚠️ 안드로이드의 `<queries>` 가 없으면 기기에 인식기가 있어도 조회되지 않아
+`initialize()` 가 **항상 false**를 돌려준다. 권한만 넣고 끝내면 안 된다.
 
 ## 함정
 
@@ -113,6 +133,8 @@ lib/
 | **Column 안의 좌측 정렬** | 바깥 Column이 center 정렬이면 안쪽 블록이 자식 폭으로 줄어든다. 가로 전체를 쓰려면 `SizedBox(width: double.infinity)` 로 감싼다 |
 | **`dart analyze` 를 쓴다** | 경로에 한글(`회사`)이 있으면 `flutter analyze` 의 LSP 채널이 깨진다 |
 | **테스트의 GetStorage** | path_provider 플러그인이 없어 `MissingPluginException` 이 난다. 테스트에서 채널을 임시 디렉터리로 물려준다 |
+| **녹음 상태를 따로 들지 않는다** | 컨트롤러가 자체 `isRecording` 플래그를 두면 인식기가 스스로 멈췄을 때(무음 타임아웃) 화면이 "듣고 있어요…"에 갇힌다. `SpeechService.isListening` 을 그대로 본다 |
+| **핫 리스타트는 앱을 다시 띄우면 날아간다** | 살아 있는 VM에만 적용된다. `pm clear` + 재실행하면 **설치된 예전 빌드**가 뜬다. 네이티브(매니페스트·권한)를 건드렸으면 반드시 전체 재빌드 |
 
 ## 목업의 한계
 
@@ -120,6 +142,8 @@ lib/
 - 진행률은 답변 수로 **계산**한다. 시안의 "42%" 같은 정적 수치와 정확히 같지는 않다.
 - 카카오 로그인은 SDK 없이 성공만 돌려준다.
 - TTS("다시 들려줘")·공유·인쇄본 신청은 안내 토스트만 띄운다. 대응 화면이 시안에 없다.
+- **음성 인식은 목업이 아니다** (위 "음성 인식" 참고). 다만 에뮬레이터에는
+  실제 마이크 입력이 없어 한국어 인식 정확도는 실기기에서 확인해야 한다.
 
 ## 확인 방법
 
