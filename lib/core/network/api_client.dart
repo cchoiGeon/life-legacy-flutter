@@ -1,0 +1,131 @@
+import 'package:life_legacy/data/data_manager.dart';
+
+/// 서버 API 인터페이스 — **이 파일이 교체 지점이다.**
+///
+/// 지금은 [MockApiClient](mock_api_client.dart)가 유일한 구현이고, 모든
+/// 컨트롤러는 이 추상 타입만 알고 있다. 실제 API가 정해지면:
+///
+///   1. pubspec에 dio · retrofit · json_annotation 추가
+///   2. 모델의 `fromJson`을 실제 응답 스키마에 맞게 수정
+///      (또는 `@JsonSerializable`로 바꾸고 코드 생성)
+///   3. `RealApiClient implements ApiClient` 를 새로 작성
+///   4. `main.dart`의 `Get.put<ApiClient>(MockApiClient())` 한 줄만 교체
+///
+/// 화면·컨트롤러는 **한 줄도 고치지 않는다.**
+///
+/// ⚠️ 메서드 이름과 파라미터는 서버 계약이 아니라 **화면이 필요로 하는 것**을
+///    기준으로 잡았다. 실제 엔드포인트가 더 잘게 쪼개져 있으면 구현체가
+///    여러 호출을 합쳐서 이 모양으로 맞춰준다.
+abstract interface class ApiClient {
+  // ══════════════════════════════════════════════════════════
+  // 인증
+  // ══════════════════════════════════════════════════════════
+
+  /// 전화번호로 인증번호 발송.
+  Future<void> requestVerificationCode(String phone);
+
+  /// 인증번호 확인 → 세션 발급.
+  /// 코드가 틀리면 [ApiException]을 던진다(화면이 에러 상태를 그린다).
+  Future<AuthSession> verifyCode({required String phone, required String code});
+
+  /// 카카오로 시작하기.
+  Future<AuthSession> loginWithKakao();
+
+  Future<User> me();
+
+  Future<void> logout();
+
+  // ══════════════════════════════════════════════════════════
+  // 자기소개 → 목차 생성
+  // ══════════════════════════════════════════════════════════
+
+  /// 목차를 만들기 위한 사전 질문들(시안 07·08번).
+  Future<List<IntroQuestion>> introQuestions();
+
+  /// 자기소개 답변을 모두 제출하고 목차를 생성한다(시안 09번 로딩).
+  /// 서버에서 오래 걸리는 작업이라 화면은 전용 로딩 화면을 띄운다.
+  Future<List<Chapter>> generateToc(Map<String, String> answers);
+
+  /// 제안된 목차를 확정한다(시안 10번 "이 목차로 시작하기").
+  Future<void> confirmToc(List<Chapter> chapters);
+
+  // ══════════════════════════════════════════════════════════
+  // 홈
+  // ══════════════════════════════════════════════════════════
+
+  Future<HomeSummary> home();
+
+  // ══════════════════════════════════════════════════════════
+  // 작성
+  // ══════════════════════════════════════════════════════════
+
+  Future<List<Chapter>> chapters();
+
+  /// 지금 답해야 할 질문. 없으면 null(모든 장 완료).
+  Future<Question?> currentQuestion();
+
+  Future<Question> question(String questionId);
+
+  /// 이 질문까지의 대화 이력(채팅 모드 진입 시).
+  Future<List<ChatMessage>> chatHistory(String questionId);
+
+  /// 음성 → 텍스트. 실제로는 녹음 파일을 올리게 될 자리다.
+  ///
+  /// ⚠️ 지금은 파라미터가 없다. STT를 단말에서 할지(speech_to_text)
+  ///    서버로 올릴지(파일 업로드) 정해지지 않았기 때문이다. 정해지면
+  ///    시그니처가 바뀌는 유일한 메서드가 될 가능성이 높다.
+  Future<String> transcribe();
+
+  /// 답변 원문을 보내고 AI가 다듬은 문단을 받는다(시안 16 → 17).
+  Future<AnswerDraft> submitAnswer({
+    required String questionId,
+    required String transcript,
+  });
+
+  /// 다시 다듬기 — 같은 원문으로 다른 결과를 받는다.
+  Future<AnswerDraft> repolish(AnswerDraft draft);
+
+  /// 최종 문단을 확정 저장하고 다음 질문으로 넘어간다.
+  /// 다음 질문이 없으면 null(장 완료).
+  Future<Question?> saveAnswer({
+    required String questionId,
+    required String text,
+  });
+
+  /// 이 질문 건너뛰기.
+  Future<Question?> skipQuestion(String questionId);
+
+  // ══════════════════════════════════════════════════════════
+  // 나의 자서전
+  // ══════════════════════════════════════════════════════════
+
+  Future<Book> book();
+
+  /// 책 미리보기 쪽들. 완성된 장만 포함한다.
+  Future<List<BookPage>> bookPages();
+
+  // ══════════════════════════════════════════════════════════
+  // 설정
+  // ══════════════════════════════════════════════════════════
+
+  Future<AppSettings> settings();
+
+  Future<AppSettings> updateSettings(AppSettings next);
+}
+
+/// API 오류 — 화면은 [message]만 그대로 보여준다.
+///
+/// 실제 구현이 들어오면 DioException을 여기로 변환하는 계층이 생긴다.
+/// 화면이 dio 타입을 직접 알지 않도록 지금부터 이 타입만 쓴다.
+class ApiException implements Exception {
+  const ApiException(this.message, {this.code});
+
+  /// 사용자에게 그대로 보여줄 한국어 문장
+  final String message;
+
+  /// 화면이 분기해야 할 때 쓰는 식별자 (예: 'INVALID_CODE')
+  final String? code;
+
+  @override
+  String toString() => 'ApiException($code): $message';
+}

@@ -1,0 +1,59 @@
+name: life_legacy
+description: "Life Legacy — 말씀만 하시면 AI가 한 권의 자서전으로 써 드려요."
+
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  # Dart 3.6(Flutter 3.27) 이상 — `Color.withValues()`(AppShadows)를 쓴다.
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── 상태관리 · DI · 라우팅 (Pickle · IAM과 동일 스택) ────────
+  get: ^4.6.6
+  get_storage: ^2.1.1
+
+  # ── 기타 ────────────────────────────────────────────────────
+  intl: ^0.19.0
+
+  # ⚠️ 네트워크 패키지(dio/retrofit)는 아직 넣지 않았다.
+  #    지금은 MockApiClient가 ApiClient 인터페이스를 구현한다.
+  #    실제 서버가 정해지면 dio + retrofit을 추가하고 같은 인터페이스를
+  #    구현하는 클래스만 새로 만들면 된다 — 화면 코드는 손대지 않는다.
+  #    (교체 순서는 README "API 갈아 끼우기" 참고)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+
+  fonts:
+    # 본문 UI — Figma 시안의 Noto Sans KR.
+    #
+    # ⚠️ 구글이 배포하는 Noto Sans KR은 **가변 폰트 하나**뿐이다(정적 굵기 파일이
+    #    없다). 그래서 파일을 굵기별로 나눠 등록할 수 없고, 여기서는 한 번만
+    #    등록한 뒤 AppTypography가 `fontVariations`로 wght 축을 지정한다.
+    #    `fontWeight`만 주면 굵기가 반영되지 않으니 반드시 토큰을 거쳐 쓴다.
+    - family: NotoSansKR
+      fonts:
+        - asset: assets/fonts/NotoSansKR-Variable.ttf
+
+    # 자서전 본문 전용 명조 — 시안의 "Book serif".
+    # Figma에는 Noto Serif KR로 표시되지만 실제 지정은 나눔명조다.
+    - family: NanumMyeongjo
+      fonts:
+        - asset: assets/fonts/NanumMyeongjo-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/NanumMyeongjo-Bold.ttf
+          weight: 700
