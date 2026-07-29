@@ -31,6 +31,25 @@ class MockApiClient implements ApiClient {
 
   AppSettings _settings = const AppSettings(dailyQuestionAlarm: true);
 
+  List<AppNotification> _notifications = const [
+    AppNotification(
+      id: 'n1',
+      title: '오늘의 질문이 도착했어요 · 학창 시절과 꿈',
+      timeLabel: '오늘 오전 9:00',
+    ),
+    AppNotification(
+      id: 'n2',
+      title: '1장 "안동에서의 어린 시절"이 완성됐어요',
+      timeLabel: '어제',
+    ),
+    AppNotification(
+      id: 'n3',
+      title: '따님이 자녀 계정으로 응원을 남겼어요',
+      timeLabel: '3일 전',
+      isRead: true,
+    ),
+  ];
+
   /// 인증번호 — 어떤 번호로 요청하든 이 값이 정답이다.
   static const demoCode = '482915';
 
@@ -234,6 +253,20 @@ class MockApiClient implements ApiClient {
       }
     }
     return _delay(pages);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // 알림
+  // ══════════════════════════════════════════════════════════
+
+  @override
+  Future<List<AppNotification>> notifications() =>
+      _delay(List.unmodifiable(_notifications));
+
+  @override
+  Future<List<AppNotification>> markAllNotificationsRead() {
+    _notifications = [for (final n in _notifications) n.copyWith(isRead: true)];
+    return _delay(List.unmodifiable(_notifications));
   }
 
   // ══════════════════════════════════════════════════════════

@@ -18,6 +18,13 @@ class HomeController extends GetxController {
   final Rxn<HomeSummary> summary = Rxn<HomeSummary>();
   final RxBool isLoading = true.obs;
 
+  // ── 헤더 알림 ─────────────────────────────────────────────
+  final RxList<AppNotification> notifications = <AppNotification>[].obs;
+  final RxBool isNotificationsOpen = false.obs;
+  final RxBool isNotificationsLoading = false.obs;
+
+  int get unreadCount => notifications.where((n) => !n.isRead).length;
+
   String get userName => _auth.displayName;
   String get initial => _auth.user.value?.initial ?? '?';
 
@@ -25,6 +32,16 @@ class HomeController extends GetxController {
   void onInit() {
     super.onInit();
     load();
+    loadNotifications();
+  }
+
+  /// 알림은 보조 정보라 실패해도 홈을 막지 않는다 — 조용히 비워 둔다.
+  Future<void> loadNotifications() async {
+    try {
+      notifications.value = await _api.notifications();
+    } on ApiException {
+      notifications.clear();
+    }
   }
 
   Future<void> load() async {
@@ -43,6 +60,28 @@ class HomeController extends GetxController {
 
   void openBook() => Get.offNamed(AppRoutes.book);
 
-  /// 알림 — 화면이 아직 없다(시안 A~F에 알림 목록 프레임이 없다).
-  void openNotifications() => _toast.show('알림은 준비 중이에요');
+  /// 헤더 벨 — 드롭다운을 열고 닫는다 (Figma 169:446).
+  void toggleNotifications() {
+    isNotificationsOpen.toggle();
+    if (isNotificationsOpen.value) loadNotifications();
+  }
+
+  void closeNotifications() => isNotificationsOpen.value = false;
+
+  Future<void> markAllNotificationsRead() async {
+    isNotificationsLoading.value = true;
+    try {
+      notifications.value = await _api.markAllNotificationsRead();
+    } on ApiException catch (e) {
+      _toast.showError(e);
+    } finally {
+      isNotificationsLoading.value = false;
+    }
+  }
+
+  /// "전체 보기" — 알림 전용 화면은 시안에 없다. 자리만 만들어 뒀다.
+  void openAllNotifications() {
+    closeNotifications();
+    _toast.show('알림 전체 보기는 준비 중이에요');
+  }
 }

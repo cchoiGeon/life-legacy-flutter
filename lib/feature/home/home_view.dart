@@ -25,14 +25,31 @@ class HomeView extends GetView<HomeController> {
           children: [
             _Header(),
             Expanded(
-              child: Obx(() {
-                if (controller.isLoading.value) return const _Skeleton();
-                final s = controller.summary.value;
-                if (s == null) {
-                  return _Retry(onRetry: controller.load);
-                }
-                return s.isEmpty ? const _Empty() : _Dashboard(summary: s);
-              }),
+              // 드롭다운은 헤더 **아래** 영역만 덮는다 (Figma 169:450 스크림).
+              child: Stack(
+                children: [
+                  Obx(() {
+                    if (controller.isLoading.value) return const _Skeleton();
+                    final s = controller.summary.value;
+                    if (s == null) {
+                      return _Retry(onRetry: controller.load);
+                    }
+                    return s.isEmpty ? const _Empty() : _Dashboard(summary: s);
+                  }),
+                  Obx(() {
+                    if (!controller.isNotificationsOpen.value) {
+                      return const SizedBox.shrink();
+                    }
+                    return AppNotificationDropdown(
+                      items: controller.notifications,
+                      isLoading: controller.isNotificationsLoading.value,
+                      onDismiss: controller.closeNotifications,
+                      onMarkAllRead: controller.markAllNotificationsRead,
+                      onSeeAll: controller.openAllNotifications,
+                    );
+                  }),
+                ],
+              ),
             ),
           ],
         ),
@@ -55,19 +72,13 @@ class _Header extends GetView<HomeController> {
         children: [
           const AppWordmark(fontSize: 18),
           const Spacer(),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: controller.openNotifications,
-            child: const Padding(
-              padding: EdgeInsets.all(AppDimens.space2),
-              child: Icon(
-                Icons.notifications_none_rounded,
-                size: 24,
-                color: AppColors.stone500,
-              ),
+          Obx(
+            () => AppNotificationBell(
+              unreadCount: controller.unreadCount,
+              onTap: controller.toggleNotifications,
             ),
           ),
-          const SizedBox(width: AppDimens.space2),
+          const SizedBox(width: AppDimens.space1),
           Obx(() => AppAvatar(initial: controller.initial)),
         ],
       ),

@@ -88,6 +88,16 @@ abstract interface class ApiClient {
   Future<List<BookPage>> bookPages();
 
   // ══════════════════════════════════════════════════════════
+  // 알림
+  // ══════════════════════════════════════════════════════════
+
+  /// 헤더 벨 드롭다운에 뜨는 목록. 최신순.
+  Future<List<AppNotification>> notifications();
+
+  /// "모두 읽음". 갱신된 목록을 돌려준다.
+  Future<List<AppNotification>> markAllNotificationsRead();
+
+  // ══════════════════════════════════════════════════════════
   // 설정
   // ══════════════════════════════════════════════════════════
 
