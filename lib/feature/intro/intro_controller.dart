@@ -73,7 +73,13 @@ class IntroController extends GetxController {
 
   void useKeyboard() => mode.value = ComposeMode.keyboard;
 
+  /// 음성 **대기** 화면으로 돌아간다 — 녹음을 시작하지는 않는다.
+  ///
+  /// 돌던 받아쓰기 타이머가 있으면 여기서 끊는다. 안 끊으면 화면을 바꾼 뒤에
+  /// 뒤늦게 결과가 도착해 입력칸이 제멋대로 채워진다.
   void useVoice() {
+    _recordTimer?.cancel();
+    isRecording.value = false;
     mode.value = ComposeMode.voice;
     answerController.clear();
   }

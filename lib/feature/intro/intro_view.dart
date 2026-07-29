@@ -126,7 +126,9 @@ class _KeyboardBody extends GetView<IntroController> {
       onSubmit: controller.next,
       ctaLabel: controller.step == controller.total ? '목차 만들기' : '다음',
       isRecording: controller.isRecording.value,
-      onMic: controller.toggleRecording,
+      // 작성 탭과 같은 규칙 — 마이크를 눌러도 곧바로 녹음하지 않고
+      // 음성 대기 화면("누르고 말씀하세요")으로 돌아간다.
+      onMic: controller.useVoice,
     ),
   );
 }
