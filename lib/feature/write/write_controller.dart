@@ -28,12 +28,9 @@ enum WriteStage {
 
 /// 13~16 작성 — 앱의 핵심 흐름.
 ///
-/// 흐름은 두 갈래다:
+/// 어느 쪽으로 답하든 **확인 화면을 한 번 거친다**:
 ///   · 음성   : ask → recording → confirm → 저장 → 다음 질문
-///   · 키보드 : ask → keyboard → 저장 → 다음 질문
-///
-/// 키보드 경로에 확인 단계가 없는 이유: 방금 본인이 타이핑한 글이라
-/// "이렇게 들었어요"를 한 번 더 보여줄 이유가 없다.
+///   · 키보드 : ask → keyboard  → confirm → 저장 → 다음 질문
 class WriteController extends GetxController {
   WriteController(this._api, this._speech, this._toast);
 
@@ -49,8 +46,12 @@ class WriteController extends GetxController {
   final Rxn<Question> question = Rxn<Question>();
   final Rxn<Chapter> chapter = Rxn<Chapter>();
 
-  /// 받아쓴 답변 원문(음성 경로). 확인 화면이 이 값을 보여준다.
+  /// 확인 화면에 보여줄 답변. 음성이면 받아쓴 글, 키보드면 적은 글이다.
   final RxString transcript = ''.obs;
+
+  /// 확인 화면의 답변이 어느 경로로 들어왔는지.
+  /// "다시 ~할게요" 버튼이 되돌아갈 곳과 문구를 정한다.
+  final Rx<WriteStage> answerSource = WriteStage.recording.obs;
 
   /// 입력칸의 현재 값. `answerController.text`는 Rx가 아니라 Obx가 갱신되지
   /// 않으므로 따로 둔다.
@@ -172,6 +173,7 @@ class WriteController extends GetxController {
   /// 인식이 끝났다. 받아쓴 글을 확인 화면으로 넘긴다.
   void _onTranscribed(String text) {
     _tick?.cancel();
+    answerSource.value = WriteStage.recording;
     transcript.value = text;
     stage.value = WriteStage.confirm;
   }
@@ -225,16 +227,33 @@ class WriteController extends GetxController {
 
   bool get canSubmitTyped => draft.value.trim().isNotEmpty;
 
-  /// 적은 그대로 저장한다. 확인 단계를 거치지 않는다.
-  Future<void> submitTyped() => _save(answerController.text.trim());
+  /// 적은 글도 확인 화면을 거친다 — 음성과 같은 흐름으로 맞춘 것이다.
+  void submitTyped() {
+    final text = answerController.text.trim();
+    if (text.isEmpty) return;
+    answerSource.value = WriteStage.keyboard;
+    transcript.value = text;
+    stage.value = WriteStage.confirm;
+  }
 
   // ── 16 답변 확인 ──────────────────────────────────────────
 
-  /// "네, 맞아요" — 받아쓴 원문을 그대로 저장한다.
+  /// "네, 맞아요" — 보여준 글을 그대로 저장한다.
   Future<void> confirmTranscript() => _save(transcript.value);
 
-  /// "다시 말할게요" → 13번으로 되돌린다.
+  /// 되돌리기 버튼 문구. 들어온 경로에 따라 다르다.
+  String get retryLabel =>
+      answerSource.value == WriteStage.keyboard ? '다시 쓸게요' : '다시 말할게요';
+
+  /// 되돌리기 — 온 길로 돌려보낸다.
+  /// 키보드로 적었으면 적은 글을 그대로 두고 입력칸으로 돌아간다.
   void retryAnswer() {
+    if (answerSource.value == WriteStage.keyboard) {
+      answerController.text = transcript.value;
+      transcript.value = '';
+      stage.value = WriteStage.keyboard;
+      return;
+    }
     transcript.value = '';
     stage.value = WriteStage.ask;
   }

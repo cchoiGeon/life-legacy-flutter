@@ -31,7 +31,7 @@ class KeyboardStage extends GetView<WriteController> {
               hint: '답변을 입력하세요.',
               canSubmit: controller.canSubmitTyped && !controller.isBusy.value,
               onSubmit: controller.submitTyped,
-              ctaLabel: '저장하고 다음 질문',
+              ctaLabel: '다음',
               isRecording: false,
               onMic: controller.micFromKeyboard,
             ),

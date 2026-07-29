@@ -10,8 +10,8 @@ import '../write_controller.dart';
 
 /// 16 답변 확인 — Figma 151:221.
 ///
-/// 받아쓴 원문이 맞는지 먼저 확인받는다. 음성 인식이 틀린 채로 AI가
-/// 다듬어 버리면 사용자가 무엇이 잘못됐는지 알기 어렵기 때문이다.
+/// 음성이든 키보드든 저장 직전에 한 번 보여준다. 저장한 글은 그대로
+/// 자서전에 실리므로, 잘못 들었거나 잘못 적은 걸 되돌릴 자리가 필요하다.
 class ConfirmStage extends GetView<WriteController> {
   const ConfirmStage({super.key});
 
@@ -27,12 +27,23 @@ class ConfirmStage extends GetView<WriteController> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: AppDimens.space4),
-                Text('이렇게 들었어요', style: AppTypography.titlePage),
+                Obx(
+                  () => Text(
+                    controller.answerSource.value == WriteStage.keyboard
+                        ? '이렇게 적으셨어요'
+                        : '이렇게 들었어요',
+                    style: AppTypography.titlePage,
+                  ),
+                ),
                 const SizedBox(height: AppDimens.space3),
-                Text(
-                  '맞으면 다음으로 넘어가고,\n아니면 다시 말씀해 주세요.',
-                  style: AppTypography.bodySm.copyWith(
-                    color: AppColors.textSecondary,
+                Obx(
+                  () => Text(
+                    controller.answerSource.value == WriteStage.keyboard
+                        ? '맞으면 다음으로 넘어가고,\n아니면 다시 고쳐 주세요.'
+                        : '맞으면 다음으로 넘어가고,\n아니면 다시 말씀해 주세요.',
+                    style: AppTypography.bodySm.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
                 const SizedBox(height: AppDimens.space6),
@@ -77,12 +88,14 @@ class ConfirmStage extends GetView<WriteController> {
                 ),
               ),
               const SizedBox(height: AppDimens.space3),
-              AppButton(
-                label: '다시 말할게요',
-                variant: AppButtonVariant.neutral,
-                size: AppButtonSize.lg,
-                block: true,
-                onPressed: controller.retryAnswer,
+              Obx(
+                () => AppButton(
+                  label: controller.retryLabel,
+                  variant: AppButtonVariant.neutral,
+                  size: AppButtonSize.lg,
+                  block: true,
+                  onPressed: controller.retryAnswer,
+                ),
               ),
             ],
           ),
