@@ -10,23 +10,24 @@ import 'package:life_legacy/service/services.dart';
 
 /// 작성 화면의 단계.
 ///
-/// 시안의 "AI 글 다듬기"(17)와 "직접 고치기"(18)는 **없앴다.**
+/// 시안의 "AI 글 다듬기"와 "직접 고치기"는 **없앴다.**
 /// 답변은 사용자가 말하거나 적은 그대로 저장된다.
 enum WriteStage {
-  /// 13 음성 모드 · 기본
+  /// D1 음성 모드 · 기본
   ask,
 
-  /// 14 음성 모드 · 녹음 중
+  /// D2 음성 모드 · 녹음 중
   recording,
 
-  /// 글자로 입력 — 자기소개(08)와 같은 컴포넌트를 쓴다
+  /// D3 글자로 입력
   keyboard,
 
-  /// 16 답변 확인 — 받아쓴 원문이 맞는지 (음성 경로에서만 거친다)
+  /// D4 답변 확인 — 받아쓴 원문이 맞는지. 저장에 실패하면 여기 머물며
+  /// D5(저장 실패)로 모양만 바뀐다.
   confirm,
 }
 
-/// 13~16 작성 — 앱의 핵심 흐름.
+/// D1~D5 작성 — 앱의 핵심 흐름.
 ///
 /// 어느 쪽으로 답하든 **확인 화면을 한 번 거친다**:
 ///   · 음성   : ask → recording → confirm → 저장 → 다음 질문
@@ -60,8 +61,14 @@ class WriteController extends GetxController {
   final RxBool isLoading = true.obs;
   final RxBool isBusy = false.obs;
 
-  /// 녹음 경과 초. 시안 14번의 "0:12".
+  /// 녹음 경과 초. 시안 D2의 "0:23".
   final RxInt elapsed = 0.obs;
+
+  /// 확인 화면에 보여줄 "말한 시간". 저장이 끝나면 0으로 돌아간다.
+  final RxInt spokenSeconds = 0.obs;
+
+  /// 저장에 실패했다 — 확인 화면이 D5(저장 실패) 모양으로 바뀐다.
+  final RxBool saveFailed = false.obs;
 
   /// 모든 장을 끝냈을 때 true — 더 답할 질문이 없다.
   final RxBool isAllDone = false.obs;
@@ -130,6 +137,15 @@ class WriteController extends GetxController {
     return c == null ? '작성' : '제${c.order}장 · ${c.title}';
   }
 
+  /// 확인 화면 캡션 — "약 40초 말씀하셨어요 · 128자" (시안 351:974).
+  ///
+  /// 키보드로 적었으면 말한 시간이 없으므로 글자 수만 남는다.
+  String get answerCaption {
+    final chars = '${transcript.value.characters.length}자';
+    final seconds = spokenSeconds.value;
+    return seconds == 0 ? chars : '약 $seconds초 말씀하셨어요 · $chars';
+  }
+
   /// "질문 3 / 8"
   String get progressLabel {
     final q = question.value;
@@ -175,6 +191,8 @@ class WriteController extends GetxController {
     _tick?.cancel();
     answerSource.value = WriteStage.recording;
     transcript.value = text;
+    spokenSeconds.value = elapsed.value;
+    saveFailed.value = false;
     stage.value = WriteStage.confirm;
   }
 
@@ -233,21 +251,35 @@ class WriteController extends GetxController {
     if (text.isEmpty) return;
     answerSource.value = WriteStage.keyboard;
     transcript.value = text;
+    // 적은 글에는 "말한 시간"이 없다.
+    spokenSeconds.value = 0;
+    saveFailed.value = false;
     stage.value = WriteStage.confirm;
   }
 
-  // ── 16 답변 확인 ──────────────────────────────────────────
+  // ── D4 답변 확인 · D5 저장 실패 ────────────────────────────
 
-  /// "네, 맞아요" — 보여준 글을 그대로 저장한다.
+  /// "저장하고 다음 질문" / (실패 후) "다시 저장하기"
   Future<void> confirmTranscript() => _save(transcript.value);
+
+  /// 주 버튼 문구. 한 번 실패했으면 재시도라는 걸 문구로 알린다.
+  String get saveLabel => saveFailed.value ? '다시 저장하기' : '저장하고 다음 질문';
+
+  /// 화면 제목 — 실패했으면 "정리는 마쳤어요 / 저장만 남았어요"로 바뀐다.
+  /// 글은 살아 있다는 걸 제목에서부터 알려야 사용자가 다시 말하지 않는다.
+  String get confirmTitle => saveFailed.value ? '정리는 마쳤어요' : '이렇게 정리했어요';
+
+  String get confirmSubtitle =>
+      saveFailed.value ? '저장만 남았어요' : '고치고 싶은 곳을 눌러 바꿀 수 있어요';
 
   /// 되돌리기 버튼 문구. 들어온 경로에 따라 다르다.
   String get retryLabel =>
-      answerSource.value == WriteStage.keyboard ? '다시 쓸게요' : '다시 말할게요';
+      answerSource.value == WriteStage.keyboard ? '다시 쓰기' : '다시 말하기';
 
   /// 되돌리기 — 온 길로 돌려보낸다.
   /// 키보드로 적었으면 적은 글을 그대로 두고 입력칸으로 돌아간다.
   void retryAnswer() {
+    saveFailed.value = false;
     if (answerSource.value == WriteStage.keyboard) {
       answerController.text = transcript.value;
       transcript.value = '';
@@ -266,13 +298,17 @@ class WriteController extends GetxController {
     isBusy.value = true;
     try {
       final next = await _api.saveAnswer(questionId: q.id, text: text);
+      saveFailed.value = false;
       _toast.show(
         '저장되었습니다.',
         description: next == null ? null : '다음 질문으로 이동합니다.',
       );
       await _moveTo(next);
-    } on ApiException catch (e) {
-      _toast.showError(e);
+    } on ApiException {
+      // ⚠️ 토스트로 알리지 않는다. 몇 초 뒤 사라지는 안내로는 "내 이야기가
+      //    날아갔나"라는 걱정을 지울 수 없다. 확인 화면에 그대로 머물면서
+      //    D5(저장 실패) 안내 박스를 띄우고, 글은 화면에 남겨 둔다.
+      saveFailed.value = true;
     } finally {
       isBusy.value = false;
     }
@@ -294,6 +330,8 @@ class WriteController extends GetxController {
   /// 다음 질문으로 상태를 갈아 끼운다. null이면 전부 끝났다는 뜻이다.
   Future<void> _moveTo(Question? next) async {
     transcript.value = '';
+    spokenSeconds.value = 0;
+    saveFailed.value = false;
     answerController.clear();
     stage.value = WriteStage.ask;
 

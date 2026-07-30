@@ -12,8 +12,19 @@ import 'colors.dart';
 abstract final class AppTypography {
   static const fontFamily = 'NotoSansKR';
 
-  /// 자서전 본문 전용 명조. 시안의 "Book serif".
-  static const bookFamily = 'NanumMyeongjo';
+  /// 명조 — 시안이 지정한 **Noto Serif KR** 그대로다.
+  /// 화면 제목 · 질문 · 책 본문이 쓴다.
+  ///
+  /// ⚠️ 예전에는 나눔명조로 대체했지만 자형이 달라 시안과 겹쳐 보면 어긋난다.
+  static const bookFamily = 'NotoSerifKR';
+
+  /// 명조도 가변 폰트라 wght 축을 직접 줘야 한다.
+  ///
+  /// ⚠️ Noto Serif KR의 wght **기본값은 200(ExtraLight)** 이다. 축을 안 주면
+  ///    `fontWeight: bold`를 적어도 실처럼 얇게 나온다 — 나눔명조(정적 400/700)
+  ///    때는 없던 문제다.
+  static const _serifRegular = [FontVariation('wght', 400)];
+  static const _serifBold = [FontVariation('wght', 700)];
 
   // ── Weights ────────────────────────────────────────────────
   static const regular = FontWeight.w400;
@@ -107,6 +118,97 @@ abstract final class AppTypography {
     letterSpacing: 0.12,
   );
 
+  // ── 화면 골격 — 시안 340:592(★★ 최종 A~F)의 공통 배치 ────────
+  //
+  // A~F 전 화면이 같은 뼈대를 쓴다: ← / 제목 / 부제 / 본문 / 하단 CTA.
+  // 아래 넷은 그 자리에만 쓰는 스타일이라 따로 묶어 뒀다.
+
+  /// 화면 제목 — **명조** 28 · 행간 42 · 자간 -0.6.
+  ///
+  /// ⚠️ 예전에는 고딕 `titlePage`(24)였다. 새 시안은 제목만 명조로 돌려
+  ///    "읽는 영역"과 "누르는 영역"을 서체로 갈라놓는다. 버튼·라벨은
+  ///    그대로 고딕이다 — 여기에 [titlePage]를 쓰면 그 구분이 무너진다.
+  static const titleScreen = TextStyle(
+    fontFamily: bookFamily,
+    color: AppColors.textPrimary,
+    fontSize: 28,
+    height: 42 / 28,
+    fontWeight: bold,
+    fontVariations: _serifBold,
+    letterSpacing: -0.6,
+  );
+
+  /// 제목 아래 한 줄 설명 — 16 · `text-secondary`.
+  ///
+  /// ⚠️ 행간이 **19**다(16px에 24가 아니다). 시안 342:681의 한 줄 높이가
+  ///    19라, 24로 잡으면 아래 입력칸이 5px씩 밀려 내려간다.
+  ///    여러 줄로 쓰는 곳(B6 안내문 등)은 호출부에서 `height`를 다시 준다.
+  static final subtitle = _style(
+    size: 16,
+    lineHeight: 19,
+    letterSpacing: -0.1,
+  ).copyWith(color: AppColors.textSecondary);
+
+  /// 화면 안 구획 제목 — 명조 26 · 자간 -0.5 (시안 351:970 `이렇게 정리했어요`).
+  /// [titleScreen]보다 한 단계 작다. 진행바 아래에서 시작하는 화면이 쓴다.
+  static const titleSerifSm = TextStyle(
+    fontFamily: bookFamily,
+    color: AppColors.textPrimary,
+    fontSize: 26,
+    height: 38 / 26,
+    fontWeight: bold,
+    fontVariations: _serifBold,
+    letterSpacing: -0.5,
+  );
+
+  /// 하단 주 CTA 라벨 — 18 Bold (시안 346:820).
+  static final ctaLabel = _style(
+    size: 18,
+    lineHeight: 26,
+    weight: bold,
+    letterSpacing: -0.2,
+  );
+
+  /// 하단 보조 버튼 라벨 — 17 Bold (시안 351:978 `다시 말하기`).
+  static final ctaLabelSecondary = _style(
+    size: 17,
+    lineHeight: 25,
+    weight: bold,
+    letterSpacing: -0.2,
+  );
+
+  /// 본문 안 보조 버튼 라벨 — 16 Bold (시안 341:668 `글로 답하기`).
+  static final ctaLabelAssist = _style(
+    size: 16,
+    lineHeight: 24,
+    weight: bold,
+    letterSpacing: -0.1,
+  );
+
+  /// 진행률 바 아래 "질문 3 / 6" — 14 Medium (시안 341:653).
+  static final metaLabel = _style(
+    size: 14,
+    lineHeight: 20,
+    weight: medium,
+    letterSpacing: 0.2,
+  ).copyWith(color: AppColors.textTertiary);
+
+  /// 자기소개 선택지 라벨 — 20 Bold (시안 346:812).
+  static final optionLabel = _style(
+    size: 20,
+    lineHeight: 28,
+    weight: bold,
+    letterSpacing: -0.2,
+  );
+
+  /// 우상단 진행 표시 "3 / 5" · 타이머 "2분 47초 남음" — 15 Medium.
+  static final stepLabel = _style(
+    size: 15,
+    lineHeight: 22,
+    weight: medium,
+    letterSpacing: 0.2,
+  ).copyWith(color: AppColors.textTertiary);
+
   // ── Book serif — 자서전 본문 전용 ───────────────────────────
 
   /// 책 본문. 행간을 넉넉히(1.9) 둬서 읽는 호흡을 늦춘다.
@@ -116,6 +218,7 @@ abstract final class AppTypography {
     fontSize: 16,
     height: 1.9,
     fontWeight: regular,
+    fontVariations: _serifRegular,
   );
 
   /// 책 장 제목
@@ -125,15 +228,32 @@ abstract final class AppTypography {
     fontSize: 22,
     height: 1.5,
     fontWeight: bold,
+    fontVariations: _serifBold,
   );
 
-  /// 로고 워드마크 "LIFE LEGACY" — 명조 + 넓은 자간
+  /// 로고 워드마크 "Life Legacy" — 명조 Bold.
+  ///
+  /// ⚠️ 예전에는 대문자 "LIFE LEGACY"에 자간 2.4를 줬다. 새 시안(341:727)은
+  ///    **대소문자 그대로** 쓰고 자간도 0.4로 좁다. 대문자로 늘려 놓으면
+  ///    본문 명조와 다른 서체처럼 보인다.
   static const wordmark = TextStyle(
     fontFamily: bookFamily,
     color: AppColors.textBrand,
-    fontSize: 20,
-    height: 1.4,
+    fontSize: 30,
+    height: 1.3,
     fontWeight: bold,
-    letterSpacing: 2.4,
+    fontVariations: _serifBold,
+    letterSpacing: 0.3,
+  );
+
+  /// 브랜드 문구 — "말로 이야기하면 자서전이 됩니다" (명조 Regular 18).
+  static const brandTagline = TextStyle(
+    fontFamily: bookFamily,
+    color: AppColors.textSecondary,
+    fontSize: 18,
+    height: 31 / 18,
+    fontWeight: regular,
+    fontVariations: _serifRegular,
+    letterSpacing: -0.2,
   );
 }

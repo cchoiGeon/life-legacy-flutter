@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
@@ -6,10 +8,14 @@ import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/service/services.dart';
 
-/// 02·03·04·05·06 — 로그인 · 전화번호 · 인증번호.
+/// A2·A3·A4·A5·A6 — 로그인 · 전화번호 · 인증번호.
 ///
 /// 세 화면이 하나의 컨트롤러를 공유한다. 전화번호를 다음 화면으로 넘겨야
 /// 하는데, 라우트 인자로 던지면 뒤로 갔다 오는 동안 값이 사라지기 때문이다.
+///
+/// ⚠️ 숫자는 **앱 자체 키패드**([AppNumberPad])로만 들어온다. OS 키보드를
+///    쓰지 않으므로 `TextEditingController`에 사용자가 직접 타이핑하는 경로가
+///    없다 — 값 변경은 전부 아래 `onXxxDigit`/`onXxxBackspace`를 지난다.
 class LoginController extends GetxController {
   LoginController(this._api, this._auth, this._toast);
 
@@ -17,36 +23,33 @@ class LoginController extends GetxController {
   final AuthService _auth;
   final ToastService _toast;
 
+  /// 화면에 보이는 전화번호 칸. 키패드가 넣은 값을 서식만 입혀 담는다.
   final phoneController = TextEditingController();
-  final codeController = TextEditingController();
 
   final RxBool isSubmitting = false.obs;
 
   /// 인증번호 불일치. null이면 정상 상태.
   final RxnString codeError = RxnString();
 
-  /// 화면에 보여줄 전화번호 — "010 1234 5678"
-  final RxString phone = ''.obs;
+  /// 입력된 전화번호 숫자 11자리 (서식 없음)
+  final RxString phoneDigits = ''.obs;
 
-  /// 입력된 인증번호. `codeController.text`를 그대로 읽으면 Obx가 갱신되지
-  /// 않아서(TextEditingController는 Rx가 아니다) 별도 반응형 값으로 둔다.
+  /// 입력된 인증번호 숫자 6자리
   final RxString code = ''.obs;
 
-  @override
-  void onInit() {
-    super.onInit();
-    codeController.addListener(_onCodeChanged);
-  }
+  /// 재발송까지 남은 초. 0이면 "다시 받기"를 누를 수 있다.
+  final RxInt secondsLeft = 0.obs;
+
+  Timer? _tick;
 
   @override
   void onClose() {
-    codeController.removeListener(_onCodeChanged);
+    _tick?.cancel();
     phoneController.dispose();
-    codeController.dispose();
     super.onClose();
   }
 
-  // ── 02 로그인 ─────────────────────────────────────────────
+  // ── A2 로그인 ─────────────────────────────────────────────
 
   Future<void> loginWithKakao() async {
     if (isSubmitting.value) return;
@@ -62,22 +65,46 @@ class LoginController extends GetxController {
 
   void goPhone() => Get.toNamed(AppRoutes.phone);
 
-  // ── 03·04 전화번호 ────────────────────────────────────────
+  // ── A3·A4 전화번호 ────────────────────────────────────────
 
-  /// 숫자만 남긴 값. 11자리면 인증 요청을 보낼 수 있다.
-  String get digits => phoneController.text.replaceAll(RegExp(r'\D'), '');
+  static const _phoneLength = 11;
 
-  bool get canRequestCode => digits.length == 11;
+  bool get canRequestCode => phoneDigits.value.length == _phoneLength;
 
-  void onPhoneChanged(String _) => phone.value = _format(digits);
+  /// 입력칸에 뜨는 형태 — "010 - 1234 - 5678" (시안 342:730)
+  String get phoneFieldText => _format(phoneDigits.value, ' - ');
+
+  /// 문장 안에 들어가는 형태 — "010-1234-5678 로 보냈어요" (시안 343:701)
+  String get phoneCompact => _format(phoneDigits.value, '-');
+
+  void onPhoneDigit(String digit) {
+    if (phoneDigits.value.length >= _phoneLength) return;
+    _setPhone(phoneDigits.value + digit);
+  }
+
+  void onPhoneBackspace() {
+    final v = phoneDigits.value;
+    if (v.isEmpty) return;
+    _setPhone(v.substring(0, v.length - 1));
+  }
+
+  void _setPhone(String digits) {
+    phoneDigits.value = digits;
+    // 입력칸은 표시 전용이다. 커서를 끝에 두면 서식 문자 사이에 끼지 않는다.
+    phoneController.value = TextEditingValue(
+      text: phoneFieldText,
+      selection: TextSelection.collapsed(offset: phoneFieldText.length),
+    );
+  }
 
   Future<void> requestCode() async {
     if (!canRequestCode || isSubmitting.value) return;
     isSubmitting.value = true;
     try {
-      await _api.requestVerificationCode(digits);
-      codeController.clear();
+      await _api.requestVerificationCode(phoneDigits.value);
+      code.value = '';
       codeError.value = null;
+      _startTimer();
       Get.toNamed(AppRoutes.code);
     } on ApiException catch (e) {
       _toast.showError(e);
@@ -86,15 +113,49 @@ class LoginController extends GetxController {
     }
   }
 
-  // ── 05·06 인증번호 ────────────────────────────────────────
+  // ── A5·A6 인증번호 ────────────────────────────────────────
 
-  bool get canVerify => code.value.length == 6;
+  static const _codeLength = 6;
+
+  bool get canVerify => code.value.length == _codeLength;
 
   /// 인증번호를 고치기 시작하면 에러 표시를 지운다.
   /// 틀린 번호가 빨갛게 남아 있으면 다시 입력하는 동안 계속 거슬린다.
-  void _onCodeChanged() {
-    code.value = codeController.text;
-    if (codeError.value != null) codeError.value = null;
+  void onCodeDigit(String digit) {
+    if (code.value.length >= _codeLength) return;
+    codeError.value = null;
+    code.value = code.value + digit;
+  }
+
+  void onCodeBackspace() {
+    final v = code.value;
+    if (v.isEmpty) return;
+    codeError.value = null;
+    code.value = v.substring(0, v.length - 1);
+  }
+
+  /// "2분 47초 남음" — 다 지나면 문구가 바뀐다 (시안 343:713).
+  String get timerLabel {
+    final s = secondsLeft.value;
+    if (s <= 0) return '시간이 지났어요';
+    return '${s ~/ 60}분 ${s % 60}초 남음';
+  }
+
+  /// 시간이 남아 있는 동안에는 "다시 받기"가 눌리지 않는다 —
+  /// 문자를 연달아 보내면 어느 번호가 맞는지 사용자가 헷갈린다.
+  bool get canResend => secondsLeft.value <= 0;
+
+  void _startTimer() {
+    _tick?.cancel();
+    secondsLeft.value = _api.verificationCodeTtl.inSeconds;
+    _tick = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (secondsLeft.value <= 1) {
+        secondsLeft.value = 0;
+        t.cancel();
+        return;
+      }
+      secondsLeft.value--;
+    });
   }
 
   Future<void> verify() async {
@@ -103,12 +164,12 @@ class LoginController extends GetxController {
     codeError.value = null;
     try {
       await _applySession(
-        await _api.verifyCode(phone: digits, code: codeController.text),
+        await _api.verifyCode(phone: phoneDigits.value, code: code.value),
       );
     } on ApiException catch (e) {
-      // 코드 오류는 토스트가 아니라 입력칸 아래 문구로 보여준다(시안 06번).
+      // 코드 오류는 토스트가 아니라 칸 위 문구로 보여준다(시안 343:819).
       if (e.code == 'INVALID_CODE') {
-        codeError.value = e.message;
+        codeError.value = '인증번호가 맞지 않아요. 다시 입력해주세요.';
       } else {
         _toast.showError(e);
       }
@@ -118,10 +179,12 @@ class LoginController extends GetxController {
   }
 
   Future<void> resendCode() async {
+    if (!canResend) return;
     try {
-      await _api.requestVerificationCode(digits);
-      codeController.clear();
+      await _api.requestVerificationCode(phoneDigits.value);
+      code.value = '';
       codeError.value = null;
+      _startTimer();
       _toast.show('인증번호를 다시 보냈어요');
     } on ApiException catch (e) {
       _toast.showError(e);
@@ -131,17 +194,18 @@ class LoginController extends GetxController {
   // ── 공통 ──────────────────────────────────────────────────
 
   Future<void> _applySession(AuthSession session) async {
+    _tick?.cancel();
     await _auth.applySession(session);
     Get.offAllNamed(session.needsIntro ? AppRoutes.intro : AppRoutes.home);
   }
 
-  /// 01012345678 → "010 1234 5678"
-  static String _format(String digits) {
+  /// 01012345678 → "010{sep}1234{sep}5678". 덜 채운 동안에도 자연스럽게 끊는다.
+  static String _format(String digits, String sep) {
     if (digits.length <= 3) return digits;
     if (digits.length <= 7) {
-      return '${digits.substring(0, 3)} ${digits.substring(3)}';
+      return '${digits.substring(0, 3)}$sep${digits.substring(3)}';
     }
-    return '${digits.substring(0, 3)} ${digits.substring(3, 7)} '
+    return '${digits.substring(0, 3)}$sep${digits.substring(3, 7)}$sep'
         '${digits.substring(7)}';
   }
 }

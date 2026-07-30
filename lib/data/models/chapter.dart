@@ -9,6 +9,7 @@ class Chapter {
     required this.status,
     required this.answeredCount,
     required this.questionCount,
+    this.nextQuestionText,
   });
 
   final String id;
@@ -16,7 +17,7 @@ class Chapter {
   /// 1부터 시작. "제1장 · 어린 시절"의 숫자.
   final int order;
 
-  /// "안동에서의 어린 시절"
+  /// "어린 시절"
   final String title;
 
   final ChapterStatus status;
@@ -27,20 +28,38 @@ class Chapter {
   /// 이 장의 전체 질문 수
   final int questionCount;
 
+  /// 다음에 답할 질문 — 자서전 목록(E1)에 "다음 질문 · 첫 소풍의 기억"으로
+  /// 뜬다. 진행 중인 장에만 있다.
+  final String? nextQuestionText;
+
   /// 0.0 ~ 1.0
   double get progress => questionCount == 0 ? 0 : answeredCount / questionCount;
 
-  /// 목록에 뜨는 보조 문구. 상태마다 다른 문장을 쓴다(시안 19번 화면).
+  /// 자서전 목록(E1 341:682)의 보조 문구.
+  ///
+  /// 진행 중인 장은 남은 개수가 아니라 **다음 질문 제목**을 보여준다 —
+  /// "3/8"은 이미 오른쪽에 있고, 여기서는 "무엇을 물어볼지" 알려줘야
+  /// 이어서 쓰고 싶어진다.
   String get subtitle => switch (status) {
-    ChapterStatus.done => '완성 · $questionCount개 질문 답변 완료',
-    ChapterStatus.writing => '작성 중 · $answeredCount / $questionCount 질문',
-    ChapterStatus.locked => '아직 잠겨 있어요',
+    ChapterStatus.done => '질문 $questionCount개 모두 답했어요',
+    ChapterStatus.writing =>
+      nextQuestionText == null ? '이어서 쓸 수 있어요' : '다음 질문 · $nextQuestionText',
+    ChapterStatus.locked => '${order - 1}장을 마치면 열려요',
+  };
+
+  /// 목록 오른쪽 상태 글자. 잠긴 장은 아무것도 쓰지 않는다.
+  String? get statusLabel => switch (status) {
+    ChapterStatus.done => '완료',
+    ChapterStatus.writing =>
+      answeredCount == 0 ? '시작하기' : '$answeredCount/$questionCount',
+    ChapterStatus.locked => null,
   };
 
   Chapter copyWith({
     ChapterStatus? status,
     int? answeredCount,
     String? title,
+    String? nextQuestionText,
   }) => Chapter(
     id: id,
     order: order,
@@ -48,6 +67,7 @@ class Chapter {
     status: status ?? this.status,
     answeredCount: answeredCount ?? this.answeredCount,
     questionCount: questionCount,
+    nextQuestionText: nextQuestionText ?? this.nextQuestionText,
   );
 
   factory Chapter.fromJson(Map<String, dynamic> json) => Chapter(
@@ -57,6 +77,7 @@ class Chapter {
     status: ChapterStatus.fromWire(json['status'] as String?),
     answeredCount: json['answered_count'] as int? ?? 0,
     questionCount: json['question_count'] as int? ?? 0,
+    nextQuestionText: json['next_question_text'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -66,6 +87,7 @@ class Chapter {
     'status': status.wire,
     'answered_count': answeredCount,
     'question_count': questionCount,
+    'next_question_text': nextQuestionText,
   };
 }
 

@@ -35,6 +35,14 @@ abstract interface class ApiClient {
 
   Future<void> logout();
 
+  /// 인증번호 재발송 대기 시간.
+  ///
+  /// ⚠️ 지금은 상수를 돌려주고 **클라이언트가 타이머를 센다**. 서버 계약이
+  ///    정해지면 [requestVerificationCode]가 만료 시각을 돌려주도록 바꾸고
+  ///    이 메서드는 지운다 — 앱 시계와 서버 시계가 어긋나면 "다시 받기"가
+  ///    아직 안 되는데 눌리는 상태가 생긴다.
+  Duration get verificationCodeTtl;
+
   // ══════════════════════════════════════════════════════════
   // 자기소개 → 목차 생성
   // ══════════════════════════════════════════════════════════
@@ -46,8 +54,14 @@ abstract interface class ApiClient {
   /// 서버에서 오래 걸리는 작업이라 화면은 전용 로딩 화면을 띄운다.
   Future<List<Chapter>> generateToc(Map<String, String> answers);
 
-  /// 제안된 목차를 확정한다(시안 10번 "이 목차로 시작하기").
+  /// 제안된 목차를 확정한다(시안 B7 "이대로 시작하기").
+  ///
+  /// 사용자가 "순서 바꾸기"로 재배열했으면 바뀐 순서 그대로 넘어온다 —
+  /// 구현체가 `order`를 다시 매겨 저장해야 한다.
   Future<void> confirmToc(List<Chapter> chapters);
+
+  /// 자기소개 답변을 사람이 읽는 형태로 (시안 F3의 "자기소개" 구획).
+  Future<IntroProfile> introProfile();
 
   // ══════════════════════════════════════════════════════════
   // 홈
@@ -104,6 +118,16 @@ abstract interface class ApiClient {
   Future<AppSettings> settings();
 
   Future<AppSettings> updateSettings(AppSettings next);
+
+  // ══════════════════════════════════════════════════════════
+  // 인쇄본 배송지 (시안 F3 · F4)
+  // ══════════════════════════════════════════════════════════
+
+  /// 아직 등록하지 않았으면 빈 값이 채워진 [Address]를 돌려준다 —
+  /// null이 아니다. 화면이 "없음"과 "못 불러옴"을 구분할 필요가 없어서다.
+  Future<Address> shippingAddress();
+
+  Future<Address> updateShippingAddress(Address next);
 }
 
 /// API 오류 — 화면은 [message]만 그대로 보여준다.

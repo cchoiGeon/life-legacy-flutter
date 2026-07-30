@@ -8,7 +8,10 @@ import 'package:life_legacy/common/widgets/ds/ds.dart';
 
 import 'login_controller.dart';
 
-/// 02 로그인 — Figma 141:13.
+/// A2 로그인 — Figma 341:741.
+///
+/// 뒤로가기가 없다. 스플래시가 `offAllNamed`로 들어오는 첫 화면이라 돌아갈
+/// 곳이 없다.
 class LoginView extends GetView<LoginController> {
   const LoginView({super.key});
 
@@ -16,24 +19,30 @@ class LoginView extends GetView<LoginController> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          const AppTopBar(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
+      // ⚠️ `bottom: false` — 시안의 844 캔버스를 화면 전체로 보고 아래 여백
+      //    64를 **화면 바닥 기준**으로 잡는다. SafeArea가 제스처 바 인셋을
+      //    먹으면 그 위에 64가 더해져 블록 전체가 20px쯤 위로 뜬다.
+      //    64면 제스처 바를 충분히 비켜 간다.
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // 시안 341:742 — 상태바 아래 156. 브랜드는 위쪽 1/3에 놓인다.
+            const SizedBox(height: 156),
+            const AppWordmark(),
+            const SizedBox(height: 14),
+            const Text(
+              '당신의 이야기를\n책으로 남겨드릴게요',
+              textAlign: TextAlign.center,
+              style: AppTypography.brandTagline,
+            ),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimens.gutter,
+              ),
               child: Column(
                 children: [
-                  const Spacer(flex: 3),
-                  const AppWordmark(fontSize: 24),
-                  const SizedBox(height: AppDimens.space3),
-                  Text(
-                    '쓰시던 계정으로 이어 쓸 수 있어요',
-                    style: AppTypography.bodySm.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const Spacer(flex: 5),
                   Obx(
                     () => _KakaoButton(
                       onTap: controller.loginWithKakao,
@@ -43,17 +52,32 @@ class LoginView extends GetView<LoginController> {
                   const SizedBox(height: AppDimens.space3),
                   AppButton(
                     label: '전화번호로 시작하기',
-                    variant: AppButtonVariant.neutral,
+                    variant: AppButtonVariant.outline,
                     size: AppButtonSize.lg,
                     block: true,
+                    // 시안 341:751 — 이 화면의 두 버튼만 17이다(다른 CTA는 18).
+                    // 두 줄이 나란히 서 있어 한 단계 낮춘 것으로 보인다.
+                    labelStyle: AppTypography.ctaLabel.copyWith(fontSize: 17),
                     onPressed: controller.goPhone,
                   ),
-                  const SizedBox(height: AppDimens.space8),
+                  const SizedBox(height: 22),
+                  Text(
+                    '시작하면 이용약관과 개인정보 처리방침에 동의합니다',
+                    textAlign: TextAlign.center,
+                    // 시안 341:753 — 12px 한 줄이 높이 14다(토큰 기본 17이면
+                    // 3px이 더 붙어 위 블록 전체가 그만큼 밀려 올라간다).
+                    style: AppTypography.label.copyWith(
+                      color: AppColors.textTertiary,
+                      letterSpacing: 0,
+                      height: 14 / 12,
+                    ),
+                  ),
                 ],
               ),
             ),
-          ),
-        ],
+            SizedBox(height: AppInsets.bottom(context, 64)),
+          ],
+        ),
       ),
     );
   }
@@ -61,9 +85,9 @@ class LoginView extends GetView<LoginController> {
 
 /// 카카오 로그인 버튼.
 ///
-/// ⚠️ 카카오 디자인 가이드가 색·비율을 정해 둔 컴포넌트다.
-///    노란색 #FEE500 · 라벨 불투명도 85% 검정은 **바꾸지 않는다.**
-///    (모서리 반경만 시안의 12px을 따랐다.)
+/// ⚠️ 카카오 디자인 가이드가 색을 정해 둔 컴포넌트다. 노란색 #FEE500과
+///    라벨 검정은 **바꾸지 않는다.** 시안(341:747)은 여기에 앱의 알약 모양
+///    (높이 62 · 반경 31)만 입혔다.
 class _KakaoButton extends StatelessWidget {
   const _KakaoButton({required this.onTap, required this.loading});
 
@@ -71,71 +95,36 @@ class _KakaoButton extends StatelessWidget {
   final bool loading;
 
   static const _kakaoYellow = Color(0xFFFEE500);
-  static const _kakaoLabel = Color(0xD9000000);
+  static const _kakaoLabel = Color(0xFF191600);
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: '카카오톡으로 시작하기',
+      label: '카카오로 3초 만에 시작하기',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: loading ? null : onTap,
         child: Opacity(
           opacity: loading ? 0.6 : 1,
           child: Container(
-            height: AppDimens.buttonLg,
+            height: AppDimens.buttonCta,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _kakaoYellow,
-              borderRadius: BorderRadius.circular(AppDimens.radiusBase),
+              borderRadius: BorderRadius.circular(AppDimens.buttonCta / 2),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CustomPaint(
-                  size: const Size(20, 20),
-                  painter: _KakaoBubblePainter(),
-                ),
-                const SizedBox(width: AppDimens.space2),
-                Text(
-                  '카카오톡으로 시작하기',
-                  style: AppTypography.weight(
-                    AppTypography.bodyBase,
-                    AppTypography.medium,
-                  ).copyWith(color: _kakaoLabel),
-                ),
-              ],
+            child: Text(
+              '카카오로 3초 만에 시작하기',
+              style: AppTypography.ctaLabel.copyWith(
+                fontSize: 17,
+                height: 1.2,
+                color: _kakaoLabel,
+              ),
             ),
           ),
         ),
       ),
     );
   }
-}
-
-/// 카카오 말풍선 심볼 — 타원 + 꼬리.
-class _KakaoBubblePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = const Color(0xD9000000);
-    final w = size.width;
-    final h = size.height;
-
-    canvas.drawOval(
-      Rect.fromLTRB(w * 0.04, h * 0.12, w * 0.96, h * 0.76),
-      paint,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(w * 0.3, h * 0.66)
-        ..lineTo(w * 0.22, h * 0.96)
-        ..lineTo(w * 0.52, h * 0.72)
-        ..close(),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_KakaoBubblePainter oldDelegate) => false;
 }

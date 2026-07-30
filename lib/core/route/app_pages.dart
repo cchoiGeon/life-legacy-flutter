@@ -37,6 +37,8 @@ import 'package:life_legacy/feature/notifications/notifications_view.dart';
 // ── F · 설정 ───────────────────────────────────────────────────
 import 'package:life_legacy/feature/settings/binding.dart';
 import 'package:life_legacy/feature/settings/settings_view.dart';
+import 'package:life_legacy/feature/settings/profile_view.dart';
+import 'package:life_legacy/feature/settings/address_view.dart';
 
 part 'app_routes.dart';
 
@@ -132,6 +134,18 @@ abstract final class AppPages {
       name: AppRoutes.bookComplete,
       page: () => const BookCompleteView(),
       binding: BookPreviewBinding(),
+    ),
+
+    // ── F 하위 ───────────────────────────────────────────────
+    GetPage(
+      name: AppRoutes.settingsProfile,
+      page: () => const ProfileView(),
+      binding: ProfileBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.settingsAddress,
+      page: () => const AddressView(),
+      binding: AddressBinding(),
     ),
   ];
 }

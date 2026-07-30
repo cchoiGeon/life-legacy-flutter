@@ -6,7 +6,7 @@ import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/service/services.dart';
 
-/// 09 목차 준비 중 · 10 목차 제안 확인.
+/// B6 목차 준비 중 · B7 목차 제안 확인.
 class TocController extends GetxController {
   TocController(this._api, this._toast);
 
@@ -16,6 +16,12 @@ class TocController extends GetxController {
   final RxList<Chapter> chapters = <Chapter>[].obs;
   final RxBool isGenerating = false.obs;
   final RxBool isConfirming = false.obs;
+
+  /// "순서 바꾸기"를 눌러 끌어 옮길 수 있는 상태인지.
+  ///
+  /// 기본은 꺼져 있다. 목록이 늘 드래그 가능하면 시니어 사용자가 스크롤하려다
+  /// 장을 옮겨 버린다.
+  final RxBool isReordering = false.obs;
 
   /// 로딩 화면 문구에 쓰는 이름. 자기소개 첫 답변에서 가져온다.
   final RxString name = ''.obs;
@@ -76,9 +82,22 @@ class TocController extends GetxController {
     }
   }
 
-  /// "목차 바꿔줄게요" — 자기소개를 다시 받는다.
+  /// "순서 바꾸기" ↔ "다 바꿨어요"
+  void toggleReorder() => isReordering.toggle();
+
+  /// 끌어 놓은 결과를 반영한다.
   ///
-  /// 시안에 목차 편집 화면이 없어서, 다시 답하면 새 목차를 만드는 흐름으로
-  /// 처리했다. 편집 화면이 생기면 여기서 그쪽으로 보내면 된다.
-  void regenerate() => Get.offAllNamed(AppRoutes.intro);
+  /// [newIndex]는 **꺼낸 뒤 기준**이다 — 화면이 `ReorderableListView.onReorderItem`
+  /// 을 쓰기 때문에 이미 보정돼서 들어온다. 구식 `onReorder`로 되돌리면
+  /// 아래로 옮길 때 한 칸씩 밀린다.
+  void reorder(int oldIndex, int newIndex) {
+    if (newIndex == oldIndex) return;
+    final moved = chapters.removeAt(oldIndex);
+    chapters.insert(newIndex, moved);
+  }
+
+  /// 화면에 뜨는 번호. `Chapter.order`가 아니라 **목록에서의 자리**다 —
+  /// 순서를 바꾸는 동안에는 원래 order가 더 이상 맞지 않는다.
+  /// 확정할 때 `confirmToc`가 이 순서대로 order를 다시 매긴다.
+  int displayNumber(int index) => index + 1;
 }

@@ -31,6 +31,9 @@ class AppField extends StatelessWidget {
     this.onSubmitted,
     this.suffix,
     this.textStyle,
+    this.height,
+    this.readOnly = false,
+    this.showCursor,
   });
 
   final String? label;
@@ -56,6 +59,16 @@ class AppField extends StatelessWidget {
   /// 전화번호처럼 크게 보여야 하는 입력에서 글자 크기를 키운다.
   final TextStyle? textStyle;
 
+  /// 고정 높이. 시안 A·F의 한 줄 입력칸은 모두 [AppDimens.fieldHeight]다.
+  /// null이면 패딩이 높이를 정한다(여러 줄 입력).
+  final double? height;
+
+  /// [AppNumberPad]가 값을 넣는 입력칸은 OS 키보드가 뜨면 안 된다.
+  /// `readOnly: true` + `showCursor: true` 조합으로 커서만 남긴다.
+  final bool readOnly;
+
+  final bool? showCursor;
+
   @override
   Widget build(BuildContext context) {
     final hasError = errorText != null;
@@ -75,12 +88,17 @@ class AppField extends StatelessWidget {
           const SizedBox(height: AppDimens.space2),
         ],
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          height: height,
+          padding: EdgeInsets.symmetric(
+            horizontal: height == null ? 14 : 20,
+            vertical: height == null ? 12 : 0,
+          ),
+          alignment: height == null ? null : Alignment.centerLeft,
           decoration: BoxDecoration(
             color: AppColors.background,
             borderRadius: BorderRadius.circular(AppDimens.radiusBase),
             border: Border.all(
-              color: hasError ? AppColors.destructive : AppColors.stone200,
+              color: hasError ? AppColors.destructive : AppColors.borderSoft,
               width: AppDimens.borderWidthStrong,
             ),
           ),
@@ -90,6 +108,8 @@ class AppField extends StatelessWidget {
                 child: TextField(
                   controller: controller,
                   focusNode: focusNode,
+                  readOnly: readOnly,
+                  showCursor: showCursor,
                   style: style.copyWith(
                     color: hasError
                         ? AppColors.destructive
@@ -129,117 +149,71 @@ class AppField extends StatelessWidget {
   }
 }
 
-/// 6자리 인증번호 입력 — Figma 05·06번 화면.
+/// 6자리 인증번호 칸 — Figma 343:702 (A5) · 343:761 (A6 에러).
 ///
-/// 칸은 여섯 개로 보이지만 입력은 **투명한 필드 하나**가 받는다.
-/// 칸마다 TextField를 두면 지우기·붙여넣기·포커스 이동이 전부 특수 케이스가
-/// 되기 때문이다.
-class AppCodeInput extends StatefulWidget {
-  const AppCodeInput({
+/// **입력을 받지 않는 표시 전용 위젯이다.** 값은 [AppNumberPad]가 컨트롤러에
+/// 넣고 이 위젯은 [value]를 그리기만 한다. 예전에는 칸 뒤에 투명 [TextField]를
+/// 숨겨 OS 키보드를 받았지만, 시안이 앱 자체 키패드로 바뀌면서 그 숨은 필드가
+/// OS 키보드를 불러 화면을 밀어 올리는 원인이 됐다.
+class AppCodeBoxes extends StatelessWidget {
+  const AppCodeBoxes({
     super.key,
-    required this.controller,
+    required this.value,
     this.length = 6,
     this.hasError = false,
-    this.onCompleted,
   });
 
-  final TextEditingController controller;
+  /// 지금까지 입력된 숫자. [length]보다 길면 앞에서 잘라 그린다.
+  final String value;
+
   final int length;
+
+  /// 인증 실패. 모든 칸이 빨간 테두리가 된다.
   final bool hasError;
-
-  /// 마지막 칸까지 채워지면 호출된다.
-  final ValueChanged<String>? onCompleted;
-
-  @override
-  State<AppCodeInput> createState() => _AppCodeInputState();
-}
-
-class _AppCodeInputState extends State<AppCodeInput> {
-  final _focus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_onChanged);
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_onChanged);
-    _focus.dispose();
-    super.dispose();
-  }
-
-  void _onChanged() {
-    setState(() {});
-    final text = widget.controller.text;
-    if (text.length == widget.length) widget.onCompleted?.call(text);
-  }
 
   @override
   Widget build(BuildContext context) {
-    final text = widget.controller.text;
+    final text = value.length > length ? value.substring(0, length) : value;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _focus.requestFocus,
-      child: Stack(
-        children: [
-          Row(
-            children: [
-              for (var i = 0; i < widget.length; i++) ...[
-                if (i > 0) const SizedBox(width: AppDimens.space2),
-                Expanded(child: _cell(i, text)),
-              ],
-            ],
-          ),
-          // 실제 입력을 받는 투명 필드. 눈에 보이지 않지만 키패드·붙여넣기는
-          // 여기로 들어온다. `Opacity(0)`이라 IME 후보창 위치가 칸 위에 잡힌다.
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0,
-              child: TextField(
-                controller: widget.controller,
-                focusNode: _focus,
-                autofocus: true,
-                showCursor: false,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(widget.length),
-                ],
-                decoration: const InputDecoration.collapsed(hintText: null),
-              ),
-            ),
-          ),
+    return Row(
+      children: [
+        for (var i = 0; i < length; i++) ...[
+          if (i > 0) const SizedBox(width: AppDimens.space2),
+          Expanded(child: _box(i, text)),
         ],
-      ),
+      ],
     );
   }
 
-  Widget _cell(int index, String text) {
+  Widget _box(int index, String text) {
     final filled = index < text.length;
-    final char = filled ? text[index] : '';
+
+    // 다음에 채워질 칸만 브랜드색으로 굵게 — 어디를 누르고 있는지 알려준다.
+    final isCursor = !hasError && index == text.length;
+
+    final (color, width) = switch ((hasError, isCursor)) {
+      (true, _) => (AppColors.destructive, AppDimens.borderWidthSelected),
+      (_, true) => (AppColors.borderSelected, AppDimens.borderWidthSelected),
+      _ => (AppColors.borderSoft, AppDimens.borderWidthStrong),
+    };
 
     return Container(
-      height: 56,
+      height: AppDimens.fieldHeight,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(AppDimens.radiusBase),
-        border: Border.all(
-          color: widget.hasError
-              ? AppColors.destructive
-              : (filled ? AppColors.stone400 : AppColors.stone200),
-          width: AppDimens.borderWidthStrong,
-        ),
+        border: Border.all(color: color, width: width),
       ),
       child: Text(
-        char,
-        style: AppTypography.weight(AppTypography.headingXl, AppTypography.bold)
-            .copyWith(
-              color: widget.hasError ? AppColors.destructive : AppColors.brand,
-            ),
+        filled ? text[index] : '',
+        style: AppTypography.weight(
+          AppTypography.titlePage,
+          AppTypography.bold,
+        ).copyWith(
+          color: hasError ? AppColors.destructive : AppColors.textPrimary,
+          height: 1.2,
+        ),
       ),
     );
   }

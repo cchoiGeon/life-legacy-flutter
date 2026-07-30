@@ -34,11 +34,13 @@ class AppTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      // 시안 138:2 — 배경은 순백(surface-page)이고 윗선은 `border-soft`다.
+      // brandFg(#fdfcfb)·stone100은 각각 한 톤씩 어긋난다.
       decoration: const BoxDecoration(
-        color: AppColors.brandFg,
+        color: AppColors.surfacePage,
         border: Border(
           top: BorderSide(
-            color: AppColors.stone100,
+            color: AppColors.borderSoft,
             width: AppDimens.borderWidth,
           ),
         ),
@@ -80,10 +82,10 @@ class _TabItem extends StatelessWidget {
   Widget build(BuildContext context) {
     // 시안: 활성 brand · 비활성 stone-500(#78716c), 라벨 11px Medium, gap 4
     final color = active ? AppColors.brand : AppColors.stone500;
+    // 라벨은 아래 [Text]가 내보낸다 — 여기서 또 주면 "홈 홈"으로 읽힌다.
     return Semantics(
       button: true,
       selected: active,
-      label: tab.label,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,

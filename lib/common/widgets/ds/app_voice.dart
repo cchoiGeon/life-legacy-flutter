@@ -3,148 +3,111 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import 'package:life_legacy/common/constants/colors.dart';
+import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 
-import 'app_icon.dart';
-
-/// 큰 원형 녹음 버튼 — 시안 07·13·14번의 중심 요소.
+/// 큰 원형 녹음 버튼 — Figma 341:660 (대기) · 350:889 (녹음 중).
 ///
-/// 대기 상태는 브랜드 브라운, 녹음 중은 청록(accent-soft)으로 바뀌고
-/// 바깥으로 퍼지는 링이 돈다. 시니어 사용자가 "지금 듣고 있다"를 색과 움직임
-/// 두 가지로 알 수 있게 한 것이다.
-class AppMicButton extends StatefulWidget {
+/// ⚠️ 색은 **두 상태 모두 브랜드 브라운**이다. 예전에는 녹음 중에 청록으로
+///    바뀌었지만, 새 시안은 색을 그대로 두고 **글리프만** 마이크 → 정지 사각으로
+///    바꾼다. "지금 듣고 있다"는 위에 뜨는 [AppWaveform]과 "듣고 있어요 · 0:23"
+///    문구가 알려준다 — 원까지 같이 변하면 화면에서 바뀌는 곳이 셋이 된다.
+///
+/// 퍼지는 링도 없앴다. 시안에 없고, 파형과 겹쳐 보여서 둘 다 산만해진다.
+class AppMicButton extends StatelessWidget {
   const AppMicButton({
     super.key,
     required this.recording,
     required this.onTap,
-    this.size = 116,
+    this.size = 160,
   });
 
   final bool recording;
   final VoidCallback onTap;
+
+  /// 시안 실측 160. 이 화면의 유일한 조작이라 크게 잡는다.
   final double size;
 
   @override
-  State<AppMicButton> createState() => _AppMicButtonState();
-}
-
-class _AppMicButtonState extends State<AppMicButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1600),
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.recording) _pulse.repeat();
-  }
-
-  @override
-  void didUpdateWidget(AppMicButton old) {
-    super.didUpdateWidget(old);
-    if (widget.recording && !_pulse.isAnimating) {
-      _pulse.repeat();
-    } else if (!widget.recording && _pulse.isAnimating) {
-      _pulse.stop();
-      _pulse.value = 0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final color = widget.recording ? AppColors.accentSoft : AppColors.brand;
-
     return Semantics(
       button: true,
-      label: widget.recording ? '녹음 멈추기' : '누르고 말씀하세요',
+      label: recording ? '녹음 끝내기' : '눌러서 시작하세요',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: SizedBox(
-          width: widget.size * 1.5,
-          height: widget.size * 1.5,
-          child: Center(
-            child: AnimatedBuilder(
-              animation: _pulse,
-              builder: (_, child) => CustomPaint(
-                painter: _PulsePainter(
-                  progress: widget.recording ? _pulse.value : null,
-                  color: color,
-                  radius: widget.size / 2,
-                ),
-                child: child,
-              ),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 240),
-                width: widget.size,
-                height: widget.size,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                // 시안 148:203 — 원 112 안에 아이콘 40 (비율 0.357)
-                child: AppIcon(
-                  AppIcons.mic,
-                  size: widget.size * 40 / 112,
-                  color: AppColors.brandFg,
-                ),
-              ),
-            ),
+        onTap: onTap,
+        child: Container(
+          width: size,
+          height: size,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.brand,
+            shape: BoxShape.circle,
+            boxShadow: AppShadows.md,
           ),
+          child: recording
+              ? Container(
+                  // 시안 350:909 — 160 안에 정지 사각 46, 반경 10
+                  width: size * 46 / 160,
+                  height: size * 46 / 160,
+                  decoration: BoxDecoration(
+                    color: AppColors.brandFg,
+                    borderRadius: BorderRadius.circular(size * 10 / 160),
+                  ),
+                )
+              : CustomPaint(
+                  size: Size(size, size),
+                  painter: _MicGlyphPainter(scale: size / 160),
+                ),
         ),
       ),
     );
   }
 }
 
-/// 녹음 중 바깥으로 퍼지는 링. [progress]가 null이면 아무것도 그리지 않는다.
-class _PulsePainter extends CustomPainter {
-  const _PulsePainter({
-    required this.progress,
-    required this.color,
-    required this.radius,
-  });
+/// 마이크 글리프 — 시안 341:661~663의 사각형 셋을 그대로 옮긴 것.
+///
+/// `assets/icons/mic.svg`를 쓰지 않는 이유: 그 아이콘은 24px 격자에 맞춰 그려져
+/// 있어 160px로 키우면 획이 굵어 보인다. 시안은 이 크기 전용으로 비율을 다시
+/// 잡았다(몸통 23×38 · 대 4×10 · 받침 29×4).
+class _MicGlyphPainter extends CustomPainter {
+  const _MicGlyphPainter({required this.scale});
 
-  final double? progress;
-  final Color color;
-  final double radius;
+  /// 160 기준 좌표에 곱할 배율
+  final double scale;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final t = progress;
-    if (t == null) return;
+    final paint = Paint()..color = AppColors.brandFg;
+    Rect at(double l, double t, double w, double h) =>
+        Rect.fromLTWH(l * scale, t * scale, w * scale, h * scale);
 
-    final center = Offset(size.width / 2, size.height / 2);
-    // 링 두 개를 반 주기 어긋나게 띄워서 끊김 없이 이어지게 한다.
-    for (final offset in [0.0, 0.5]) {
-      final p = (t + offset) % 1.0;
-      canvas.drawCircle(
-        center,
-        radius + p * radius * 0.55,
-        Paint()
-          ..color = color.withValues(alpha: (1 - p) * 0.28)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5,
+    canvas
+      ..drawRRect(
+        RRect.fromRectAndRadius(at(68.5, 51, 23, 38), Radius.circular(11.5 * scale)),
+        paint,
+      )
+      ..drawRect(at(78, 91, 4, 10), paint)
+      ..drawRRect(
+        RRect.fromRectAndRadius(at(65.5, 102, 29, 4), Radius.circular(2 * scale)),
+        paint,
       );
-    }
   }
 
   @override
-  bool shouldRepaint(_PulsePainter old) => old.progress != progress;
+  bool shouldRepaint(_MicGlyphPainter old) => old.scale != scale;
 }
 
-/// 녹음 중 파형 — 시안 14번의 막대 그래프.
+/// 녹음 중 파형 — Figma 350:911.
 ///
-/// 실제 오디오 레벨이 아니라 사인파를 시간으로 흘려 만든 **가짜 파형**이다.
-/// 마이크 입력이 붙으면 [levels]에 실측값을 넣도록 바꾸면 된다.
+/// 막대 12개 · 폭 5 · 간격 4 · 반경 2.5 · 색 `warm`. 시안은 정지 그림이라
+/// 높이가 고정돼 있지만, 실제로는 "듣고 있다"는 신호라 움직여야 한다 —
+/// 사인파 두 개를 겹쳐 흘린다.
+///
+/// ⚠️ 실제 오디오 레벨이 아니다. `speech_to_text`가 음량을 주지 않기 때문이다.
+///    레벨을 받을 수 있게 되면 [_WavePainter]의 amp 계산만 갈아 끼우면 된다.
 class AppWaveform extends StatefulWidget {
-  const AppWaveform({super.key, this.barCount = 24, this.height = 32});
+  const AppWaveform({super.key, this.barCount = 12, this.height = 34});
 
   final int barCount;
   final double height;
@@ -168,8 +131,13 @@ class _AppWaveformState extends State<AppWaveform>
 
   @override
   Widget build(BuildContext context) {
+    // 폭 5 + 간격 4 — 막대 수가 바뀌어도 시안 간격을 유지한다.
+    const barWidth = 5.0;
+    const gap = 4.0;
+
     return SizedBox(
       height: widget.height,
+      width: widget.barCount * barWidth + (widget.barCount - 1) * gap,
       child: AnimatedBuilder(
         animation: _c,
         builder: (_, _) => CustomPaint(
@@ -189,23 +157,26 @@ class _WavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.accentSoft
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
+    final paint = Paint()..color = AppColors.warm;
+    const barWidth = 5.0;
+    const gap = 4.0;
 
-    final gap = size.width / bars;
+    // 시안의 가장 짧은 막대 5, 가장 긴 막대 28.
+    const minHeight = 5.0;
+    const maxHeight = 28.0;
+
     for (var i = 0; i < bars; i++) {
       final phase = t * 2 * math.pi + i * 0.7;
       // 두 주파수를 겹쳐서 규칙적으로 보이지 않게 한다.
       final amp =
-          (math.sin(phase).abs() * 0.7 + math.sin(phase * 0.37).abs() * 0.3);
-      final barHeight = size.height * (0.15 + amp * 0.85);
-      final x = gap * (i + 0.5);
-      canvas.drawLine(
-        Offset(x, (size.height - barHeight) / 2),
-        Offset(x, (size.height + barHeight) / 2),
+          math.sin(phase).abs() * 0.7 + math.sin(phase * 0.37).abs() * 0.3;
+      final h = minHeight + amp * (maxHeight - minHeight);
+      final x = i * (barWidth + gap);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, (size.height - h) / 2, barWidth, h),
+          const Radius.circular(2.5),
+        ),
         paint,
       );
     }

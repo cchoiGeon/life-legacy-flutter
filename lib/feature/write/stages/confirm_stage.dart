@@ -7,11 +7,14 @@ import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 
 import '../write_controller.dart';
+import '../write_header.dart';
 
-/// 16 답변 확인 — Figma 151:221.
+/// D4 답변 확인 · D5 저장 실패 — Figma 351:964 · 354:1035.
 ///
-/// 음성이든 키보드든 저장 직전에 한 번 보여준다. 저장한 글은 그대로
-/// 자서전에 실리므로, 잘못 들었거나 잘못 적은 걸 되돌릴 자리가 필요하다.
+/// **한 화면의 두 상태다.** 저장에 실패해도 다른 화면으로 보내지 않는다 —
+/// 정리된 글을 눈앞에 둔 채로 다시 저장하게 해야 "내 이야기가 날아갔나"라는
+/// 걱정이 생기지 않는다. 바뀌는 건 제목·부제·주 버튼 문구와, 아래 안내 박스가
+/// 뜨는 것뿐이다.
 class ConfirmStage extends GetView<WriteController> {
   const ConfirmStage({super.key});
 
@@ -19,80 +22,75 @@ class ConfirmStage extends GetView<WriteController> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        AppTopBar(onBack: controller.retryAnswer),
+        const WriteHeader(showProgressLabel: false),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
+            padding: const EdgeInsets.fromLTRB(
+              AppDimens.gutter,
+              28,
+              AppDimens.gutter,
+              AppDimens.space6,
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: AppDimens.space4),
                 Obx(
-                  () => Text(
-                    controller.answerSource.value == WriteStage.keyboard
-                        ? '이렇게 적으셨어요'
-                        : '이렇게 들었어요',
-                    style: AppTypography.titlePage,
+                  () => AppScreenHeading(
+                    title: controller.confirmTitle,
+                    subtitle: controller.confirmSubtitle,
+                    compact: true,
                   ),
                 ),
-                const SizedBox(height: AppDimens.space3),
-                Obx(
-                  () => Text(
-                    controller.answerSource.value == WriteStage.keyboard
-                        ? '맞으면 다음으로 넘어가고,\n아니면 다시 고쳐 주세요.'
-                        : '맞으면 다음으로 넘어가고,\n아니면 다시 말씀해 주세요.',
-                    style: AppTypography.bodySm.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppDimens.space6),
-                Obx(
-                  () => Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppDimens.space4),
-                    decoration: BoxDecoration(
-                      color: AppColors.bubbleSys,
-                      borderRadius: BorderRadius.circular(
-                        AppDimens.radiusBubble,
-                      ),
-                    ),
+                const SizedBox(height: 24),
+                const _AnswerCard(),
+                const SizedBox(height: 20),
+                Obx(() {
+                  if (controller.saveFailed.value) {
+                    return const AppNoticeBox(
+                      title: '저장하지 못했어요',
+                      message: '녹음은 휴대폰에 그대로 있어요.\n인터넷이 연결되면 자동으로 저장합니다.',
+                    );
+                  }
+                  // 실패했을 때는 글자 수 캡션을 감춘다(시안 354:1045) —
+                  // 지금 알아야 할 건 분량이 아니라 저장이 안 됐다는 사실이다.
+                  return Align(
+                    alignment: Alignment.centerLeft,
                     child: Text(
-                      controller.transcript.value,
-                      style: AppTypography.bodyBase.copyWith(
-                        color: AppColors.textStrong,
+                      controller.answerCaption,
+                      style: AppTypography.bodySm.copyWith(
+                        color: AppColors.textTertiary,
                       ),
                     ),
-                  ),
-                ),
+                  );
+                }),
               ],
             ),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             AppDimens.gutter,
             0,
             AppDimens.gutter,
-            AppDimens.space5,
+            AppInsets.bottom(context, AppDimens.space5),
           ),
           child: Column(
             children: [
               Obx(
                 () => AppButton(
-                  label: '네, 맞아요',
+                  label: controller.saveLabel,
                   size: AppButtonSize.lg,
                   block: true,
                   loading: controller.isBusy.value,
                   onPressed: controller.confirmTranscript,
                 ),
               ),
-              const SizedBox(height: AppDimens.space3),
+              const SizedBox(height: 14),
               Obx(
                 () => AppButton(
                   label: controller.retryLabel,
                   variant: AppButtonVariant.neutral,
-                  size: AppButtonSize.lg,
+                  size: AppButtonSize.secondary,
                   block: true,
                   onPressed: controller.retryAnswer,
                 ),
@@ -101,6 +99,35 @@ class ConfirmStage extends GetView<WriteController> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 정리된 답변 — 크림 카드에 **명조 본문** (시안 351:972).
+///
+/// 자서전에 실릴 글이라 미리보기(E2)와 같은 서체로 보여준다. 여기서 고딕을
+/// 쓰면 저장한 뒤 책에서 다른 글처럼 보인다.
+class _AnswerCard extends GetView<WriteController> {
+  const _AnswerCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+      () => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: AppColors.cream,
+          borderRadius: BorderRadius.circular(AppDimens.radiusBubble),
+        ),
+        child: Text(
+          controller.transcript.value,
+          style: AppTypography.bookBody.copyWith(
+            height: 30 / 16,
+            letterSpacing: -0.2,
+          ),
+        ),
+      ),
     );
   }
 }

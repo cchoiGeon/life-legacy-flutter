@@ -9,8 +9,12 @@ import 'package:life_legacy/core/network/mock_api_client.dart';
 
 import 'login_controller.dart';
 
-/// 05·06 인증번호 입력 — Figma 143:46 · 143:79.
+/// A5·A6 인증번호 입력 — Figma 343:698 · 343:757.
 /// 두 프레임은 정상/에러 상태다.
+///
+/// 6자리를 다 채워도 **자동으로 확인하지 않는다.** 시안에 "확인" 버튼이 따로
+/// 있고, 시니어 사용자에게는 마지막 숫자를 누르자마자 화면이 넘어가는 것보다
+/// 한 번 더 확인하고 누르는 편이 안전하다.
 class CodeView extends GetView<LoginController> {
   const CodeView({super.key});
 
@@ -23,56 +27,53 @@ class CodeView extends GetView<LoginController> {
           const AppTopBar(),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
+              padding: const EdgeInsets.fromLTRB(
+                AppDimens.gutter,
+                AppDimens.space6,
+                AppDimens.gutter,
+                AppDimens.space6,
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: AppDimens.space5),
-                  Text('인증번호를\n입력해 주세요', style: AppTypography.titlePage),
-                  const SizedBox(height: AppDimens.space3),
                   Obx(
-                    () => Text(
-                      '${controller.phone.value}로 보낸\n6자리 숫자를 입력해 주세요',
-                      style: AppTypography.bodySm.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
+                    () => AppScreenHeading(
+                      title: '인증번호를\n입력해주세요',
+                      subtitle: '${controller.phoneCompact} 로 보냈어요',
                     ),
                   ),
-                  const SizedBox(height: AppDimens.space8),
+                  const SizedBox(height: 37),
                   Obx(
-                    () => AppCodeInput(
-                      controller: controller.codeController,
+                    () => AppCodeBoxes(
+                      value: controller.code.value,
                       hasError: controller.codeError.value != null,
-                      onCompleted: (_) => controller.verify(),
                     ),
                   ),
-                  const SizedBox(height: AppDimens.space3),
+                  // 에러 문구는 칸과 타이머 **사이**에 끼어든다(시안 343:819).
+                  // 아래로 밀려나는 만큼 타이머 줄이 내려간다.
                   Obx(() {
                     final error = controller.codeError.value;
-                    if (error == null) return const SizedBox.shrink();
+                    if (error == null) return const SizedBox(height: 16);
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: AppDimens.space2),
+                      padding: const EdgeInsets.only(top: 14, bottom: 10),
                       child: Text(
                         error,
-                        style: AppTypography.label.copyWith(
+                        style: AppTypography.bodySm.copyWith(
                           color: AppColors.destructive,
                         ),
                       ),
                     );
                   }),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: controller.resendCode,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Text(
-                        '인증번호 다시 받기',
-                        style: AppTypography.label.copyWith(
-                          color: AppColors.textSecondary,
-                          decoration: TextDecoration.underline,
-                          decorationColor: AppColors.textSecondary,
-                        ),
-                      ),
+                  const _TimerRow(),
+                  const SizedBox(height: 22),
+                  Obx(
+                    () => AppButton(
+                      label: '확인',
+                      size: AppButtonSize.lg,
+                      block: true,
+                      enabled: controller.canVerify,
+                      loading: controller.isSubmitting.value,
+                      onPressed: controller.verify,
                     ),
                   ),
                   const SizedBox(height: AppDimens.space6),
@@ -95,21 +96,48 @@ class CodeView extends GetView<LoginController> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppDimens.gutter,
-              0,
-              AppDimens.gutter,
-              AppDimens.space5,
-            ),
-            child: Obx(
-              () => AppButton(
-                label: '확인',
-                size: AppButtonSize.lg,
-                block: true,
-                enabled: controller.canVerify,
-                loading: controller.isSubmitting.value,
-                onPressed: controller.verify,
+          // 시안 343:718 — 키패드는 화면 바닥까지 닿는다(A3와 같은 이유).
+          AppNumberPad(
+            onDigit: controller.onCodeDigit,
+            onBackspace: controller.onCodeBackspace,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "2분 47초 남음" ↔ "다시 받기" (시안 343:712).
+class _TimerRow extends GetView<LoginController> {
+  const _TimerRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+      () => Row(
+        children: [
+          Text(controller.timerLabel, style: AppTypography.stepLabel),
+          const Spacer(),
+          Semantics(
+            button: true,
+            enabled: controller.canResend,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: controller.canResend ? controller.resendCode : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  '다시 받기',
+                  style: AppTypography.weight(
+                    AppTypography.bodyChat,
+                    AppTypography.bold,
+                  ).copyWith(
+                    // 시간이 남아 있는 동안에는 눌리지 않는다 — 색으로 알린다.
+                    color: controller.canResend
+                        ? AppColors.brand
+                        : AppColors.textDisabled,
+                  ),
+                ),
               ),
             ),
           ),

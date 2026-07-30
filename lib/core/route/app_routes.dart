@@ -23,6 +23,10 @@ abstract final class AppRoutes {
   static const notifications = '/notifications'; // 13 알림 센터
 
   // E 하위
-  static const bookPreview = '/book/preview'; // 20
-  static const bookComplete = '/book/complete'; // 21
+  static const bookPreview = '/book/preview'; // E2
+  static const bookComplete = '/book/complete'; // E3
+
+  // F 하위
+  static const settingsProfile = '/settings/profile'; // F3
+  static const settingsAddress = '/settings/address'; // F4
 }

@@ -31,48 +31,65 @@ class MockApiClient implements ApiClient {
 
   AppSettings _settings = const AppSettings(dailyQuestionAlarm: true);
 
+  /// 시안 C4(알림 센터)의 일곱 건.
   List<AppNotification> _notifications = const [
-    AppNotification(
-      id: 'n1',
-      title: '오늘의 질문이 도착했어요 · 학창 시절과 꿈',
-      timeLabel: '오늘 오전 9:00',
-    ),
-    AppNotification(
-      id: 'n2',
-      title: '1장 "안동에서의 어린 시절"이 완성됐어요',
-      timeLabel: '어제',
-    ),
-    AppNotification(
-      id: 'n3',
-      title: '따님이 자녀 계정으로 응원을 남겼어요',
-      timeLabel: '3일 전',
-      isRead: true,
-    ),
+    AppNotification(id: 'n1', title: '오늘의 질문이 도착했어요', timeLabel: '3시간 전'),
+    AppNotification(id: 'n2', title: '1장 어린 시절이 완성됐어요', timeLabel: '어제'),
+    AppNotification(id: 'n3', title: '2장 새 질문 3개가 준비됐어요', timeLabel: '3일 전'),
     AppNotification(
       id: 'n4',
-      title: '이번 주에 3개 질문에 답하셨어요',
-      timeLabel: '5일 전',
-      isRead: true,
-    ),
-    AppNotification(
-      id: 'n5',
-      title: '인쇄본 배송지를 등록해 주세요',
+      title: '3장 서울살이와 첫 직장이 열렸어요',
       timeLabel: '1주 전',
       isRead: true,
     ),
     AppNotification(
-      id: 'n6',
-      title: 'Life Legacy에 오신 걸 환영해요 · 첫 이야기를 시작해 보세요',
+      id: 'n5',
+      title: '책 미리보기가 준비됐어요',
       timeLabel: '2주 전',
+      isRead: true,
+    ),
+    AppNotification(
+      id: 'n6',
+      title: '2장 학창 시절과 꿈이 열렸어요',
+      timeLabel: '3주 전',
+      isRead: true,
+    ),
+    AppNotification(
+      id: 'n7',
+      title: '가입을 환영해요',
+      timeLabel: '1개월 전',
       isRead: true,
     ),
   ];
 
+  Address _address = const Address(
+    recipient: '김영희',
+    phone: '01012345678',
+    postalCode: '03186',
+    line1: '서울 종로구 세종대로 175',
+    line2: '302동 1201호',
+  );
+
   /// 인증번호 — 어떤 번호로 요청하든 이 값이 정답이다.
   static const demoCode = '482915';
 
+  /// 다음 [saveAnswer] 한 번을 실패시킨다 — 시안 D5(저장 실패)를 눈으로
+  /// 확인하기 위한 스위치다. 작성 화면 `⋯` 메뉴에서 켠다.
+  ///
+  /// ⚠️ 실제 구현에는 없을 코드다. 실패는 네트워크가 만들지 우리가 만들지 않는다.
+  bool failNextSave = false;
+
   late List<Chapter> _chapters = _seedChapters();
   late List<Question> _questions = _seedQuestions();
+
+  /// 자기소개 답변 — F3(내 정보)의 "자기소개" 구획이 읽는다.
+  /// 목차를 만들 때 [generateToc]가 통째로 받아 둔다.
+  Map<String, String> _introAnswers = const {
+    'i2': '여성',
+    'i3': '했어요',
+    'i4': '있어요',
+    'i5': '고등학교',
+  };
 
   // ══════════════════════════════════════════════════════════
   // 인증
@@ -114,45 +131,56 @@ class MockApiClient implements ApiClient {
   @override
   Future<void> logout() => _delay(null);
 
+  /// 시안 343:713은 "2분 47초 남음"으로 그려져 있다 — 3분에서 13초 지난 모습이다.
+  @override
+  Duration get verificationCodeTtl => const Duration(minutes: 3);
+
   // ══════════════════════════════════════════════════════════
   // 자기소개 → 목차
   // ══════════════════════════════════════════════════════════
 
+  /// 시안 B1~B5. 문항 순서를 바꾸거나 지우면 [generateToc]의 이름 저장과
+  /// [introProfile]의 라벨 대응도 같이 손봐야 한다.
   @override
   Future<List<IntroQuestion>> introQuestions() => _delay(const [
     IntroQuestion(
       id: 'i1',
       order: 1,
-      text: '성함이\n어떻게 되세요?',
+      text: '성함을\n알려주세요',
+      subtitle: '책 표지에 들어갈 이름이에요',
       hint: '성함을 적어 주세요',
     ),
     IntroQuestion(
       id: 'i2',
       order: 2,
-      text: '성별이\n어떻게 되세요?',
+      text: '성별을\n알려주세요',
+      subtitle: '책에서 부르는 말을 정할 때 써요',
       type: IntroAnswerType.choice,
-      choices: ['남', '여'],
+      choices: ['여성', '남성'],
     ),
     IntroQuestion(
       id: 'i3',
       order: 3,
       text: '결혼은\n하셨나요?',
+      subtitle: '가족 이야기를 여쭤볼 때 참고해요',
       type: IntroAnswerType.choice,
-      choices: ['예', '아니요'],
+      choices: ['했어요', '안 했어요'],
     ),
     IntroQuestion(
       id: 'i4',
       order: 4,
-      text: '자녀는\n있으신가요?',
+      text: '자녀가\n있으신가요?',
+      subtitle: '자녀 이야기를 여쭤볼지 정해요',
       type: IntroAnswerType.choice,
-      choices: ['예', '아니요'],
+      choices: ['있어요', '없어요'],
     ),
     IntroQuestion(
       id: 'i5',
       order: 5,
-      text: '대학교까지\n다니셨나요?',
+      text: '학교는 어디까지\n다니셨나요?',
+      subtitle: '학창 시절 질문을 고를 때 써요',
       type: IntroAnswerType.choice,
-      choices: ['예', '아니요'],
+      choices: ['초등학교', '중학교', '고등학교', '대학교 이상'],
     ),
   ]);
 
@@ -164,16 +192,48 @@ class MockApiClient implements ApiClient {
     if (name != null && name.isNotEmpty) {
       _user = User(id: _user.id, name: name, phone: _user.phone);
     }
+    _introAnswers = Map.of(answers);
     return _delay(_seedChapters(), _slowLatency);
   }
 
   @override
   Future<void> confirmToc(List<Chapter> chapters) async {
     await Future<void>.delayed(_latency);
-    _chapters = chapters;
+    // 순서를 바꿨을 수 있으니 order를 다시 매긴다 — 화면은 이 번호로
+    // "제2장 이어서 쓰기"를 그린다.
+    _chapters = [
+      for (final (i, c) in chapters.indexed)
+        Chapter(
+          id: c.id,
+          order: i + 1,
+          title: c.title,
+          status: c.status,
+          answeredCount: c.answeredCount,
+          questionCount: c.questionCount,
+        ),
+    ];
     _questions = _seedQuestions();
     await Storage.markIntroDone();
   }
+
+  @override
+  Future<IntroProfile> introProfile() => _delay(
+    IntroProfile(
+      entries: [
+        for (final (id, label) in _profileLabels)
+          if (_introAnswers[id] case final v? when v.trim().isNotEmpty)
+            IntroProfileEntry(label: label, value: v),
+      ],
+    ),
+  );
+
+  /// 자기소개 문항 id → F3에 뜨는 라벨. 성함(i1)은 "기본 정보"에 따로 나가므로 뺀다.
+  static const _profileLabels = [
+    ('i2', '성별'),
+    ('i3', '결혼'),
+    ('i4', '자녀'),
+    ('i5', '학력'),
+  ];
 
   // ══════════════════════════════════════════════════════════
   // 홈
@@ -218,6 +278,10 @@ class MockApiClient implements ApiClient {
     required String text,
   }) async {
     await Future<void>.delayed(_latency);
+    if (failNextSave) {
+      failNextSave = false;
+      throw const ApiException('저장하지 못했어요', code: 'SAVE_FAILED');
+    }
     final i = _questions.indexWhere((q) => q.id == questionId);
     if (i >= 0) _questions[i] = _questions[i].copyWith(answer: text);
     _syncChapters();
@@ -248,10 +312,15 @@ class MockApiClient implements ApiClient {
     final done = _chapters.every((c) => c.status == ChapterStatus.done);
     return _delay(
       Book(
-        title: '${_user.givenName} 님의 인생 이야기',
+        // 시안 352:954의 표지 — 제목은 "나의 이야기", 아래에 이름이 들어간다.
+        title: '나의 이야기',
+        authorName: _user.name,
         chapterCount: _chapters.length,
+        questionCount: _questions.length,
         // 답변 하나당 대략 6쪽으로 잡은 눈속임 값이다.
         pageCount: _questions.where((q) => q.isAnswered).length * 6,
+        // 사진 첨부(시안 G)를 아직 만들지 않아 고정값이다.
+        photoCount: 0,
         isComplete: done,
       ),
     );
@@ -259,27 +328,32 @@ class MockApiClient implements ApiClient {
 
   @override
   Future<List<BookPage>> bookPages() {
-    final pages = <BookPage>[];
-    var pageNo = 11;
+    // 쪽 번호는 책 전체를 통틀어 매긴다 — 미리보기 하단이 "12 / 34쪽"으로
+    // 전체 대비 위치를 보여주기 때문이다. 앞의 10쪽은 표지·목차 몫이다.
+    const frontMatter = 10;
+    final chunks = <(Chapter, List<String>)>[];
     for (final c in _syncChapters()) {
       final answers = _questions
           .where((q) => q.chapterId == c.id && q.isAnswered)
           .map((q) => q.answer!)
           .toList();
-      if (answers.isEmpty) continue;
       // 답변 두 개를 한 쪽에 담는다.
       for (var i = 0; i < answers.length; i += 2) {
-        pages.add(
-          BookPage(
-            chapterOrder: c.order,
-            chapterTitle: c.title,
-            pageNumber: ++pageNo,
-            paragraphs: answers.skip(i).take(2).toList(),
-          ),
-        );
+        chunks.add((c, answers.skip(i).take(2).toList()));
       }
     }
-    return _delay(pages);
+
+    final total = frontMatter + chunks.length;
+    return _delay([
+      for (final (i, (c, paragraphs)) in chunks.indexed)
+        BookPage(
+          chapterOrder: c.order,
+          chapterTitle: c.title,
+          pageNumber: frontMatter + i + 1,
+          totalPages: total,
+          paragraphs: paragraphs,
+        ),
+    ]);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -310,6 +384,19 @@ class MockApiClient implements ApiClient {
   }
 
   // ══════════════════════════════════════════════════════════
+  // 인쇄본 배송지
+  // ══════════════════════════════════════════════════════════
+
+  @override
+  Future<Address> shippingAddress() => _delay(_address);
+
+  @override
+  Future<Address> updateShippingAddress(Address next) {
+    _address = next;
+    return _delay(_address);
+  }
+
+  // ══════════════════════════════════════════════════════════
   // 내부
   // ══════════════════════════════════════════════════════════
 
@@ -337,7 +424,25 @@ class MockApiClient implements ApiClient {
       0 when !unlocked => ChapterStatus.locked,
       _ => ChapterStatus.writing,
     };
-    return c.copyWith(answeredCount: answered, status: status);
+    // 자서전 목록(E1)이 "다음 질문 · ○○○"으로 쓸 문구.
+    final pending = _questions
+        .where((q) => q.chapterId == c.id && !q.isAnswered)
+        .toList();
+    final next = status == ChapterStatus.writing && pending.isNotEmpty
+        ? pending.first.text
+        : null;
+
+    // ⚠️ copyWith를 쓰지 않는다 — null을 넘겨도 예전 값이 남는 구조라
+    //    장을 다 끝냈는데 "다음 질문"이 계속 붙어 있게 된다.
+    return Chapter(
+      id: c.id,
+      order: c.order,
+      title: c.title,
+      status: status,
+      answeredCount: answered,
+      questionCount: c.questionCount,
+      nextQuestionText: next,
+    );
   }
 
   /// 지금 답해야 할 질문 = 잠기지 않은 장의 첫 미답변 질문.
@@ -354,15 +459,15 @@ class MockApiClient implements ApiClient {
 
   // ── 초기 데이터 ────────────────────────────────────────────
 
-  /// 시안 10·19번의 목차.
+  /// 시안 B7·C1·E1의 목차.
   ///
-  /// ⚠️ 시안 11번의 "42%"는 정적인 목업 수치다. 여기서는 진행률을 답변 수로
+  /// ⚠️ 시안 C1의 "42%"는 정적인 목업 수치다. 여기서는 진행률을 답변 수로
   ///    계산하므로 화면에 뜨는 값이 시안과 정확히 같지는 않다.
   static List<Chapter> _seedChapters() => const [
     Chapter(
       id: 'c1',
       order: 1,
-      title: '안동에서의 어린 시절',
+      title: '어린 시절',
       status: ChapterStatus.done,
       answeredCount: 0,
       questionCount: 8,
@@ -394,7 +499,7 @@ class MockApiClient implements ApiClient {
     Chapter(
       id: 'c5',
       order: 5,
-      title: '지금의 나, 남기고 싶은 말',
+      title: '지금의 나',
       status: ChapterStatus.locked,
       answeredCount: 0,
       questionCount: 6,

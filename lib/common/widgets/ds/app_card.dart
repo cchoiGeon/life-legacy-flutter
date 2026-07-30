@@ -65,12 +65,13 @@ class AppProgressBar extends StatelessWidget {
     this.height = 6,
     this.fill,
     this.onBrand = false,
+    this.rounded = true,
   });
 
   /// 0.0 ~ 1.0
   final double value;
 
-  /// 시안: 상단 진행률 6 · 홈 카드 10
+  /// 시안: 자기소개·작성 상단 4(전체폭) · 홈/자서전 카드 8
   final double height;
 
   /// 기본은 warm. 홈 카드처럼 강조가 필요하면 brand를 넘긴다.
@@ -79,10 +80,16 @@ class AppProgressBar extends StatelessWidget {
   /// 브랜드색 배경 위에 얹히는 변형(트랙이 반투명 흰색).
   final bool onBrand;
 
+  /// 시안 345:721처럼 **화면 가장자리까지 닿는** 진행바는 모서리를 굴리지
+  /// 않는다. 굴리면 화면 끝에서 바가 떠 보인다.
+  final bool rounded;
+
   @override
   Widget build(BuildContext context) {
     final clamped = value.clamp(0.0, 1.0);
-    final radius = BorderRadius.circular(height / 2);
+    final radius = rounded
+        ? BorderRadius.circular(height / 2)
+        : BorderRadius.zero;
     return Semantics(
       value: '${(clamped * 100).round()}%',
       child: ClipRRect(
@@ -269,15 +276,70 @@ class AppAvatar extends StatelessWidget {
   }
 }
 
-/// "LIFE LEGACY" 워드마크 — 명조 + 넓은 자간(시안 01·02·11번).
+/// "Life Legacy" 워드마크 — 명조 Bold (시안 A1 · A2 · C1).
 class AppWordmark extends StatelessWidget {
-  const AppWordmark({super.key, this.fontSize = 20});
+  const AppWordmark({super.key, this.fontSize = 30, this.letterSpacing = 0.3});
 
   final double fontSize;
+  final double letterSpacing;
 
   @override
   Widget build(BuildContext context) => Text(
-    'LIFE LEGACY',
-    style: AppTypography.wordmark.copyWith(fontSize: fontSize),
+    'Life Legacy',
+    style: AppTypography.wordmark.copyWith(
+      fontSize: fontSize,
+      letterSpacing: letterSpacing,
+    ),
   );
+}
+
+/// 브랜드 마크 — 브랜드색 원 안에 펼친 책 두 쪽 (시안 341:723).
+///
+/// 예전 로고는 나뭇잎이었다. 새 시안은 **책**이다 — 앱이 만들어 주는 결과물이
+/// 무엇인지 심볼만 봐도 알게 한 것이다.
+class AppBrandMark extends StatelessWidget {
+  const AppBrandMark({super.key, this.size = 84});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    // 시안 84 기준 좌표를 그대로 비율로 쓴다.
+    final k = size / 84;
+    Widget page({required double left, required double opacity}) => Positioned(
+      left: left * k,
+      top: 27 * k,
+      width: 22 * k,
+      height: 30 * k,
+      child: Opacity(
+        opacity: opacity,
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.brandFg,
+            borderRadius: BorderRadius.circular(3 * k),
+          ),
+        ),
+      ),
+    );
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.brand,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          page(left: 18, opacity: 1),
+          // 오른쪽 쪽은 살짝 흐리다 — 펼친 책의 안쪽 면이 진 그늘이다.
+          page(left: 44, opacity: 0.72),
+        ],
+      ),
+    );
+  }
 }

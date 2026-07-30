@@ -18,6 +18,26 @@ Future<void> main() async {
   // 세로 고정 — 시안이 390×844 세로 한 가지뿐이다.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
+  // ⚠️ **화면 전체를 앱이 그린다(edge-to-edge).**
+  //
+  // 이걸 켜지 않으면 안드로이드 내비게이션 바(약 27dp)만큼 앱 창이 짧아져서
+  // 시안의 844 캔버스가 817이 된다. 그러면 **아래에서부터 잰 좌표가 전부
+  // 밀린다** — 로그인 버튼 블록이 27px 위로 뜨는 식이다. 시안은 iPhone
+  // 프레임이라 홈 인디케이터가 내용 위에 얹히는 걸 전제로 그려져 있다.
+  //
+  // 상태바·내비바 아이콘은 밝은 배경에 맞춰 어둡게 고정한다.
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Color(0x00000000),
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0x00000000),
+      systemNavigationBarIconBrightness: Brightness.dark,
+      systemNavigationBarContrastEnforced: false,
+    ),
+  );
+
   await Storage.init();
 
   _registerGlobals();
@@ -63,13 +83,26 @@ class LifeLegacyApp extends StatelessWidget {
         ).clamp(minScaleFactor: 1.0, maxScaleFactor: 1.3);
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(textScaler: scale),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: AppDimens.maxContent),
-              // 토스트는 라우트마다 띄우지 않고 여기 한 번만 얹는다.
-              child: AppToastHost(
-                service: Get.find<ToastService>(),
-                child: child ?? const SizedBox.shrink(),
+          // 입력칸 **바깥**을 누르면 키보드를 내린다.
+          //
+          // 화면마다 붙이면 새 입력칸이 생길 때마다 빠뜨린다. 앱 최상단에
+          // 한 번만 얹어서 모든 라우트가 자동으로 얻게 했다.
+          //
+          // ⚠️ `translucent` 라 자식이 안 잡은 탭만 여기로 온다. 버튼·입력칸은
+          //    자기 제스처가 먼저 이기므로 영향받지 않는다.
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: AppDimens.maxContent,
+                ),
+                // 토스트는 라우트마다 띄우지 않고 여기 한 번만 얹는다.
+                child: AppToastHost(
+                  service: Get.find<ToastService>(),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
           ),

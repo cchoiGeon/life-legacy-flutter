@@ -64,10 +64,15 @@ class AppTopBar extends StatelessWidget {
                       title!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      // 시안 341:649 — Medium 16. 제목이 굵으면 그 아래
+                      // 명조 화면 제목과 경쟁한다.
                       style: AppTypography.weight(
-                        AppTypography.titleSection,
-                        AppTypography.bold,
-                      ).copyWith(color: AppColors.textPrimary),
+                        AppTypography.bodyBase,
+                        AppTypography.medium,
+                      ).copyWith(
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.1,
+                      ),
                     ),
                   ),
                 ),
@@ -118,13 +123,16 @@ class _BackButton extends StatelessWidget {
   }
 }
 
-/// 왼쪽 꺾쇠. 시안의 '‹' 글리프를 그대로 쓰면 폰트마다 두께가 달라져서
-/// 직접 그린다.
+/// 왼쪽 **화살표**. 시안 342:679가 꺾쇠(`‹`)가 아니라 `←`로 바뀌었다 —
+/// 꺾쇠는 목록 안의 "더 보기"에도 쓰여서 뒤로가기와 헷갈렸다.
+///
+/// 글리프를 그대로 쓰지 않고 직접 그리는 이유는 그대로다: 폰트마다 `←`의
+/// 두께와 세로 위치가 달라 상단 바에서 흔들린다.
 class _ChevronPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()
-      ..color = AppColors.textStrong
+      ..color = AppColors.textPrimary
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round
@@ -132,13 +140,15 @@ class _ChevronPainter extends CustomPainter {
 
     final cx = size.width / 2;
     final cy = size.height / 2;
-    canvas.drawPath(
-      Path()
-        ..moveTo(cx + 4, cy - 8)
-        ..lineTo(cx - 4, cy)
-        ..lineTo(cx + 4, cy + 8),
-      p,
-    );
+    canvas
+      ..drawLine(Offset(cx - 9, cy), Offset(cx + 9, cy), p)
+      ..drawPath(
+        Path()
+          ..moveTo(cx - 2, cy - 7)
+          ..lineTo(cx - 9, cy)
+          ..lineTo(cx - 2, cy + 7),
+        p,
+      );
   }
 
   @override
@@ -181,7 +191,8 @@ class AppTextAction extends StatelessWidget {
             label,
             style:
                 AppTypography.weight(
-                  AppTypography.bodySm,
+                  // 시안의 상단 텍스트 액션(`보내기`·`모두 읽음`)은 15다.
+                  AppTypography.bodyChat,
                   emphasized ? AppTypography.bold : AppTypography.medium,
                 ).copyWith(
                   color: !enabled

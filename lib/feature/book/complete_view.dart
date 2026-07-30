@@ -5,86 +5,76 @@ import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
-import 'package:life_legacy/core/route/app_pages.dart';
+import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/feature/shared/tab_scaffold.dart';
 
 import 'preview_controller.dart';
 
-/// 21 완성 — Figma 154:325.
+/// E3 자서전 완성 — Figma 352:949.
+///
+/// 모든 장을 끝냈을 때 자서전 탭이 보여주는 화면. 탭바가 남아 있어
+/// 여기서 다른 탭으로 나갈 수 있다(시안 352:962).
 class BookCompleteView extends GetView<BookPreviewController> {
   const BookCompleteView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.cream,
+    return TabScaffold(
+      tab: AppTab.book,
       body: SafeArea(
+        bottom: false,
         child: Obx(() {
           if (controller.isLoading.value) {
             return const Center(child: AppSpinner());
           }
           final book = controller.book.value;
+          if (book == null) return const SizedBox.shrink();
+
           return SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
+            padding: const EdgeInsets.fromLTRB(
+              AppDimens.gutter,
+              60,
+              AppDimens.gutter,
+              AppDimens.space6,
+            ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: AppDimens.space10),
-                Text(
-                  '✦',
-                  style: AppTypography.weight(
-                    AppTypography.headingXl,
-                    AppTypography.bold,
-                  ).copyWith(color: AppColors.warm, fontSize: 28),
+                const Text(
+                  '자서전이 완성됐어요',
+                  style: AppTypography.titleScreen,
                 ),
-                const SizedBox(height: AppDimens.space4),
+                const SizedBox(height: 8),
                 Text(
-                  '축하드려요!\n한 권의 책이 완성됐어요',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.titlePage,
+                  book.completionCaption,
+                  // 시안 352:951 — 여기는 한 줄 높이가 24다.
+                  style: AppTypography.subtitle.copyWith(height: 24 / 16),
                 ),
-                const SizedBox(height: AppDimens.space3),
-                Text(
-                  book == null
-                      ? ''
-                      : '총 ${book.chapterCount}장 · ${book.pageCount}쪽 · ${book.title}',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.bodySm.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: AppDimens.space8),
-                _Cover(title: book?.title ?? ''),
-                const SizedBox(height: AppDimens.space10),
+                const SizedBox(height: 38),
+                Center(child: _Cover(book: book)),
+                const SizedBox(height: 56),
                 AppButton(
-                  label: '책 넘겨보기',
-                  size: AppButtonSize.lg,
-                  block: true,
-                  onPressed: () => Get.toNamed(AppRoutes.bookPreview),
-                ),
-                const SizedBox(height: AppDimens.space3),
-                AppButton(
-                  label: '인쇄본 신청하기',
-                  variant: AppButtonVariant.neutral,
+                  label: '종이책으로 주문하기',
                   size: AppButtonSize.lg,
                   block: true,
                   onPressed: controller.orderPrint,
                 ),
-                const SizedBox(height: AppDimens.space4),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: controller.sendToFamily,
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppDimens.space2),
-                    child: Text(
-                      '가족에게 전자책 보내기',
-                      style: AppTypography.bodySm.copyWith(
-                        color: AppColors.textSecondary,
-                        decoration: TextDecoration.underline,
-                        decorationColor: AppColors.textSecondary,
-                      ),
-                    ),
+                const SizedBox(height: 14),
+                AppButton(
+                  label: '가족에게 보내기',
+                  variant: AppButtonVariant.neutral,
+                  size: AppButtonSize.secondary,
+                  block: true,
+                  onPressed: controller.sendToFamily,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  book.summary,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.bodySm.copyWith(
+                    color: AppColors.textTertiary,
                   ),
                 ),
-                const SizedBox(height: AppDimens.space8),
               ],
             ),
           );
@@ -94,46 +84,67 @@ class BookCompleteView extends GetView<BookPreviewController> {
   }
 }
 
-/// 책 표지 — 브랜드색 사각형에 제목을 얹은 형태.
+/// 책 표지 — Figma 352:952.
+///
+/// 왼쪽 7px 띠가 책등이다. 검정 22% 를 덮어 브랜드색을 어둡게 만든다 —
+/// 별도 색 토큰을 두지 않은 건 표지 색이 바뀌어도 따라오게 하려는 것이다.
 class _Cover extends StatelessWidget {
-  const _Cover({required this.title});
+  const _Cover({required this.book});
 
-  final String title;
+  final Book book;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 188,
-      height: 244,
-      alignment: Alignment.center,
-      padding: const EdgeInsets.all(AppDimens.space5),
+      width: 196,
+      height: 274,
       decoration: BoxDecoration(
         color: AppColors.brand,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          bottomLeft: Radius.circular(4),
-          topRight: Radius.circular(AppDimens.radiusBase),
-          bottomRight: Radius.circular(AppDimens.radiusBase),
-        ),
+        borderRadius: BorderRadius.circular(4),
         boxShadow: AppShadows.lg,
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
         children: [
-          Text(
-            '자 서 전',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.brandFg.withValues(alpha: 0.7),
-              letterSpacing: 3,
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 7,
+            child: ColoredBox(
+              color: AppColors.foreground.withValues(alpha: 0.22),
             ),
           ),
-          const SizedBox(height: AppDimens.space5),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: AppTypography.bookTitle.copyWith(
-              color: AppColors.brandFg,
-              fontSize: 20,
+          Positioned(
+            left: 24,
+            right: 16,
+            top: 92,
+            child: Column(
+              children: [
+                Text(
+                  book.title,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.bookTitle.copyWith(
+                    fontSize: 21,
+                    height: 1.3,
+                    letterSpacing: -0.2,
+                    color: AppColors.brandFg,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Container(width: 36, height: 1, color: AppColors.btnMuted),
+                const SizedBox(height: 19),
+                Text(
+                  book.authorName,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.bookBody.copyWith(
+                    fontSize: 14,
+                    height: 1.5,
+                    letterSpacing: 0.4,
+                    color: AppColors.btnMuted,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

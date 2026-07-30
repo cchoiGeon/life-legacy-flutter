@@ -36,6 +36,10 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+  # 인증번호 3분 타이머를 실제로 3분 기다리지 않고 검증한다
+  # (test/login_controller_test.dart).
+  fake_async: ^1.3.1
+
 flutter:
   uses-material-design: true
 
@@ -54,11 +58,14 @@ flutter:
       fonts:
         - asset: assets/fonts/NotoSansKR-Variable.ttf
 
-    # 자서전 본문 전용 명조 — 시안의 "Book serif".
-    # Figma에는 Noto Serif KR로 표시되지만 실제 지정은 나눔명조다.
-    - family: NanumMyeongjo
+    # 명조 — 화면 제목 · 질문 · 책 본문.
+    #
+    # ⚠️ 시안(340:592)이 지정한 **Noto Serif KR** 그대로다. 예전에는 나눔명조로
+    #    대체했는데 자형이 확연히 달라 시안과 겹쳐 보면 어긋난다.
+    #
+    # ⚠️ 이것도 가변 폰트 하나이고 **wght 기본값이 200(ExtraLight)** 이다.
+    #    `fontWeight`만 주면 얇게 나오므로 `AppTypography`가 `fontVariations`로
+    #    축을 직접 지정한다 — NotoSansKR과 같은 이유, 더 심한 증상.
+    - family: NotoSerifKR
       fonts:
-        - asset: assets/fonts/NanumMyeongjo-Regular.ttf
-          weight: 400
-        - asset: assets/fonts/NanumMyeongjo-Bold.ttf
-          weight: 700
+        - asset: assets/fonts/NotoSerifKR-Variable.ttf

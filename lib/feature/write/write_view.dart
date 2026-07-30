@@ -5,7 +5,6 @@ import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
-import 'package:life_legacy/feature/shared/tab_scaffold.dart';
 
 import 'stages/ask_stage.dart';
 import 'stages/confirm_stage.dart';
@@ -13,10 +12,11 @@ import 'stages/keyboard_stage.dart';
 import 'stages/recording_stage.dart';
 import 'write_controller.dart';
 
-/// 13~16 작성 — Figma 148:170 ~ 151:221.
+/// D1~D5 작성 — Figma 341:646 · 350:875 · 351:874 · 351:964 · 354:1035.
 ///
-/// 단계에 따라 몸통이 바뀐다. 탭바는 13번(대기)에서만 보인다 — 나머지
-/// 단계는 답변 중이라 탭을 옮길 자리가 아니다(시안도 그렇게 그려져 있다).
+/// ⚠️ **탭바가 없다.** 작성은 탭 중 하나지만 시안의 다섯 프레임 어디에도
+///    탭바가 그려져 있지 않다. 말하거나 적는 동안 다른 탭이 눈에 들어오면
+///    하던 이야기를 놓치기 때문이다. 나가는 길은 상단 `←` 하나다.
 class WriteView extends GetView<WriteController> {
   const WriteView({super.key});
 
@@ -24,35 +24,31 @@ class WriteView extends GetView<WriteController> {
   Widget build(BuildContext context) {
     return Obx(() {
       if (controller.isLoading.value) {
-        return const TabScaffold(
-          tab: AppTab.write,
+        return const Scaffold(
+          backgroundColor: AppColors.background,
           body: Center(child: AppSpinner()),
         );
       }
 
       if (controller.isAllDone.value) {
-        return const TabScaffold(tab: AppTab.write, body: _AllDone());
+        return const Scaffold(
+          backgroundColor: AppColors.background,
+          body: _AllDone(),
+        );
       }
 
-      return switch (controller.stage.value) {
-        WriteStage.ask => const TabScaffold(
-          tab: AppTab.write,
-          body: AskStage(),
-        ),
-        WriteStage.recording => const Scaffold(
-          backgroundColor: AppColors.background,
-          body: RecordingStage(),
-        ),
-        WriteStage.keyboard => const Scaffold(
-          backgroundColor: AppColors.background,
-          resizeToAvoidBottomInset: true,
-          body: KeyboardStage(),
-        ),
-        WriteStage.confirm => const Scaffold(
-          backgroundColor: AppColors.background,
-          body: ConfirmStage(),
-        ),
-      };
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        // 글자 입력 단계에서만 키보드가 올라온다.
+        resizeToAvoidBottomInset:
+            controller.stage.value == WriteStage.keyboard,
+        body: switch (controller.stage.value) {
+          WriteStage.ask => const AskStage(),
+          WriteStage.recording => const RecordingStage(),
+          WriteStage.keyboard => const KeyboardStage(),
+          WriteStage.confirm => const ConfirmStage(),
+        },
+      );
     });
   }
 }
@@ -63,34 +59,40 @@ class _AllDone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.check_circle_outline_rounded,
-              size: 64,
-              color: AppColors.accentSoft,
-            ),
-            const SizedBox(height: AppDimens.space5),
-            Text(
-              '모든 질문에 답하셨어요',
-              style: AppTypography.weight(
-                AppTypography.headingXl,
-                AppTypography.bold,
+    return SafeArea(
+      child: Column(
+        children: [
+          const AppTopBar(),
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppDimens.gutter,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 64,
+                      color: AppColors.accentSoft,
+                    ),
+                    const SizedBox(height: AppDimens.space5),
+                    const Text(
+                      '모든 질문에 답하셨어요',
+                      style: AppTypography.titleSerifSm,
+                    ),
+                    const SizedBox(height: AppDimens.space3),
+                    Text(
+                      '이제 완성된 책을 확인해 보세요',
+                      style: AppTypography.subtitle,
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: AppDimens.space3),
-            Text(
-              '이제 완성된 책을 확인해 보세요',
-              style: AppTypography.bodyBase.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

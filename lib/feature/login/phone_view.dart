@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import 'package:life_legacy/common/constants/colors.dart';
@@ -9,8 +8,11 @@ import 'package:life_legacy/common/widgets/ds/ds.dart';
 
 import 'login_controller.dart';
 
-/// 03·04 전화번호 입력 — Figma 142:24 · 142:49.
+/// A3·A4 전화번호 입력 — Figma 342:678 · 342:725.
 /// 두 프레임은 같은 화면의 입력 전/후 상태다.
+///
+/// ⚠️ 입력칸은 **읽기 전용**이다. 숫자는 화면 아래 [AppNumberPad]로만 들어온다.
+///    `readOnly`를 빼면 칸을 눌렀을 때 OS 키보드가 올라와 키패드와 겹친다.
 class PhoneView extends GetView<LoginController> {
   const PhoneView({super.key});
 
@@ -23,88 +25,55 @@ class PhoneView extends GetView<LoginController> {
           const AppTopBar(),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
+              padding: const EdgeInsets.fromLTRB(
+                AppDimens.gutter,
+                AppDimens.space6,
+                AppDimens.gutter,
+                AppDimens.space6,
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: AppDimens.space5),
-                  Text('전화번호로\n간단히 시작해요', style: AppTypography.titlePage),
-                  const SizedBox(height: AppDimens.space3),
-                  Text(
-                    '비밀번호는 필요 없어요.\n문자로 숫자만 입력하시면 돼요.',
-                    style: AppTypography.bodySm.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
+                  const AppScreenHeading(
+                    title: '전화번호를\n알려주세요',
+                    subtitle: '인증 문자를 보내드려요',
                   ),
-                  const SizedBox(height: AppDimens.space8),
+                  const SizedBox(height: 33),
                   AppField(
                     controller: controller.phoneController,
                     hint: '010 - 0000 - 0000',
-                    autofocus: true,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(11),
-                      _PhoneFormatter(),
-                    ],
+                    height: AppDimens.fieldHeight,
+                    readOnly: true,
+                    showCursor: false,
                     textStyle: AppTypography.weight(
-                      AppTypography.headingXl,
+                      AppTypography.titlePage,
                       AppTypography.medium,
+                    ).copyWith(fontSize: 24, height: 1.2),
+                  ),
+                  const SizedBox(height: AppDimens.space6),
+                  Obx(
+                    () => AppButton(
+                      label: '인증번호 받기',
+                      size: AppButtonSize.lg,
+                      block: true,
+                      enabled: controller.canRequestCode,
+                      loading: controller.isSubmitting.value,
+                      onPressed: controller.requestCode,
                     ),
-                    onChanged: controller.onPhoneChanged,
                   ),
                 ],
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppDimens.gutter,
-              0,
-              AppDimens.gutter,
-              AppDimens.space5,
-            ),
-            // phone을 읽어야 입력할 때마다 버튼 활성 상태가 갱신된다.
-            child: Obx(
-              () => AppButton(
-                label: '인증번호 받기',
-                size: AppButtonSize.lg,
-                block: true,
-                enabled:
-                    controller.phone.value.isNotEmpty &&
-                    controller.canRequestCode,
-                loading: controller.isSubmitting.value,
-                onPressed: controller.requestCode,
-              ),
-            ),
+          // ⚠️ SafeArea로 감싸지 않는다. 시안 342:686의 키패드는 y580에서
+          //    **화면 바닥(844)까지** 꽉 찬다. 아래 인셋을 빼면 판 전체가
+          //    25px쯤 떠서 그 위 CTA·입력칸까지 다 어긋난다.
+          AppNumberPad(
+            onDigit: controller.onPhoneDigit,
+            onBackspace: controller.onPhoneBackspace,
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 입력하는 동안 "010 1234 5678"로 띄어 준다.
-///
-/// 하이픈이 아니라 공백을 쓰는 건 시안(04번)이 그렇게 보여주기 때문이다.
-class _PhoneFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
-    final buffer = StringBuffer();
-    for (var i = 0; i < digits.length; i++) {
-      if (i == 3 || i == 7) buffer.write(' ');
-      buffer.write(digits[i]);
-    }
-    final text = buffer.toString();
-    return TextEditingValue(
-      text: text,
-      // 커서는 항상 끝으로 보낸다. 중간 수정은 드물고, 공백이 끼면서
-      // 오프셋을 정확히 계산하기가 번거롭다.
-      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 }

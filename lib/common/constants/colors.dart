@@ -20,7 +20,10 @@ abstract final class AppColors {
   /// 비활성 버튼 배경
   static const btnMuted = Color(0xFFD4C4B0);
 
-  /// 시스템(AI) 채팅 버블 배경
+  /// 시스템(AI) 채팅 버블 배경.
+  ///
+  /// 시안(340:592)에서 `--surface-soft`로 승격됐다 — 진행률 트랙 · 숫자 키패드
+  /// 배경 · 비활성 CTA가 **모두** 이 값이다. 그 용도로는 [surfaceSoft]를 쓴다.
   static const bubbleSys = Color(0xFFF0EBE3);
 
   /// 카드·섹션 크림 배경
@@ -60,7 +63,11 @@ abstract final class AppColors {
   /// 눌림 상태. 시안에 별도 값이 없어 브랜드색을 어둡게 파생시켰다.
   static const primaryPress = Color(0xFF574336);
   static const onPrimary = brandFg;
-  static const primaryDisabled = btnMuted;
+
+  /// 비활성 CTA — 시안 343:716(`btn/확인` 비활성)은 배경 `surface-soft`에
+  /// 글자 `text-tertiary`다. 예전의 모래색(`btnMuted`)이 아니다.
+  static const primaryDisabled = bubbleSys;
+  static const onPrimaryDisabled = stone500;
 
   // Text
   static const textPrimary = foreground;
@@ -69,7 +76,11 @@ abstract final class AppColors {
   /// 살짝 부드러운 stone-700을 쓴다.
   static const textStrong = stone700;
   static const textSecondary = stone600;
-  static const textTertiary = mutedFg;
+
+  /// ⚠️ 시안(340:592)의 `--text-tertiary`는 stone-500(#78716c)이다.
+  ///    예전 값(#737373 · `mutedFg`)은 회색 계열이라 웜브라운 배경 위에서
+  ///    살짝 푸르게 떴다. 캡션·타이머·비활성 글자가 모두 이 값을 쓴다.
+  static const textTertiary = stone500;
   static const textDisabled = stone400;
   static const textOnPrimary = brandFg;
 
@@ -83,13 +94,24 @@ abstract final class AppColors {
   static const surfaceWarm = cream;
   static const surfaceCard = background;
   static const surfaceSunken = stone100;
+
+  /// 시안의 `--surface-soft` — 진행률 트랙 · 숫자 키패드 판 · 비활성 CTA.
+  static const surfaceSoft = bubbleSys;
+
   static const overlayScrim = Color(0x66262626);
 
   // Border
   static const borderSubtle = stone100;
   static const borderDefault = border;
+
+  /// 시안의 `--border-soft` — 입력칸 · 선택 타일 · 코드 박스의 기본 테두리.
+  static const borderSoft = stone200;
+
   static const borderStrong = stone300;
   static const borderFocus = brand;
+
+  /// 고른 선택지 · 커서가 놓인 코드 박스
+  static const borderSelected = brand;
 
   // Chat
   static const chatAiBg = bubbleSys;

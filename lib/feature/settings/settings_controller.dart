@@ -49,14 +49,16 @@ class SettingsController extends GetxController {
     }
   }
 
-  /// 아래 항목들은 시안에 대응 화면이 없다. 자리만 만들어 뒀다.
-  void openShippingAddress() => _toast.show('인쇄본 배송지는 준비 중이에요');
+  /// F4 인쇄본 배송지 수정. 돌아오면 프로필 카드가 바뀔 수 있어 다시 읽는다.
+  void openShippingAddress() => Get.toNamed(AppRoutes.settingsAddress);
 
+  /// F3 내 정보 (보기 전용)
+  void openProfile() => Get.toNamed(AppRoutes.settingsProfile);
+
+  /// 약관 문서는 시안에 화면이 없다. 자리만 만들어 뒀다.
   void openTerms() => _toast.show('이용약관은 준비 중이에요');
 
   void openPrivacy() => _toast.show('개인정보 처리방침은 준비 중이에요');
-
-  void openProfile() => _toast.show('프로필 수정은 준비 중이에요');
 
   Future<void> logout() async {
     await _auth.logout();

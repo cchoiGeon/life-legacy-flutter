@@ -8,10 +8,10 @@ import 'package:life_legacy/common/widgets/ds/ds.dart';
 
 import 'notifications_controller.dart';
 
-/// 13 알림 센터 — Figma 169:553.
+/// C4 알림 센터 — Figma 349:921.
 ///
-/// 참고 프레임은 IAM 팔레트로 그려져 있어 구조만 가져오고 색은 웜 브라운
-/// 토큰으로 옮겼다(홈 드롭다운과 같은 규칙).
+/// 홈 드롭다운의 "알림 모두 보기"에서 들어온다. 드롭다운이 3건까지만
+/// 보여주므로 나머지는 여기서 본다.
 class NotificationsView extends GetView<NotificationsController> {
   const NotificationsView({super.key});
 
@@ -23,16 +23,14 @@ class NotificationsView extends GetView<NotificationsController> {
         children: [
           AppTopBar(
             title: '알림',
-            centerTitle: false,
             trailing: Obx(
-              () => AppNotificationBell(
-                unreadCount: controller.unreadCount,
-                // 이미 알림 화면이라 벨은 목록을 새로고침하는 역할만 한다.
-                onTap: controller.load,
+              () => AppTextAction(
+                label: '모두 읽음',
+                enabled: controller.unreadCount > 0,
+                onTap: controller.markAllRead,
               ),
             ),
           ),
-          _SubHeader(),
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value) {
@@ -42,8 +40,15 @@ class NotificationsView extends GetView<NotificationsController> {
               return RefreshIndicator(
                 onRefresh: controller.load,
                 color: AppColors.brand,
-                child: ListView.builder(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppDimens.gutter,
+                    AppDimens.space4,
+                    AppDimens.gutter,
+                    AppDimens.space4,
+                  ),
                   itemCount: controller.items.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (_, i) {
                     final n = controller.items[i];
                     return AppNotificationTile(
@@ -55,54 +60,25 @@ class NotificationsView extends GetView<NotificationsController> {
               );
             }),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// "안읽은 알림 N개" + "모두 읽음"
-class _SubHeader extends GetView<NotificationsController> {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.surfacePage,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Obx(
-            () => Text(
-              controller.unreadCount == 0
-                  ? '모두 읽었어요'
-                  : '안읽은 알림 ${controller.unreadCount}개',
+          // 시안 350:874 — 목록 아래 고정 안내.
+          //
+          // ⚠️ 30일 보관은 **서버 정책을 적어 둔 문구**다. 앱이 지우지 않는다.
+          //    보관 기간이 바뀌면 이 문장도 같이 고쳐야 한다.
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppDimens.gutter,
+              0,
+              AppDimens.gutter,
+              AppInsets.bottom(context, AppDimens.space5),
+            ),
+            child: Text(
+              '30일이 지난 알림은 자동으로 사라져요',
+              textAlign: TextAlign.center,
               style: AppTypography.caption.copyWith(
                 color: AppColors.textTertiary,
               ),
             ),
           ),
-          const Spacer(),
-          Obx(() {
-            final enabled = controller.unreadCount > 0;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: enabled ? controller.markAllRead : null,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  '모두 읽음',
-                  style:
-                      AppTypography.weight(
-                        AppTypography.bodySm,
-                        AppTypography.medium,
-                      ).copyWith(
-                        color: enabled
-                            ? AppColors.brand
-                            : AppColors.textDisabled,
-                      ),
-                ),
-              ),
-            );
-          }),
         ],
       ),
     );

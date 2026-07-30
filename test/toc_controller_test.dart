@@ -80,6 +80,7 @@ void main() {
 
     expect(chapters, isNotEmpty);
     expect(chapters.first.order, 1);
-    expect(chapters.map((c) => c.title), contains('안동에서의 어린 시절'));
+    // 시안 B7·C1·E1의 장 제목. 예전에는 "안동에서의 어린 시절"이었다.
+    expect(chapters.map((c) => c.title), contains('어린 시절'));
   }, timeout: const Timeout(Duration(seconds: 15)));
 }
