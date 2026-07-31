@@ -4,6 +4,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AppController } from './app.controller';
+import { AuthModule } from './auth/auth.module';
+import { CatalogModule } from './catalog/catalog.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -43,6 +46,10 @@ import { AppController } from './app.controller';
         },
       }),
     }),
+
+    CatalogModule,
+    UsersModule,
+    AuthModule,
   ],
   controllers: [AppController],
 })

@@ -1,7 +1,7 @@
 {
   "name": "lifelegacy-server",
   "version": "0.0.1",
-  "description": "LifeLegacy 앱 백엔드",
+  "description": "LifeLegacy \uc571 \ubc31\uc5d4\ub4dc",
   "author": "",
   "private": true,
   "license": "UNLICENSED",
@@ -72,9 +72,9 @@
       "ts"
     ],
     "rootDir": "src",
-    "testRegex": ".*\\\\.spec\\\\.ts$",
+    "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": "ts-jest"
     },
     "moduleNameMapper": {
       "^src/(.*)$": "<rootDir>/$1"
