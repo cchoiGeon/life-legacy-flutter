@@ -1,4 +1,11 @@
-import { Column, Entity, JoinColumn, ManyToOne, OneToOne, PrimaryColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToOne,
+  PrimaryColumn,
+} from 'typeorm';
 
 import { AppUserModel } from 'src/users/entities/app-user.entity';
 import { CaseDefinitionModel } from './case-definition.entity';
@@ -18,7 +25,10 @@ export class UserProfileModel {
   @JoinColumn({ name: 'user_id' })
   user: AppUserModel;
 
-  @ManyToOne(() => CaseDefinitionModel, { onDelete: 'RESTRICT', nullable: false })
+  @ManyToOne(() => CaseDefinitionModel, {
+    onDelete: 'RESTRICT',
+    nullable: false,
+  })
   @JoinColumn({ name: 'case_id' })
   case: CaseDefinitionModel;
 

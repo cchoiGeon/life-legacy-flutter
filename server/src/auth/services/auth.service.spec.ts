@@ -11,13 +11,13 @@ function buildService() {
     findById: jest.fn(),
     findByPhone: jest.fn(),
     create: jest.fn(),
-    save: jest.fn().mockImplementation(async (u: unknown) => u),
+    save: jest.fn().mockImplementation((u: unknown) => Promise.resolve(u)),
   };
   const phoneVerificationRepository = {
     findLatestPending: jest.fn(),
     countIssuedSince: jest.fn().mockResolvedValue(0),
     create: jest.fn(),
-    save: jest.fn().mockImplementation(async (v: unknown) => v),
+    save: jest.fn().mockImplementation((v: unknown) => Promise.resolve(v)),
   };
   const refreshTokenRepository = {
     findLiveByHash: jest.fn(),
@@ -34,9 +34,14 @@ function buildService() {
   const jwtService = {
     signAsync: jest
       .fn()
-      .mockImplementation(async (payload: object) => JSON.stringify(payload)),
+      .mockImplementation((payload: object) =>
+        Promise.resolve(JSON.stringify(payload)),
+      ),
   };
-  const configService = { getOrThrow: jest.fn().mockReturnValue('secret'), get: jest.fn() };
+  const configService = {
+    getOrThrow: jest.fn().mockReturnValue('secret'),
+    get: jest.fn(),
+  };
 
   const service = new AuthService(
     appUserRepository as never,
@@ -85,7 +90,9 @@ describe('AuthService', () => {
     const verification = pendingVerification({
       attemptCount: VERIFICATION_MAX_ATTEMPTS - 1,
     });
-    phoneVerificationRepository.findLatestPending.mockResolvedValue(verification);
+    phoneVerificationRepository.findLatestPending.mockResolvedValue(
+      verification,
+    );
 
     await expect(
       service.verifyCode('01012345678', '000000'),

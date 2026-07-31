@@ -36,7 +36,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const { status, code, message } = this.normalize(exception);
 
     const line = `${request.method} ${request.url} → ${status} | ${code} | ${message}`;
-    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+    if (status >= Number(HttpStatus.INTERNAL_SERVER_ERROR)) {
       this.logger.error(line, (exception as Error)?.stack);
     } else {
       this.logger.warn(line);
@@ -66,7 +66,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     // ValidationPipe는 message를 배열로 준다. 앱은 문장 하나만 띄우므로
     // 개발자용 상세를 그대로 내보내지 않고 공통 문구로 바꾼다.
-    if (status === HttpStatus.BAD_REQUEST) {
+    if (status === Number(HttpStatus.BAD_REQUEST)) {
       this.logger.warn(`검증 실패 상세: ${JSON.stringify(body)}`);
       return { status, ...trim(ERROR_CODE.COMMON.INVALID_REQUEST) };
     }

@@ -26,6 +26,12 @@ export default tseslint.config(
   },
   {
     rules: {
+      // 아직 안 쓰는 인자는 _ 접두사로 의도를 드러낸다 — 스텁 구현이
+      // 인터페이스만 맞춰 둔 자리가 그렇다.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',

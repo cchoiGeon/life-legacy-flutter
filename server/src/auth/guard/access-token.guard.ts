@@ -20,16 +20,21 @@ export class AccessTokenGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request & { userId?: string }>();
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { userId?: string }>();
     const token = extractBearer(request.headers.authorization);
     if (!token) {
       throw new ApiException(ERROR_CODE.AUTH.UNAUTHORIZED);
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync<{ sub: string }>(token, {
-        secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
-      });
+      const payload = await this.jwtService.verifyAsync<{ sub: string }>(
+        token,
+        {
+          secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        },
+      );
       request.userId = payload.sub;
     } catch (error) {
       const expired = (error as Error)?.name === 'TokenExpiredError';

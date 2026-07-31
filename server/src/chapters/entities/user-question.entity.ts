@@ -17,7 +17,10 @@ export class UserQuestionModel extends BaseModel {
   @JoinColumn({ name: 'user_chapter_id' })
   userChapter: UserChapterModel;
 
-  @ManyToOne(() => QuestionTemplateModel, { onDelete: 'SET NULL', nullable: true })
+  @ManyToOne(() => QuestionTemplateModel, {
+    onDelete: 'SET NULL',
+    nullable: true,
+  })
   @JoinColumn({ name: 'question_template_id' })
   questionTemplate: QuestionTemplateModel | null;
 
@@ -32,7 +35,11 @@ export class UserQuestionModel extends BaseModel {
   @Column({ name: 'is_edited', type: 'boolean', default: false })
   isEdited: boolean;
 
-  @Column({ type: 'enum', enum: QuestionStatus, default: QuestionStatus.PENDING })
+  @Column({
+    type: 'enum',
+    enum: QuestionStatus,
+    default: QuestionStatus.PENDING,
+  })
   status: QuestionStatus;
 
   @Column({ name: 'answered_at', type: 'timestamptz', nullable: true })

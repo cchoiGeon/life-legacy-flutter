@@ -4,7 +4,14 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AppController } from './app.controller';
+import { AnswersModule } from './answers/answers.module';
 import { AuthModule } from './auth/auth.module';
+import { BookModule } from './book/book.module';
+import { ChaptersModule } from './chapters/chapters.module';
+import { HomeModule } from './home/home.module';
+import { IntroModule } from './intro/intro.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { SettingsModule } from './settings/settings.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { UsersModule } from './users/users.module';
 
@@ -50,6 +57,13 @@ import { UsersModule } from './users/users.module';
     CatalogModule,
     UsersModule,
     AuthModule,
+    IntroModule,
+    ChaptersModule,
+    AnswersModule,
+    HomeModule,
+    BookModule,
+    NotificationsModule,
+    SettingsModule,
   ],
   controllers: [AppController],
 })

@@ -36,7 +36,12 @@ export class AnswerModel extends BaseModel {
   @Column({ name: 'polished_text', type: 'text', nullable: true })
   polishedText: string | null;
 
-  @Column({ name: 'polish_status', type: 'enum', enum: PolishStatus, default: PolishStatus.OK })
+  @Column({
+    name: 'polish_status',
+    type: 'enum',
+    enum: PolishStatus,
+    default: PolishStatus.OK,
+  })
   polishStatus: PolishStatus;
 
   @Column({ name: 'polish_attempts', type: 'smallint', default: 0 })

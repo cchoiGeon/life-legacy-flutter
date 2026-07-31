@@ -10,7 +10,10 @@ import { ChapterTemplateModel } from './chapter-template.entity';
 @Entity('question_template')
 @Unique('ux_question_template_order', ['chapterTemplate', 'sortOrder'])
 export class QuestionTemplateModel extends BaseModel {
-  @ManyToOne(() => ChapterTemplateModel, { onDelete: 'CASCADE', nullable: false })
+  @ManyToOne(() => ChapterTemplateModel, {
+    onDelete: 'CASCADE',
+    nullable: false,
+  })
   @JoinColumn({ name: 'chapter_template_id' })
   chapterTemplate: ChapterTemplateModel;
 

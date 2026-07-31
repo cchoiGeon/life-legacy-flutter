@@ -24,7 +24,10 @@ export class UserChapterModel extends BaseModel {
   user: AppUserModel;
 
   /** 출처. 카탈로그에서 지워져도 남게 nullable */
-  @ManyToOne(() => ChapterTemplateModel, { onDelete: 'SET NULL', nullable: true })
+  @ManyToOne(() => ChapterTemplateModel, {
+    onDelete: 'SET NULL',
+    nullable: true,
+  })
   @JoinColumn({ name: 'chapter_template_id' })
   chapterTemplate: ChapterTemplateModel | null;
 

@@ -14,7 +14,8 @@ export class AuthSessionResponseDto {
 
   @ApiProperty({
     example: true,
-    description: '자기소개·목차 확정을 아직 안 했으면 true. 앱 분기의 유일한 근거',
+    description:
+      '자기소개·목차 확정을 아직 안 했으면 true. 앱 분기의 유일한 근거',
   })
   needs_intro: boolean;
 

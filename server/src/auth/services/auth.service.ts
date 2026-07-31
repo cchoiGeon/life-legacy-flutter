@@ -46,17 +46,19 @@ export class AuthService {
     phone: string,
   ): Promise<VerificationChallengeResponseDto> {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const issuedLastHour = await this.phoneVerificationRepository.countIssuedSince(
-      phone,
-      oneHourAgo,
-    );
+    const issuedLastHour =
+      await this.phoneVerificationRepository.countIssuedSince(
+        phone,
+        oneHourAgo,
+      );
     if (issuedLastHour >= ISSUE_LIMIT_PER_HOUR) {
       throw new ApiException(ERROR_CODE.COMMON.TOO_MANY_REQUESTS);
     }
 
     // 아직 재발송 대기 중이면 새로 만들지 않고 남은 시간만 알려 준다.
     // 여기서 새 번호를 발급하면 사용자가 방금 받은 문자가 무효가 된다.
-    const pending = await this.phoneVerificationRepository.findLatestPending(phone);
+    const pending =
+      await this.phoneVerificationRepository.findLatestPending(phone);
     const now = new Date();
     if (pending && pending.resendAvailableAt > now && pending.expiresAt > now) {
       return {
@@ -89,7 +91,10 @@ export class AuthService {
    * api-spec §1.2 — 가입과 로그인을 구분하지 않는다.
    * 없는 번호면 그 자리에서 계정을 만들고 needs_intro: true로 돌려준다.
    */
-  async verifyCode(phone: string, code: string): Promise<AuthSessionResponseDto> {
+  async verifyCode(
+    phone: string,
+    code: string,
+  ): Promise<AuthSessionResponseDto> {
     const verification =
       await this.phoneVerificationRepository.findLatestPending(phone);
     if (!verification) {
@@ -127,7 +132,11 @@ export class AuthService {
    * 카카오 SDK가 아직 붙지 않아 **스텁**이다 — 토큰을 검증하지 않고 그
    * 문자열을 provider_user_id 삼아 계정을 찾거나 만든다.
    */
-  async loginWithKakao(kakaoAccessToken: string): Promise<AuthSessionResponseDto> {
+  async loginWithKakao(
+    // 스텁이라 토큰을 검증하지 않는다. 제공자가 붙으면 이 값으로 카카오에
+    // 사용자 정보를 물어본다.
+    _kakaoAccessToken: string,
+  ): Promise<AuthSessionResponseDto> {
     const provider = this.configService.get<string>('KAKAO_PROVIDER', 'stub');
     if (provider !== 'stub') {
       throw new Error('카카오 SDK가 아직 연결되지 않았습니다');

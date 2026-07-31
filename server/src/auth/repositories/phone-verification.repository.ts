@@ -12,7 +12,9 @@ export class PhoneVerificationRepository {
   ) {}
 
   /** 가장 최근에 발급한, 아직 쓰지 않은 인증번호 */
-  async findLatestPending(phone: string): Promise<PhoneVerificationModel | null> {
+  async findLatestPending(
+    phone: string,
+  ): Promise<PhoneVerificationModel | null> {
     return await this.repository.findOne({
       where: { phone, consumedAt: IsNull() },
       order: { createdAt: 'DESC' },

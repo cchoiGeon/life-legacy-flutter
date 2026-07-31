@@ -25,10 +25,10 @@ export class SmsService {
     return this.configService.get<string>('STUB_VERIFICATION_CODE', '482915');
   }
 
-  async sendVerificationCode(phone: string, code: string): Promise<void> {
+  sendVerificationCode(phone: string, code: string): Promise<void> {
     if (this.isStub) {
       this.logger.log(`[stub] ${phone} 인증번호 ${code}`);
-      return;
+      return Promise.resolve();
     }
 
     throw new Error('SMS 공급사가 아직 연결되지 않았습니다');

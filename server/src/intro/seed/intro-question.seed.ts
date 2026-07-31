@@ -35,7 +35,10 @@ export const INTRO_QUESTION_SEED: IntroQuestionSeed[] = [
     subtitle: '책에서 부르는 말을 정할 때 써요',
     hint: null,
     axis: ConditionAxis.ALWAYS,
-    choices: [['여성', null], ['남성', null]],
+    choices: [
+      ['여성', null],
+      ['남성', null],
+    ],
   },
   {
     code: 'i3',
@@ -43,7 +46,10 @@ export const INTRO_QUESTION_SEED: IntroQuestionSeed[] = [
     subtitle: '가족 이야기를 여쭤볼 때 참고해요',
     hint: null,
     axis: ConditionAxis.MARRIAGE,
-    choices: [['했어요', true], ['안 했어요', false]],
+    choices: [
+      ['했어요', true],
+      ['안 했어요', false],
+    ],
   },
   {
     code: 'i4',
@@ -51,7 +57,10 @@ export const INTRO_QUESTION_SEED: IntroQuestionSeed[] = [
     subtitle: '자녀 이야기를 여쭤볼지 정해요',
     hint: null,
     axis: ConditionAxis.CHILDREN,
-    choices: [['있어요', true], ['없어요', false]],
+    choices: [
+      ['있어요', true],
+      ['없어요', false],
+    ],
   },
   {
     code: 'i5',

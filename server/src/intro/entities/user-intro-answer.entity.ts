@@ -12,7 +12,10 @@ export class UserIntroAnswerModel extends BaseModel {
   @JoinColumn({ name: 'user_id' })
   user: AppUserModel;
 
-  @ManyToOne(() => IntroQuestionModel, { onDelete: 'RESTRICT', nullable: false })
+  @ManyToOne(() => IntroQuestionModel, {
+    onDelete: 'RESTRICT',
+    nullable: false,
+  })
   @JoinColumn({ name: 'intro_question_id' })
   introQuestion: IntroQuestionModel;
 
