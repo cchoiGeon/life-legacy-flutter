@@ -75,23 +75,59 @@ class VerificationChallenge {
   };
 }
 
+/// 액세스 토큰 한 쌍. 로그인할 때도, 갱신할 때도 이 모양으로 온다.
+class AuthTokens {
+  const AuthTokens({
+    required this.accessToken,
+    required this.refreshToken,
+    this.expiresIn = const Duration(hours: 1),
+  });
+
+  /// 1시간짜리. 모든 요청의 Authorization 헤더에 실린다.
+  final String accessToken;
+
+  /// 60일짜리. 액세스 토큰이 만료됐을 때 이걸로 새로 받는다.
+  ///
+  /// 갱신할 때마다 **함께 새것으로 바뀐다**(rotation) — 한 번 쓴 리프레시
+  /// 토큰이 계속 유효하면, 흘러나갔을 때 만료를 기다리는 수밖에 없다.
+  final String refreshToken;
+
+  final Duration expiresIn;
+
+  factory AuthTokens.fromJson(Map<String, dynamic> json) => AuthTokens(
+    accessToken: json['access_token'] as String,
+    refreshToken: json['refresh_token'] as String? ?? '',
+    expiresIn: Duration(seconds: json['expires_in'] as int? ?? 3600),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'access_token': accessToken,
+    'refresh_token': refreshToken,
+    'expires_in': expiresIn.inSeconds,
+  };
+}
+
 /// 로그인 결과 — 토큰과 사용자, 그리고 다음에 가야 할 화면 정보.
 class AuthSession {
   const AuthSession({
-    required this.accessToken,
+    required this.tokens,
     required this.user,
     required this.needsIntro,
   });
 
-  final String accessToken;
+  final AuthTokens tokens;
   final User user;
+
+  String get accessToken => tokens.accessToken;
 
   /// 자기소개(목차 생성)를 아직 안 한 신규 사용자면 true.
   /// 스플래시·로그인 후 분기의 유일한 근거다.
   final bool needsIntro;
 
   factory AuthSession.fromJson(Map<String, dynamic> json) => AuthSession(
-    accessToken: json['access_token'] as String,
+    // 토큰은 로그인 응답에 평평하게 실려 온다 — 갱신 응답과 같은 모양이라
+    // 파싱을 [AuthTokens]에 맡긴다.
+    tokens: AuthTokens.fromJson(json),
     user: User.fromJson(json['user'] as Map<String, dynamic>),
     needsIntro: json['needs_intro'] as bool? ?? false,
   );

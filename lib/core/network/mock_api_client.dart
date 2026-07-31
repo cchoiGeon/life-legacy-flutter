@@ -96,6 +96,28 @@ class MockApiClient implements ApiClient {
   /// 질문 id → 확정 전 1차 답변. 꼬리답변이 오면 합쳐서 저장하고 지운다.
   final Map<String, String> _drafts = {};
 
+  /// [me]를 TOKEN_EXPIRED로 실패시킨다 — 토큰 갱신 흐름을 확인하기 위한 스위치.
+  /// 갱신이 성공하면 저절로 꺼진다(서버가 새 토큰을 준 셈이므로).
+  bool expireAccessToken = false;
+
+  /// [refreshTokens]까지 실패시킨다. 이때는 다시 로그인하는 수밖에 없다.
+  bool expireRefreshToken = false;
+
+  /// 갱신을 몇 번 시도했는지. 테스트가 "부르지 않았다"를 확인한다.
+  int refreshCallCount = 0;
+
+  /// 발급한 토큰에 붙는 일련번호. 갱신할 때마다 값이 달라져야
+  /// "갈아 끼웠다"를 눈으로 확인할 수 있다.
+  int _tokenSerial = 0;
+
+  AuthTokens _issueTokens() {
+    _tokenSerial++;
+    return AuthTokens(
+      accessToken: 'mock-access-$_tokenSerial',
+      refreshToken: 'mock-refresh-$_tokenSerial',
+    );
+  }
+
   late List<Chapter> _chapters = _seedChapters();
   late List<Question> _questions = _seedQuestions();
 
@@ -131,7 +153,7 @@ class MockApiClient implements ApiClient {
     }
     _user = User(id: _user.id, name: _user.name, phone: phone);
     return AuthSession(
-      accessToken: 'mock-token',
+      tokens: _issueTokens(),
       user: _user,
       // 목차가 아직 확정되지 않았으면 자기소개부터 시작한다.
       needsIntro: !Storage.introDone,
@@ -141,14 +163,32 @@ class MockApiClient implements ApiClient {
   @override
   Future<AuthSession> loginWithKakao() => _delay(
     AuthSession(
-      accessToken: 'mock-token-kakao',
+      tokens: _issueTokens(),
       user: _user,
       needsIntro: !Storage.introDone,
     ),
   );
 
   @override
-  Future<User> me() => _delay(_user);
+  Future<User> me() async {
+    await Future<void>.delayed(_latency);
+    if (expireAccessToken) {
+      throw const ApiException('다시 로그인해 주세요', code: 'TOKEN_EXPIRED');
+    }
+    return _user;
+  }
+
+  @override
+  Future<AuthTokens> refreshTokens(String refreshToken) async {
+    refreshCallCount++;
+    await Future<void>.delayed(_latency);
+    if (expireRefreshToken) {
+      throw const ApiException('다시 로그인해 주세요', code: 'UNAUTHORIZED');
+    }
+    // 새 액세스 토큰을 받았으니 만료 상태도 풀린다.
+    expireAccessToken = false;
+    return _issueTokens();
+  }
 
   @override
   Future<void> logout() => _delay(null);
@@ -348,6 +388,33 @@ class MockApiClient implements ApiClient {
   String _followupTextFor(String question) =>
       '말씀해 주신 장면이 눈에 그려집니다. 그 시간이 지금까지도 마음에 남아 계신 것 같아요.\n\n'
       '그때 곁에 누가 함께 있었는지, 기억나는 대로 조금만 더 들려주시겠어요?';
+
+  @override
+  Future<Question> updateQuestionText({
+    required String questionId,
+    required String text,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final i = _questions.indexWhere((q) => q.id == questionId);
+    if (i < 0) {
+      throw const ApiException('질문을 찾지 못했어요', code: 'NOT_FOUND');
+    }
+    if (_questions[i].isAnswered) {
+      throw const ApiException(
+        '이미 답하신 질문이라 고칠 수 없어요',
+        code: 'ALREADY_ANSWERED',
+      );
+    }
+    final q = _questions[i];
+    _questions[i] = Question(
+      id: q.id,
+      chapterId: q.chapterId,
+      order: q.order,
+      text: text,
+      answer: q.answer,
+    );
+    return _questions[i];
+  }
 
   @override
   Future<Question?> skipQuestion(String questionId) async {

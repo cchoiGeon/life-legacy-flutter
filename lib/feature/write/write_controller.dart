@@ -422,6 +422,35 @@ class WriteController extends GetxController {
     }
   }
 
+  /// 질문 문구를 고칠 수 있는 상태인지.
+  ///
+  /// 꼬리질문 단계에서는 잠근다 — 그 질문에는 이미 답을 했고, 지금 문구를
+  /// 바꾸면 곧 저장될 답과 어긋난다. 고칠 수 있는 것도 원래 질문이지
+  /// AI가 만든 꼬리질문이 아니다.
+  bool get canEditQuestion =>
+      !isFollowup.value && question.value != null && !isBusy.value;
+
+  /// 질문 문구만 고친다. 답변과 진행 상태는 건드리지 않는다.
+  Future<void> editQuestionText(String text) async {
+    final q = question.value;
+    final next = text.trim();
+    if (q == null || next.isEmpty || !canEditQuestion) return;
+    if (next == q.text) return;
+
+    isBusy.value = true;
+    try {
+      question.value = await _api.updateQuestionText(
+        questionId: q.id,
+        text: next,
+      );
+      _toast.show('질문을 고쳤어요');
+    } on ApiException catch (e) {
+      _toast.showError(e);
+    } finally {
+      isBusy.value = false;
+    }
+  }
+
   /// D8에서 "다시 답해볼게요" — 같은 질문을 처음부터 받는다.
   void restartQuestion() {
     _clearInput();

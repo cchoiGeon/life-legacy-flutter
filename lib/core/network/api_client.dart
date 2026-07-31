@@ -36,6 +36,15 @@ abstract interface class ApiClient {
 
   Future<User> me();
 
+  /// 만료된 액세스 토큰을 새것으로 바꾼다.
+  ///
+  /// 리프레시 토큰도 함께 새것이 온다(rotation) — 받은 쪽은 **둘 다** 갈아
+  /// 끼워야 한다. 옛 리프레시 토큰은 서버에서 즉시 폐기된다.
+  ///
+  /// 리프레시 토큰까지 만료됐으면 `UNAUTHORIZED`로 던진다. 그때는 다시
+  /// 로그인하는 수밖에 없다.
+  Future<AuthTokens> refreshTokens(String refreshToken);
+
   Future<void> logout();
 
 
@@ -108,6 +117,21 @@ abstract interface class ApiClient {
     required String text,
     required ComposeMode inputMode,
     int? spokenSeconds,
+  });
+
+  /// 질문 **문구만** 고친다.
+  ///
+  /// 목차와 질문은 목차 확정 시점에 사용자별로 복제해 두므로, 한 사람이
+  /// 고쳐도 다른 사람의 질문은 그대로다.
+  ///
+  /// 질문을 더하거나 빼거나 순서를 바꾸는 건 1차 범위 밖이다 — 목차 구조가
+  /// 흔들리면 장 잠금과 진행률 계산이 같이 흔들린다.
+  ///
+  /// 이미 답한 질문은 `ALREADY_ANSWERED`로 거절한다. 문구를 바꾸면 저장된
+  /// 원고와 어긋나기 때문이다.
+  Future<Question> updateQuestionText({
+    required String questionId,
+    required String text,
   });
 
   /// 이 질문 건너뛰기.

@@ -6,6 +6,7 @@ import 'package:get_storage/get_storage.dart';
 /// (flutter_secure_storage 등)로 바꿀 때 이 파일만 고치면 되게 했다.
 abstract final class Storage {
   static const _keyAccessToken = 'll.access';
+  static const _keyRefreshToken = 'll.refresh';
   static const _keyIntroDone = 'll.intro_done';
 
   static late final GetStorage _box;
@@ -17,19 +18,29 @@ abstract final class Storage {
 
   static String? get accessToken => _box.read<String>(_keyAccessToken);
 
+  /// 액세스 토큰이 만료됐을 때 새로 받아오는 데 쓴다.
+  ///
+  /// ⚠️ 액세스 토큰보다 훨씬 오래(60일) 살아 있어서 새어 나가면 피해가 크다.
+  ///    GetStorage는 평문 파일이다 — flutter_secure_storage로 옮길 때
+  ///    가장 먼저 옮겨야 할 값이 이것이다.
+  static String? get refreshToken => _box.read<String>(_keyRefreshToken);
+
   /// 자기소개 → 목차 확정까지 끝냈는지.
   /// 스플래시가 로그인/자기소개/홈 중 어디로 보낼지 정하는 근거다.
   static bool get introDone => _box.read<bool>(_keyIntroDone) ?? false;
 
   static bool get isLoggedIn => accessToken != null;
 
-  static Future<void> saveSession(String accessToken) =>
-      _box.write(_keyAccessToken, accessToken);
+  static Future<void> saveTokens(String accessToken, String refreshToken) async {
+    await _box.write(_keyAccessToken, accessToken);
+    await _box.write(_keyRefreshToken, refreshToken);
+  }
 
   static Future<void> markIntroDone() => _box.write(_keyIntroDone, true);
 
   static Future<void> clearSession() async {
     await _box.remove(_keyAccessToken);
+    await _box.remove(_keyRefreshToken);
     await _box.remove(_keyIntroDone);
   }
 }

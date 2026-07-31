@@ -9,6 +9,7 @@ import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/network/mock_api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 
+import 'question_edit_sheet.dart';
 import 'write_controller.dart';
 
 /// D1~D5가 공유하는 머리 부분 — Figma 341:647.
@@ -103,6 +104,20 @@ class _MoreButton extends GetView<WriteController> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 꼬리질문 단계에서는 뺀다 — 그 질문에는 이미 답을 했고,
+            // 지금 문구를 바꾸면 곧 저장될 답과 어긋난다.
+            if (controller.canEditQuestion)
+              AppSettingRow(
+                title: '질문 문구 고치기',
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  final next = await showQuestionEditSheet(
+                    context,
+                    question: controller.displayQuestion,
+                  );
+                  if (next != null) await controller.editQuestionText(next);
+                },
+              ),
             AppSettingRow(
               title: '이 질문 건너뛰기',
               onTap: () {
