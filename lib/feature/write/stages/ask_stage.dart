@@ -42,7 +42,7 @@ class AskStage extends GetView<WriteController> {
             ),
           ),
         ),
-        // 원형 파형은 자리를 차지하지 않으므로 닿는 만큼 비워 준다.
+        // 파문은 자리를 차지하지 않으므로 닿는 만큼 비워 준다.
         const SizedBox(height: AppMicButton.bloom),
         AppMicButton(recording: false, onTap: controller.startRecording),
         const SizedBox(height: 22),

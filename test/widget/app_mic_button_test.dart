@@ -19,16 +19,16 @@ void main() {
         ),
       );
 
-  testWidgets('녹음 중이면 버튼 둘레에 원형 파형이 생긴다', (tester) async {
+  testWidgets('녹음 중이면 버튼 둘레에 파문이 번진다', (tester) async {
     await pump(tester, recording: true);
 
-    expect(find.byKey(AppMicButton.ringKey), findsOneWidget);
+    expect(find.byKey(AppMicButton.rippleKey), findsOneWidget);
   });
 
   testWidgets('대기 중에는 파형이 없다', (tester) async {
     await pump(tester, recording: false);
 
-    expect(find.byKey(AppMicButton.ringKey), findsNothing);
+    expect(find.byKey(AppMicButton.rippleKey), findsNothing);
   });
 
   testWidgets('파형은 자리를 차지하지 않는다', (tester) async {

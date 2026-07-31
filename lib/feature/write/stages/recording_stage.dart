@@ -22,69 +22,68 @@ import 'question_panel.dart';
 class RecordingStage extends GetView<WriteController> {
   const RecordingStage({super.key});
 
-  /// 실시간 받아쓰기가 차지하는 자리. 세 줄(24×3) + 안쪽 여백 + 아래 간격.
-  ///
-  /// 글자가 없을 때도 비워 둔다. 인식이 시작돼 글이 뜨는 순간 마이크가
-  /// 밀려 내려가면 안 되기 때문이다.
-  static const _transcriptSlot = 124.0;
-
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         const WriteHeader(),
         const SizedBox(height: 14), // 시안: 질문 영역이 y148에서 시작
-        // 질문판은 **남은 자리 안에서만** 큰다. 글이 그보다 길면 판 안에서
-        // 스크롤한다 — 아래 마이크 블록을 밀어내지 않는다.
         Expanded(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: Obx(
-              () => QuestionPanel(
-                question: controller.displayQuestion,
-                isFollowup: controller.isFollowup.value,
-                onReplay: controller.replayQuestion,
+          child: Stack(
+            children: [
+              // 질문판은 D1과 **똑같은 크기**다. 말하는 동안에도 질문을 보며
+              // 답해야 하므로, 받아쓴 글에 자리를 내주고 줄어들면 안 된다.
+              Align(
+                alignment: Alignment.topCenter,
+                child: Obx(
+                  () => QuestionPanel(
+                    question: controller.displayQuestion,
+                    isFollowup: controller.isFollowup.value,
+                    onReplay: controller.replayQuestion,
+                  ),
+                ),
               ),
-            ),
+              // 인식된 글자를 실시간으로 보여준다. 시니어 사용자가 "제대로
+              // 알아듣고 있다"를 눈으로 확인할 수 있어야 한다.
+              //
+              // ⚠️ [Stack]으로 **겹쳐** 띄운다. 세로로 자리를 잡으면 글이 뜨는
+              //    순간 질문판이 줄거나 마이크가 밀려 내려간다.
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Obx(() {
+                  final heard = controller.liveTranscript;
+                  if (heard.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppDimens.gutter,
+                      0,
+                      AppDimens.gutter,
+                      AppDimens.space5,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(AppDimens.space4),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceSoft,
+                        borderRadius: BorderRadius.circular(
+                          AppDimens.radiusBubble,
+                        ),
+                      ),
+                      child: Text(
+                        heard,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.bodyChat.copyWith(
+                          color: AppColors.textStrong,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
           ),
         ),
-        // 인식된 글자를 실시간으로 보여준다. 시니어 사용자가 "제대로
-        // 알아듣고 있다"를 눈으로 확인할 수 있어야 한다.
-        SizedBox(
-          height: _transcriptSlot,
-          child: Obx(() {
-            final heard = controller.liveTranscript;
-            if (heard.isEmpty) return const SizedBox.shrink();
-            return Align(
-              alignment: Alignment.bottomCenter,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppDimens.gutter,
-                  0,
-                  AppDimens.gutter,
-                  AppDimens.space5,
-                ),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(AppDimens.space4),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceSoft,
-                    borderRadius: BorderRadius.circular(AppDimens.radiusBubble),
-                  ),
-                  child: Text(
-                    heard,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodyChat.copyWith(
-                      color: AppColors.textStrong,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-        // 원형 파형은 자리를 차지하지 않으므로 닿는 만큼 비워 준다.
+        // 파문은 자리를 차지하지 않으므로 닿는 만큼 비워 준다.
         const SizedBox(height: AppMicButton.bloom),
         AppMicButton(recording: true, onTap: controller.stopRecording),
         const SizedBox(height: 22),

@@ -12,7 +12,8 @@ import 'package:life_legacy/common/constants/typography.dart';
 ///    바뀌었지만, 새 시안은 색을 그대로 두고 **글리프만** 마이크 → 정지 사각으로
 ///    바꾼다.
 ///
-/// "지금 듣고 있다"는 **버튼 둘레를 도는 원형 파형**이 알려준다. 예전에는 그
+/// "지금 듣고 있다"는 **버튼에서 번져 나가는 파문**이 알려준다.
+/// 물에 돌을 던진 것처럼 원이 밖으로 커지며 옅어진다. 예전에는 그
 /// 일을 버튼 위 막대 파형과 아래 "듣고 있어요 · 0:23"이 나눠 맡았는데, 세로로
 /// 자리를 두 군데나 먹어서 작은 화면이 깨졌다. 둘 다 걷어내고 신호를 버튼
 /// 하나에 모았다.
@@ -24,8 +25,8 @@ class AppMicButton extends StatelessWidget {
     this.size = 160,
   });
 
-  /// 원형 파형을 테스트·디버깅에서 집어내는 손잡이.
-  static const ringKey = ValueKey('mic-ring');
+  /// 파문을 테스트·디버깅에서 집어내는 손잡이.
+  static const rippleKey = ValueKey('mic-ripple');
 
   final bool recording;
   final VoidCallback onTap;
@@ -33,10 +34,10 @@ class AppMicButton extends StatelessWidget {
   /// 시안 실측 160. 이 화면의 유일한 조작이라 크게 잡는다.
   final double size;
 
-  /// 파형이 버튼 밖으로 번지는 거리(한쪽).
+  /// 파문이 버튼 밖으로 번져 나가는 거리.
   ///
   /// 자리를 차지하지 않으므로, 위에 있는 화면 요소가 이만큼 비켜 줘야
-  /// 파형이 겹치지 않는다. 작성 화면이 이 값을 읽어 간격을 잡는다.
+  /// 파문이 겹치지 않는다. 작성 화면이 이 값을 읽어 간격을 잡는다.
   static const bloom = 26.0;
 
   @override
@@ -77,7 +78,7 @@ class AppMicButton extends StatelessWidget {
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          // ⚠️ 파형은 버튼 밖으로 번지지만 **자리는 차지하지 않는다.**
+          // ⚠️ 파문은 버튼 밖으로 번지지만 **자리는 차지하지 않는다.**
           //    `Positioned.fill` + `OverflowBox`라 Stack 크기는 버튼이 정한다 —
           //    자리를 먹으면 녹음을 시작하는 순간 마이크가 손 밑에서 밀려난다.
           if (recording)
@@ -86,10 +87,11 @@ class AppMicButton extends StatelessWidget {
                 child: OverflowBox(
                   maxWidth: size + bloom * 2,
                   maxHeight: size + bloom * 2,
-                  child: _MicRing(
-                    key: ringKey,
+                  child: _MicRipple(
+                    key: rippleKey,
                     diameter: size + bloom * 2,
-                    innerRadius: size / 2 + 8,
+                    startRadius: size / 2,
+                    spread: bloom,
                   ),
                 ),
               ),
@@ -101,41 +103,49 @@ class AppMicButton extends StatelessWidget {
   }
 }
 
-/// 버튼 둘레를 도는 원형 파형.
+/// 버튼에서 번져 나가는 파문.
+///
+/// 물에 돌을 던졌을 때처럼 원이 밖으로 커지면서 옅어진다. 원 셋이 시차를
+/// 두고 이어 나가서 끊기지 않고 계속 번지는 것처럼 보인다.
 ///
 /// ⚠️ 실제 오디오 레벨이 아니다. `speech_to_text`가 음량을 주지 않기 때문이다.
-///    레벨을 받을 수 있게 되면 [_MicRingPainter]의 amp 계산만 갈아 끼우면 된다.
-class _MicRing extends StatefulWidget {
-  const _MicRing({
+///    레벨을 받을 수 있게 되면 [_MicRipplePainter]의 반지름 계산에 곱해 주면 된다.
+class _MicRipple extends StatefulWidget {
+  const _MicRipple({
     super.key,
     required this.diameter,
-    required this.innerRadius,
+    required this.startRadius,
+    required this.spread,
   });
 
   final double diameter;
 
-  /// 막대가 시작하는 반지름. 버튼 가장자리에서 조금 떨어뜨린다.
-  final double innerRadius;
+  /// 파문이 시작하는 반지름 — 버튼 가장자리다.
+  final double startRadius;
+
+  /// 얼마나 멀리 번져 나가는지.
+  final double spread;
 
   @override
-  State<_MicRing> createState() => _MicRingState();
+  State<_MicRipple> createState() => _MicRippleState();
 }
 
-class _MicRingState extends State<_MicRing>
+class _MicRippleState extends State<_MicRipple>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1400),
+    // 느긋하게 번져야 물결처럼 보인다. 빠르면 경고등처럼 읽힌다.
+    duration: const Duration(milliseconds: 2200),
   );
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 기기에서 애니메이션을 꺼 둔 사용자에게는 돌리지 않는다. 멈춘 파형이라도
+    // 기기에서 애니메이션을 꺼 둔 사용자에게는 돌리지 않는다. 멈춘 파문이라도
     // 녹음 중이라는 건 정지 사각이 알려준다.
     if (MediaQuery.disableAnimationsOf(context)) {
       _c.stop();
-      _c.value = 0.25;
+      _c.value = 0.35;
     } else if (!_c.isAnimating) {
       _c.repeat();
     }
@@ -155,51 +165,54 @@ class _MicRingState extends State<_MicRing>
       animation: _c,
       builder: (_, _) => CustomPaint(
         size: Size.square(widget.diameter),
-        painter: _MicRingPainter(t: _c.value, innerRadius: widget.innerRadius),
+        painter: _MicRipplePainter(
+          t: _c.value,
+          startRadius: widget.startRadius,
+          spread: widget.spread,
+        ),
       ),
     ),
   );
 }
 
-class _MicRingPainter extends CustomPainter {
-  const _MicRingPainter({required this.t, required this.innerRadius});
+class _MicRipplePainter extends CustomPainter {
+  const _MicRipplePainter({
+    required this.t,
+    required this.startRadius,
+    required this.spread,
+  });
 
   final double t;
-  final double innerRadius;
+  final double startRadius;
+  final double spread;
 
-  /// 둘레를 도는 막대 수. 36이면 10도마다 하나다.
-  static const _bars = 36;
-  static const _minLength = 4.0;
-  static const _maxLength = 18.0;
+  /// 동시에 번지는 원의 수. 셋이면 앞선 원이 사라지기 전에 다음이 출발한다.
+  static const _waves = 3;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
-    final paint = Paint()
-      ..color = AppColors.warm
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
 
-    for (var i = 0; i < _bars; i++) {
-      final angle = 2 * math.pi * i / _bars;
-      final phase = t * 2 * math.pi + i * 0.7;
-      // 두 주파수를 겹쳐서 규칙적으로 보이지 않게 한다 — 막대 파형과 같은 식.
-      final amp =
-          math.sin(phase).abs() * 0.7 + math.sin(phase * 0.37).abs() * 0.3;
-      final length = _minLength + amp * (_maxLength - _minLength);
+    for (var i = 0; i < _waves; i++) {
+      // 원마다 출발 시각을 어긋나게 둔다.
+      final p = (t + i / _waves) % 1.0;
 
-      final dir = Offset(math.cos(angle), math.sin(angle));
-      canvas.drawLine(
-        center + dir * innerRadius,
-        center + dir * (innerRadius + length),
-        paint,
+      // 멀어질수록 옅어지고 가늘어진다 — 물결이 잦아드는 모양이다.
+      final fade = 1 - p;
+      canvas.drawCircle(
+        center,
+        startRadius + p * spread,
+        Paint()
+          ..color = AppColors.warm.withValues(alpha: fade * 0.6)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1 + fade * 2.5,
       );
     }
   }
 
   @override
-  bool shouldRepaint(_MicRingPainter old) =>
-      old.t != t || old.innerRadius != innerRadius;
+  bool shouldRepaint(_MicRipplePainter old) =>
+      old.t != t || old.startRadius != startRadius || old.spread != spread;
 }
 
 /// 마이크 글리프 — 시안 341:661~663의 사각형 셋을 그대로 옮긴 것.
