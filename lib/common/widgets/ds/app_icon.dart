@@ -11,6 +11,7 @@ enum AppIcons {
   speaker('speaker'),
   mic('mic'),
   keyboard('keyboard'),
+  bell('bell'),
   tabHome('tab_home'),
   tabWrite('tab_write'),
   tabBook('tab_book'),

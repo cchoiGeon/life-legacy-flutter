@@ -60,7 +60,7 @@ class HomeView extends GetView<HomeController> {
   }
 }
 
-/// 워드마크 · "알림 2" · 아바타 (시안 341:585).
+/// 워드마크 · 알림 벨 · 아바타 (시안 341:585).
 class _Header extends GetView<HomeController> {
   const _Header();
 
@@ -69,14 +69,14 @@ class _Header extends GetView<HomeController> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppDimens.gutter,
-        9,
+        7,
         AppDimens.gutter,
         0,
       ),
       // ⚠️ 높이를 36(시안의 아바타 크기)으로 **고정하지 않는다.**
-      //    "알림 2"는 손가락이 닿게 위아래 12씩 패딩을 두고 있어 실제로 46이다.
-      //    36으로 자르면 글자 아래가 잘려 "알림 2"가 "아리 ㄱ"으로 보인다.
-      //    대신 위 여백을 14 → 9로 줄여 카드 위치를 시안과 맞췄다.
+      //    벨은 손가락이 닿게 48(touchMin)을 차지해서 줄 높이가 48이다.
+      //    36으로 자르면 벨이 위아래로 잘린다.
+      //    대신 위 여백을 14 → 7로 줄여 카드 위치를 시안과 맞췄다.
       child: Row(
         children: [
           const AppWordmark(fontSize: 19, letterSpacing: 0.2),
@@ -87,7 +87,8 @@ class _Header extends GetView<HomeController> {
               onTap: controller.toggleNotifications,
             ),
           ),
-          const SizedBox(width: AppDimens.space1),
+          // ⚠️ 벨과 아바타 사이에 SizedBox를 두지 않는다. 벨의 48 탭 영역이
+          //    이미 오른쪽에 12를 남기고, 그게 시안의 간격 12다.
           Obx(() => AppAvatar(initial: controller.initial, size: 36)),
         ],
       ),
