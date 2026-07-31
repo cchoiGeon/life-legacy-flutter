@@ -1,0 +1,91 @@
+---
+alwaysApply: true
+description: 코드 단락(빈 줄) 스타일 - 논리 블록 구분 및 메서드 간 구분
+globs: src/**/*.ts,src/**/*.tsx
+---
+
+# Code Paragraphs (빈 줄 / 단락 구분)
+
+이 프로젝트에서는 **빈 줄 한 줄**로 논리 단계를 구분한다. 비슷한 역할을 하는 코드끼리 묶고, 단계가 바뀔 때만 빈 줄을 넣는다.
+
+## 1. Service 메서드 내부 단락
+
+메서드 안에서는 **논리 블록 단위**로만 빈 줄을 넣는다.
+
+### 1.1 블록 구분 기준 (순서대로 적용)
+
+| 단계 | 내용 | 예시 | 다음에 빈 줄 |
+|------|------|------|----------------|
+| 입력 검증 | 파라미터/ID 유효성 검사 후 throw | `if (!Types.ObjectId.isValid(...)) throw ...` | ✅ |
+| 변환/파싱 | 문자열 ID → ObjectId 등 | `const objectId = new Types.ObjectId(applicationId)` | ✅ |
+| 조회 | Repository/DB 조회 | `findById`, `findByUserId` 등 | ✅ |
+| 존재/유효성 검사 | 조회 결과 null 체크 후 throw | `if (!application) throw new NotFoundException(...)` | ✅ |
+| 추가 비즈니스 검증 | 중복 검사, 한도 검사 등 | `existsByUserIdAndApplicationName` 후 throw | ✅ |
+| 실제 수행 | create/update/delete 등 Repository 호출 | `updateApplicationName`, `deleteById` 등 | (메서드 끝) |
+
+- **같은 단계 안**에 있는 코드(연속된 if-throw, 연속된 await 등)는 빈 줄 없이 이어 쓴다.
+- **단계가 바뀔 때만** 빈 줄 한 줄을 넣는다.
+
+### 1.2 예시 (deleteApplication / updateApplicationName 스타일)
+
+```ts
+async deleteApplication(userId: Types.ObjectId, applicationId: string): Promise<void> {
+  if (!Types.ObjectId.isValid(applicationId)) {
+    throw new NotFoundException('존재하지 않는 애플리케이션입니다.');
+  }
+
+  const objectId = new Types.ObjectId(applicationId);
+
+  const application = await this.userApplicationRepository.findByIdAndUserId(objectId, userId);
+  if (!application) {
+    throw new NotFoundException('존재하지 않는 애플리케이션입니다.');
+  }
+
+  await this.messageExistsLogRepository.deleteByUserApplicationIds([objectId]);
+  await this.userApplicationRepository.deleteById(objectId);
+}
+```
+
+```ts
+async updateApplicationName(userId: Types.ObjectId, applicationId: string, applicationName: string): Promise<void> {
+  if (!Types.ObjectId.isValid(applicationId)) {
+    throw new NotFoundException('존재하지 않는 애플리케이션입니다.');
+  }
+
+  const objectId = new Types.ObjectId(applicationId);
+
+  const application = await this.userApplicationRepository.findByIdAndUserId(objectId, userId);
+  if (!application) {
+    throw new NotFoundException('존재하지 않는 애플리케이션입니다.');
+  }
+
+  const nameExists = await this.userApplicationRepository.existsByUserIdAndApplicationNameExcludingId(...);
+  if (nameExists) {
+    throw new BadRequestException('이미 사용 중인 애플리케이션 이름입니다.');
+  }
+
+  await this.userApplicationRepository.updateApplicationName(objectId, applicationName);
+}
+```
+
+## 2. 메서드 간 구분
+
+- **메서드와 메서드 사이**에는 빈 줄 **한 줄**만 둔다.
+- 두 개 이상의 빈 줄은 사용하지 않는다.
+
+## 3. Controller
+
+- 각 엔드포인트(메서드) 사이에는 빈 줄 한 줄.
+- 데코레이터(`@ApiOperation`, `@ApiResponse`, `@Get`, `@Post` 등) 블록 내부는 붙여 쓴다.
+
+## 4. Repository
+
+- 메서드와 메서드 사이에 빈 줄 한 줄.
+- 메서드 내부가 짧으면(조회 한 번 + return 등) 단락을 나누지 않아도 된다.
+
+## 5. 요약
+
+1. **같은 논리 단계**: 빈 줄 없이 묶어서 작성.
+2. **단계가 바뀔 때**: 빈 줄 1개.
+3. **메서드 사이**: 빈 줄 1개.
+4. **빈 줄 2줄 이상**: 사용하지 않음.

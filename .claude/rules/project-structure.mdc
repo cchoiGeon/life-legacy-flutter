@@ -1,0 +1,132 @@
+---
+alwaysApply: true
+description: DDD + Layered architecture project structure for NestJS backend
+globs: src/**/*.ts,src/**/*.tsx
+---
+
+# Project Structure Guide (DDD + Layered Architecture)
+
+이 규칙은 NestJS 기반 백엔드에서 **도메인 주도 설계(DDD)** 와 **레이어드 아키텍처(controller → service → repository)** 를 일관되게 적용하기 위한 가이드입니다.
+
+## 1. 도메인 단위 모듈 구조
+
+- 각 도메인은 **하나의 상위 폴더/모듈**로 관리합니다.
+  - 예시: `users`, `clusters`, `venues`, `reports`, `blocks`, `anon-message` 등
+- 각 도메인 폴더 내부에는 다음 하위 폴더 및 파일을 둡니다:
+  - `*.controller.ts` (또는 `controllers/` 디렉터리)
+  - `services/`
+  - `repositories/`
+  - `dto/` (아래 DTO 규칙 참조)
+  - `const/` (상수/유틸/타입/인터페이스/enum 등)
+  - `entities/`
+
+## 2. 레이어드 아키텍처
+
+- **Controller → Service → Repository** 흐름을 반드시 지킵니다.
+  - Controller:
+    - HTTP 요청/응답 처리
+    - Swagger 데코레이터 적용 (`@ApiTags`, `@ApiOperation`, `@ApiResponse`, `@ApiBearerAuth` 등)
+    - 비즈니스 로직은 두지 않고 **Service 메서드 호출**만 담당
+  - Service:
+    - 도메인 비즈니스 로직의 중심
+    - 다른 도메인 Service와의 협력 지점
+    - Repository를 주입받아 데이터 조작, 트랜잭션 서비스 호출 등 수행
+  - Repository:
+    - **순수 데이터 접근 계층**
+    - TypeORM의 `@InjectRepository`를 사용하여 Entity Repository 주입
+    - CRUD 및 쿼리 로직만 포함하고, 도메인 비즈니스 규칙은 포함하지 않음
+
+## 3. Repository 규칙
+
+- 각 도메인의 `repositories/` 폴더에 Repository 클래스를 정의합니다.
+- TypeORM 기준:
+  - 반드시 `@InjectRepository(Entity)` 를 이용해 주입합니다.
+  - 예시:
+
+```ts
+export class UserRepository {
+  constructor(
+    @InjectRepository(UsersModel)
+    private readonly usersRepository: Repository<UsersModel>,
+  ) {}
+
+  async findById(id: number): Promise<UsersModel | null> {
+    return this.usersRepository.findOne({ where: { id } });
+  }
+}
+```
+
+- **Repository는 여러 개** 나올 수 있으며, 역할 단위(UsersRepository, UserBlockRepository 등)로 분리합니다.
+
+## 4. Entity 배치 규칙
+
+- `entities/` 폴더에는 해당 도메인과 밀접하게 연관된 엔티티를 배치합니다.
+  - 예: `users/entities/users.entity.ts`, `users/entities/user-block.entity.ts`
+  - 예: `clusters/entities/clusters.entity.ts`, `clusters/entities/user-cluster-block.entity.ts`
+- 서로 연관된 엔티티는 **같은 도메인 폴더 안에서 관리**합니다.
+  - Repository/Service는 이 엔티티들을 기준으로 동작해야 합니다.
+
+## 5. DTO 구조 및 네이밍 규칙
+
+- DTO는 항상 `dto/` 폴더 아래에 두고, **요청/응답을 분리**합니다.
+  - `dto/request/*.dto.ts` – 요청 DTO
+  - `dto/response/*.dto.ts` – 응답 DTO
+
+### 5.1 Request DTO
+
+- 네이밍: **동사 + 대상 + Dto**
+  - 예: `CreateUserDto`, `UpdateUserDto`, `CreateClusterDto`, `GetCommentsDto`
+- `class-validator`, `class-transformer`를 적극 활용하여 유효성 검사를 수행합니다.
+
+### 5.2 Response DTO
+
+- 네이밍: **{Target}{Detail}ResponseDto** 패턴을 따른다.
+  - 단일 객체: `GetUserProfileResponseDto`, `GetClusterDetailResponseDto`
+  - 리스트: `{Target}ListResponseDto` 또는 `Get{Target}ResponseDto` 형태
+    - 예: `ExampleListResponseDto`, `GetAllClusterResponseDto`, `GetBlockedUsersResponseDto`
+- 가능한 한 **도메인 응답 구조를 명시적으로 표현**하고, 불필요한 엔티티 전체 노출을 피합니다.
+- **Service에는 응답 변환용 private 메서드(toXxxResponse 등)를 두지 않는다.** Service에서는 `return { 필드들 }` 형태로만 반환하고, 응답 구조는 `dto/response/`에 DTO 클래스로 정의한다. Controller에서 `@ApiResponse({ type: XxxResponseDto })` 등으로 타입/문서화를 연결한다.
+
+## 6. const 폴더 규칙
+
+- 각 도메인 내 `const/` 폴더는 다음과 같은 것들을 포함할 수 있습니다.
+  - `enum` (상태, 타입 등)
+  - 상수 (`*.const.ts`)
+  - 타입 정의 (`*.type.ts`)
+  - 인터페이스 정의 (`*.interface.ts`)
+  - 유틸성 함수 (`*.util.ts`)
+- 도메인과 직접 관련된 상수/유틸만을 배치하고, 범용 유틸은 공용 모듈(`common/` 등)로 이동합니다.
+
+## 7. Swagger 사용 규칙
+
+- **모든 public API**는 Swagger 데코레이터를 사용하여 문서화합니다.
+- Controller 메서드에는 다음을 기본으로 적용합니다.
+  - `@ApiTags('<Domain> API')` – Controller 단위
+  - `@ApiBearerAuth('access-token')` – 인증이 필요한 API
+  - `@ApiOperation({ summary: '...' })` – API 요약 설명
+  - `@ApiResponse({ status: 200/201, description: '...', type: ResponseDto, isArray?: true })` - 여기서 400이나 에러 관련된 건 정의하지마.
+- DTO의 각 필드에도 `@ApiProperty`/`@ApiPropertyOptional`을 통해 타입/예제를 명시합니다.
+
+## 8. 의존성 및 순환 참조
+
+- Service 간 순환 참조가 필요한 경우에만 `forwardRef`를 사용합니다.
+  - 예: `UsersService` ↔ `ClustersService`, `UsersService` ↔ `VenuesService`
+- Repository는 **다른 도메인 Repository나 Service에 직접 의존하지 않습니다.**
+  - 도메인 간 협력은 반드시 Service 레이어에서 처리합니다.
+
+## 9. 함수 분리 원칙
+
+- **한두 곳에서만 쓰이는 짧은 로직은 해당 사용처 안에 인라인으로 둡니다.** 재사용 가능성이 없거나, 함수로 뺐을 때 오히려 읽기 흐름이 끊기면 private 메서드로 분리하지 않습니다.
+- **함수를 과도하게 최소 단위로 쪼개지 않습니다.** 2~3줄 수준의 단순 계산/변환은 호출부에 그대로 두는 것을 선호합니다.
+
+## 10. 요약 원칙
+
+1. **DDD 기준 도메인 단위 폴더 구성**
+2. **Controller – Service – Repository 레이어 분리**
+3. **Repository는 CRUD/쿼리만, 비즈니스 로직은 Service에만**
+4. **DTO는 request/response 분리 및 일관된 네이밍 (`{Target}{Detail}ResponseDto`)**
+5. **Swagger로 모든 public API 문서화**
+6. **엔티티는 도메인별 `entities/` 에서 관리하고 Repository와 연동**
+7. **짧은 로직은 과도하게 함수로 분리하지 않고, 사용처에 인라인으로 둠**
+
+새로운 프로젝트에서도 이 구조를 그대로 따르도록 합니다.

@@ -49,3 +49,6 @@ app.*.map.json
 
 # 참고용으로 옆에 둔 웹 서비스 저장소 (별도 git 저장소)
 lifelegacy-web/
+
+# 로컬 전용 설정
+.claude/settings.local.json

@@ -7,6 +7,7 @@
 - **디자인**: Figma `PickDam` — **[★★ 최종 · A~F 전체 (C+ 방향) `340:592`](https://www.figma.com/design/apsdRjQLt8xVVMbxzU60HC/PickDam?node-id=340-592)** 가 현재 기준이다.
   디자인 시스템 [`130:2`](https://www.figma.com/design/apsdRjQLt8xVVMbxzU60HC/PickDam?node-id=130-2) 는 토큰 출처로만 남아 있고,
   예전 UI [`134:2`](https://www.figma.com/design/apsdRjQLt8xVVMbxzU60HC/PickDam?node-id=134-2) 는 **더 이상 따르지 않는다.**
+  파일명 `PickDam`은 회사 계정 파일이라 바꿀 수 없다 — 프로젝트명은 **LifeLegacy**다. 문서에 남은 `PickDam`은 전부 이 Figma 파일을 가리킨다.
 - **스택**: Flutter + GetX (Pickle · IAM_flutter와 동일 구조)
 - **API**: 아직 **전부 목업**이다. 아래 "API 갈아 끼우기" 참고.
 
