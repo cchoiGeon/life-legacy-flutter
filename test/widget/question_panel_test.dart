@@ -25,9 +25,10 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     required String question,
-    String? badge,
+    bool isFollowup = false,
     bool tall = true,
     VoidCallback? onReplay,
+    double available = 844,
   }) async {
     // ⚠️ 기본 테스트 화면은 800x600이라 질문판이 두 배 넓게 그려진다. 그러면
     //    글이 절반의 줄 수로 접혀서 "넘치는" 상황이 재현되지 않는다.
@@ -40,13 +41,17 @@ void main() {
         home: Scaffold(
           // 바깥은 Align으로 감싼다 — Column으로 감싸면 질문판 안의 Column과
           // 섞여서 어느 쪽을 잡았는지 알 수 없다.
-          body: Align(
-            alignment: Alignment.topCenter,
-            child: QuestionPanel(
-              question: question,
-              badge: badge,
-              tall: tall,
-              onReplay: onReplay,
+          // 실제 화면에서는 마이크 자리를 뺀 나머지가 판에게 주어진다.
+          body: SizedBox(
+            height: available,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: QuestionPanel(
+                question: question,
+                isFollowup: isFollowup,
+                tall: tall,
+                onReplay: onReplay,
+              ),
             ),
           ),
         ),
@@ -54,11 +59,10 @@ void main() {
     );
   }
 
-  testWidgets('1차 질문에는 배지가 붙지 않는다', (tester) async {
+  testWidgets('1차 질문을 그대로 그린다', (tester) async {
     await pump(tester, question: short);
 
     expect(find.text(keepAll(short)), findsOneWidget);
-    expect(find.text('이어서 여쭤볼게요'), findsNothing);
   });
 
   testWidgets('질문은 어절이 쪼개지지 않게 묶어서 그린다', (tester) async {
@@ -71,10 +75,12 @@ void main() {
     expect(text.data, keepAll(short));
   });
 
-  testWidgets('꼬리질문에는 배지가 붙는다', (tester) async {
-    await pump(tester, question: long, badge: '이어서 여쭤볼게요');
+  testWidgets('꼬리질문에도 배지를 붙이지 않는다', (tester) async {
+    await pump(tester, question: long, isFollowup: true);
 
-    expect(find.text('이어서 여쭤볼게요'), findsOneWidget);
+    // 배지를 뺀다 — 질문판은 읽는 영역이고, 그 위에 알약이 하나 더 얹히면
+    // 읽기 전에 눈이 먼저 그리로 간다.
+    expect(find.text('이어서 여쭤볼게요'), findsNothing);
   });
 
   testWidgets('1차 질문은 시안 높이 244를 지킨다', (tester) async {
@@ -114,7 +120,7 @@ void main() {
         '함께한 분들 얼굴도 떠오르시는 듯합니다.\n\n'
         '그때 곁에 누가 함께 있었는지, 기억나는 대로 조금만 더 들려주시겠어요? '
         '작은 이야기라도 괜찮으니 떠오르는 대로 말씀해 주세요.';
-    await pump(tester, question: overflowing, badge: '이어서 여쭤볼게요', onReplay: () {});
+    await pump(tester, question: overflowing, isFollowup: true, onReplay: () {});
 
     // 스크롤 안에 함께 넣으면 긴 꼬리질문에 밀려 화면 밖으로 잘린다.
     // 스크롤하는 건 글이고, 이 링크는 판 아래에 남아 있어야 한다.
@@ -125,20 +131,58 @@ void main() {
     expect(link.bottom, lessThanOrEqualTo(panel.bottom));
   });
 
-  testWidgets('긴 꼬리질문도 화면을 넘기지 않는다', (tester) async {
-    await pump(tester, question: long, badge: '이어서 여쭤볼게요');
+  testWidgets('주어진 높이를 넘지 않고 안에서 스크롤한다', (tester) async {
+    const overflowing =
+        '말씀해 주신 장면이 눈에 그려집니다. 그 시간이 지금까지도 마음에 남아 계신 것 같아요. '
+        '함께한 분들 얼굴도 떠오르시는 듯합니다.\n\n'
+        '그때 곁에 누가 함께 있었는지, 기억나는 대로 조금만 더 들려주시겠어요? '
+        '작은 이야기라도 괜찮으니 떠오르는 대로 말씀해 주세요.';
 
-    // 844 화면에서 마이크·버튼 자리를 남겨야 한다. 넘치면 렌더 오버플로가
-    // 나고 tester가 예외로 잡는다.
-    expect(
-      tester.getSize(find.byType(QuestionPanel)).height,
-      lessThanOrEqualTo(348.0),
+    // 아래 마이크 자리를 뺀 나머지가 판에게 주어진다. 판은 그 안에서만 크고,
+    // 모자라면 스크롤한다 — 고정 상한(348 같은 숫자)을 두지 않는다.
+    await pump(
+      tester,
+      question: overflowing,
+      isFollowup: true,
+      onReplay: () {},
+      available: 260,
     );
+
+    expect(tester.getSize(find.byType(QuestionPanel)).height, 260);
     expect(tester.takeException(), isNull);
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
+  });
+
+  testWidgets('자리가 남으면 고정 상한에 걸리지 않는다', (tester) async {
+    const overflowing =
+        '말씀해 주신 장면이 눈에 그려집니다. 그 시간이 지금까지도 마음에 남아 계신 것 같아요. '
+        '함께한 분들 얼굴도 떠오르시는 듯합니다.\n\n'
+        '그때 곁에 누가 함께 있었는지, 기억나는 대로 조금만 더 들려주시겠어요? '
+        '작은 이야기라도 괜찮으니 떠오르는 대로 말씀해 주세요.';
+    await pump(
+      tester,
+      question: overflowing,
+      isFollowup: true,
+      onReplay: () {},
+      available: 600,
+    );
+
+    // 판 높이는 화면이 정한다. 348 같은 숫자를 박아 두면 큰 기기에서는
+    // 남는 자리를 두고도 글이 스크롤에 갇힌다.
+    final height = tester.getSize(find.byType(QuestionPanel)).height;
+    expect(height, greaterThan(348));
+    expect(height, lessThan(600));
+  });
+
+  testWidgets('자리가 넉넉하면 글 길이만큼만 차지한다', (tester) async {
+    await pump(tester, question: short, available: 600);
+
+    // 짧은 질문까지 화면을 가득 채우면 크림 띠가 아래 마이크까지 밀고 내려온다.
+    expect(tester.getSize(find.byType(QuestionPanel)).height, 244);
   });
 
   testWidgets('글자 입력 화면은 꼬리질문의 "묻는 문장"만 남긴다', (tester) async {
-    await pump(tester, question: long, badge: '이어서 여쭤볼게요', tall: false);
+    await pump(tester, question: long, isFollowup: true, tall: false);
 
     // 꼬리질문은 [요약·공감] 빈 줄 [질문] 꼴로 온다. 입력칸에 자리를 내주려고
     // 앞에서부터 잘라 버리면 정작 물어보는 문장이 사라진다 — 뒤쪽만 남긴다.
@@ -148,7 +192,7 @@ void main() {
 
   testWidgets('빈 줄이 없는 꼬리질문은 통째로 두되 줄 수를 제한한다', (tester) async {
     const flat = '말씀해 주신 장면이 눈에 그려집니다. 그때 곁에 누가 함께 있었는지 조금만 더 들려주시겠어요?';
-    await pump(tester, question: flat, badge: '이어서 여쭤볼게요', tall: false);
+    await pump(tester, question: flat, isFollowup: true, tall: false);
 
     final text = tester.widget<Text>(find.text(keepAll(flat)));
     expect(text.maxLines, 4);

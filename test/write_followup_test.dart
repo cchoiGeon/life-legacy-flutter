@@ -58,13 +58,12 @@ void main() {
 
       expect(c.displayQuestion, c.followup.value!.text);
       expect(c.displayQuestion, isNot(original));
-      expect(c.followupBadge, '이어서 여쭤볼게요');
     });
 
-    test('1차 답변 화면에는 배지가 없다', () async {
+    test('1차 답변 화면은 원래 질문을 보여준다', () async {
       final (c, _) = await build();
 
-      expect(c.followupBadge, isNull);
+      expect(c.isFollowup.value, isFalse);
       expect(c.displayQuestion, c.question.value!.text);
     });
 

@@ -15,6 +15,10 @@ import 'question_panel.dart';
 /// 화면이 **읽는 영역**(크림 질문판)과 **누르는 영역**(마이크)으로 위아래
 /// 나뉜다. 시안의 핵심 원칙이라 두 덩어리 사이를 비워 둔다 — 질문을 읽는
 /// 동안 손이 버튼에 닿지 않게 한 것이다.
+///
+/// ⚠️ 마이크부터 아래는 **자리가 고정이다.** D2(녹음 중)와 높이가 같아야
+///    녹음을 시작해도 버튼이 손 밑에서 움직이지 않는다 — 아래 여백 62도
+///    두 화면이 같은 값을 쓴다.
 class AskStage extends GetView<WriteController> {
   const AskStage({super.key});
 
@@ -24,14 +28,22 @@ class AskStage extends GetView<WriteController> {
       children: [
         const WriteHeader(),
         const SizedBox(height: 14), // 시안: 질문 영역이 y148에서 시작
-        Obx(
-          () => QuestionPanel(
-            question: controller.displayQuestion,
-            badge: controller.followupBadge,
-            onReplay: controller.replayQuestion,
+        // 질문판은 **남은 자리 안에서만** 큰다. 글이 그보다 길면 판 안에서
+        // 스크롤한다 — 아래 마이크 블록을 밀어내지 않는다.
+        Expanded(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Obx(
+              () => QuestionPanel(
+                question: controller.displayQuestion,
+                isFollowup: controller.isFollowup.value,
+                onReplay: controller.replayQuestion,
+              ),
+            ),
           ),
         ),
-        const Spacer(),
+        // 원형 파형은 자리를 차지하지 않으므로 닿는 만큼 비워 준다.
+        const SizedBox(height: AppMicButton.bloom),
         AppMicButton(recording: false, onTap: controller.startRecording),
         const SizedBox(height: 22),
         Text(

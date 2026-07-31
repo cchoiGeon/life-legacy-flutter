@@ -44,8 +44,8 @@ enum WriteStage {
 ///   질문 → 1차 답변 → (AI) 꼬리질문 → 꼬리답변 → (AI) 윤문 → 저장 → 다음 질문
 ///
 /// 두 번 다 같은 화면을 쓴다([isFollowup]로 갈린다) — 시니어 사용자가 배워야
-/// 할 화면을 늘리지 않으려는 것이다. 꼬리질문일 때만 "이어서 여쭤볼게요"
-/// 배지가 붙고 질문판에 AI가 만든 긴 글이 들어간다.
+/// 할 화면을 늘리지 않으려는 것이다. 꼬리질문일 때는 질문판에 AI가 만든
+/// 긴 글이 들어가고, 글자와 판 높이가 그에 맞게 바뀐다.
 ///
 /// 어느 쪽으로 답하든 **확인 화면을 한 번 거친다**:
 ///   · 음성   : ask → recording → confirm → …
@@ -162,12 +162,6 @@ class WriteController extends GetxController {
   String get displayQuestion => isFollowup.value
       ? followup.value?.text ?? ''
       : question.value?.text ?? '';
-
-  /// 질문판 위에 붙는 배지. 1차 답변에는 붙지 않는다.
-  ///
-  /// 꼬리질문은 원래 질문과 생김새가 같아서, 배지가 없으면 사용자가 "아까
-  /// 답했는데 왜 또 묻지"로 읽는다.
-  String? get followupBadge => isFollowup.value ? '이어서 여쭤볼게요' : null;
 
   /// 로딩 화면(D6·D7) 제목.
   ///

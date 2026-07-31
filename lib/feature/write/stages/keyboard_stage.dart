@@ -31,7 +31,7 @@ class KeyboardStage extends GetView<WriteController> {
         Obx(
           () => QuestionPanel(
             question: controller.displayQuestion,
-            badge: controller.followupBadge,
+            isFollowup: controller.isFollowup.value,
             tall: false,
           ),
         ),
