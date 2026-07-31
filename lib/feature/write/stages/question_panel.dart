@@ -86,36 +86,51 @@ class QuestionPanel extends StatelessWidget {
       width: double.infinity,
       // 꼬리질문은 길이를 미리 알 수 없어 높이를 고정하지 않는다. 시안의
       // 244는 최소 높이로 남겨 1차 질문일 때 지금까지와 똑같이 보이게 한다.
-      constraints: BoxConstraints(minHeight: 244, maxHeight: _isLong ? 330 : 244),
+      //
+      // 348은 아래 마이크 영역을 밀어내지 않는 선에서 최대치다 —
+      // 844 화면에서 머리(148) + 판(348) + 누르는 영역(344) = 840.
+      constraints: BoxConstraints(minHeight: 244, maxHeight: _isLong ? 348 : 244),
       color: AppColors.cream,
       padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 20),
-      // ⚠️ [SingleChildScrollView] 안의 [Column]은 내용만큼만 커진다 —
-      //    `mainAxisAlignment.center`만 걸면 아무 일도 일어나지 않고 글이
-      //    판 위쪽에 붙는다. 남은 높이를 최소 높이로 되돌려 줘야 가운데로 온다.
-      //    스크롤은 글이 판보다 길 때만 필요하므로 이 조합이 둘 다 만족한다.
-      child: LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-            if (badge != null) ...[
-              _Badge(label: badge!),
-              const SizedBox(height: 16),
-            ],
-            Text(
-              keepAll(question),
-              textAlign: TextAlign.center,
-              style: _isLong
-                  ? AppTypography.titleScreen.copyWith(
-                      fontSize: 21,
-                      height: 33 / 21,
-                      letterSpacing: -0.3,
-                    )
-                  : AppTypography.titleScreen.copyWith(letterSpacing: -0.5),
+      // 덩어리(글 + "다시 들려주기")가 판 한가운데에 온다. 남는 높이가 있으면
+      // 위아래로 고르게 나뉜다.
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // ⚠️ **스크롤하는 건 글뿐이다.** "다시 들려주기"까지 스크롤 안에
+          //    넣으면 긴 꼬리질문에 밀려 판 밖으로 잘려 나간다 — 실기기에서
+          //    실제로 그렇게 보였다. [Flexible]이라 글이 짧으면 그만큼만
+          //    차지하고, 길면 남은 높이까지만 쓰고 안에서 스크롤한다.
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (badge != null) ...[
+                    _Badge(label: badge!),
+                    const SizedBox(height: 16),
+                  ],
+                  Text(
+                    keepAll(question),
+                    textAlign: TextAlign.center,
+                    style: _isLong
+                        // 꼬리질문은 원래 질문의 서너 배라 28을 그대로 쓰면
+                        // 마지막 줄이 판 밖으로 밀린다. 20까지 줄이면 흔한
+                        // 길이(대여섯 줄)가 스크롤 없이 다 보인다.
+                        ? AppTypography.titleScreen.copyWith(
+                            fontSize: 20,
+                            height: 31 / 20,
+                            letterSpacing: -0.3,
+                          )
+                        : AppTypography.titleScreen.copyWith(
+                            letterSpacing: -0.5,
+                          ),
+                  ),
+                ],
+              ),
             ),
-            if (onReplay != null) ...[
+          ),
+          if (onReplay != null) ...[
             const SizedBox(height: 18),
             Semantics(
               button: true,
@@ -139,11 +154,8 @@ class QuestionPanel extends StatelessWidget {
                 ),
               ),
             ),
-              ],
-              ],
-            ),
-          ),
-        ),
+          ],
+        ],
       ),
     );
   }

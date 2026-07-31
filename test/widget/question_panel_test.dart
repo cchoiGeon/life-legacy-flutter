@@ -7,6 +7,12 @@ import 'package:life_legacy/feature/write/stages/question_panel.dart';
 ///
 /// 꼬리질문은 AI가 요약·공감한 뒤 되묻는 글이라 원래 질문의 서너 배다.
 /// 시안의 고정 높이 244를 그대로 두면 화면 밖으로 넘친다.
+/// "다시 들려주기"의 누르는 상자(글자 + 상하 4 패딩).
+final _replayBox = find.ancestor(
+  of: find.text('다시 들려주기'),
+  matching: find.byType(GestureDetector),
+);
+
 void main() {
   const short = '어린 시절 살던 동네는 어떤 모습이었나요?';
 
@@ -22,23 +28,31 @@ void main() {
     String? badge,
     bool tall = true,
     VoidCallback? onReplay,
-  }) => tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        // 바깥은 Align으로 감싼다 — Column으로 감싸면 질문판 안의 Column과
-        // 섞여서 `find.byType(Column)`이 어느 쪽을 잡았는지 알 수 없다.
-        body: Align(
-          alignment: Alignment.topCenter,
-          child: QuestionPanel(
-            question: question,
-            badge: badge,
-            tall: tall,
-            onReplay: onReplay,
+  }) async {
+    // ⚠️ 기본 테스트 화면은 800x600이라 질문판이 두 배 넓게 그려진다. 그러면
+    //    글이 절반의 줄 수로 접혀서 "넘치는" 상황이 재현되지 않는다.
+    //    시안과 같은 390 폭으로 맞춘다.
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          // 바깥은 Align으로 감싼다 — Column으로 감싸면 질문판 안의 Column과
+          // 섞여서 어느 쪽을 잡았는지 알 수 없다.
+          body: Align(
+            alignment: Alignment.topCenter,
+            child: QuestionPanel(
+              question: question,
+              badge: badge,
+              tall: tall,
+              onReplay: onReplay,
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   testWidgets('1차 질문에는 배지가 붙지 않는다', (tester) async {
     await pump(tester, question: short);
@@ -74,13 +88,15 @@ void main() {
 
     // 가운데로 오는 건 질문 글자가 아니라 **덩어리 전체**다. 질문만 가운데에
     // 두면 아래 "다시 들려주기"가 밀려 내려가 둘이 따로 놀아 보인다.
+    // 위아래 여백이 같은지로 잰다.
     final panel = tester.getRect(find.byType(QuestionPanel));
-    final group = tester.getRect(find.byType(Column));
-    expect(group.center.dy, closeTo(panel.center.dy, 1.0));
-
-    // 질문 글자만 보면 덩어리 위쪽이라 판 중앙보다 위에 있는 게 맞다.
     final text = tester.getRect(find.text(keepAll(short)));
-    expect(text.center.dy, lessThan(panel.center.dy));
+    // 글자 상자가 아니라 **누르는 상자**를 잰다 — 링크에는 위아래 4 패딩이
+    // 붙어 있어서 글자 기준으로 재면 그만큼 어긋나 보인다.
+    final link = tester.getRect(_replayBox);
+
+    expect(text.top - panel.top, closeTo(panel.bottom - link.bottom, 2.0));
+    expect(text.center.dy, lessThan(panel.center.dy), reason: '글자는 덩어리 위쪽이다');
   });
 
   testWidgets('"다시 들려주기"가 없으면 질문이 곧 덩어리다', (tester) async {
@@ -91,12 +107,22 @@ void main() {
     expect(text.center.dy, closeTo(panel.center.dy, 1.0));
   });
 
-  testWidgets('긴 꼬리질문도 덩어리째 한가운데에 놓인다', (tester) async {
-    await pump(tester, question: long, badge: '이어서 여쭤볼게요', onReplay: () {});
+  testWidgets('글이 길어져도 "다시 들려주기"는 판 안에 남는다', (tester) async {
+    // 판(최대 348)을 확실히 넘기는 길이. 실기기의 꼬리질문이 이만큼 된다.
+    const overflowing =
+        '말씀해 주신 장면이 눈에 그려집니다. 그 시간이 지금까지도 마음에 남아 계신 것 같아요. '
+        '함께한 분들 얼굴도 떠오르시는 듯합니다.\n\n'
+        '그때 곁에 누가 함께 있었는지, 기억나는 대로 조금만 더 들려주시겠어요? '
+        '작은 이야기라도 괜찮으니 떠오르는 대로 말씀해 주세요.';
+    await pump(tester, question: overflowing, badge: '이어서 여쭤볼게요', onReplay: () {});
 
+    // 스크롤 안에 함께 넣으면 긴 꼬리질문에 밀려 화면 밖으로 잘린다.
+    // 스크롤하는 건 글이고, 이 링크는 판 아래에 남아 있어야 한다.
     final panel = tester.getRect(find.byType(QuestionPanel));
-    final group = tester.getRect(find.byType(Column));
-    expect(group.center.dy, closeTo(panel.center.dy, 1.0));
+    final link = tester.getRect(_replayBox);
+
+    expect(link.top, greaterThanOrEqualTo(panel.top));
+    expect(link.bottom, lessThanOrEqualTo(panel.bottom));
   });
 
   testWidgets('긴 꼬리질문도 화면을 넘기지 않는다', (tester) async {
@@ -106,7 +132,7 @@ void main() {
     // 나고 tester가 예외로 잡는다.
     expect(
       tester.getSize(find.byType(QuestionPanel)).height,
-      lessThanOrEqualTo(330.0),
+      lessThanOrEqualTo(348.0),
     );
     expect(tester.takeException(), isNull);
   });
