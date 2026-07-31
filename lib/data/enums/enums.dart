@@ -38,6 +38,14 @@ enum IntroAnswerType {
 
 /// 작성 화면 입력 방식.
 ///
-/// 서버와 무관한 **클라이언트 전용** 상태다. 시니어 사용자가 음성을 기본으로
-/// 쓰되 언제든 키보드로 바꿀 수 있어야 해서 화면이 이 값을 들고 있는다.
-enum ComposeMode { voice, keyboard }
+/// 화면이 어떤 입력을 그릴지 정하는 값이면서, 답변을 보낼 때 **어느 경로로
+/// 들어온 글인지** 서버에 함께 알리는 값이기도 하다. 음성으로 받아쓴 글은
+/// 사람이 적은 글보다 오탈자가 많아 서버가 다듬는 정도를 달리 잡을 수 있다.
+enum ComposeMode {
+  voice('voice'),
+  keyboard('keyboard');
+
+  const ComposeMode(this.wire);
+
+  final String wire;
+}

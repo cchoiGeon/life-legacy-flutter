@@ -10,8 +10,9 @@ import 'package:life_legacy/service/services.dart';
 
 /// 작성 화면의 단계.
 ///
-/// 시안의 "AI 글 다듬기"와 "직접 고치기"는 **없앴다.**
-/// 답변은 사용자가 말하거나 적은 그대로 저장된다.
+/// 시안의 "AI 글 다듬기"와 "직접 고치기"는 **없앴다.** 다듬기는 서버가 하고,
+/// 그 결과를 작성 화면에서는 보여주지 않는다 — 사용자 눈에 남는 건 자기가
+/// 말하거나 적은 원문뿐이다.
 enum WriteStage {
   /// D1 음성 모드 · 기본
   ask,
@@ -25,13 +26,30 @@ enum WriteStage {
   /// D4 답변 확인 — 받아쓴 원문이 맞는지. 저장에 실패하면 여기 머물며
   /// D5(저장 실패)로 모양만 바뀐다.
   confirm,
+
+  /// D6 꼬리질문을 만드는 중. 서버가 AI를 부르느라 30초까지 걸린다.
+  generatingFollowup,
+
+  /// D7 이야기를 정리하는 중(윤문). 최대 60초.
+  saving,
+
+  /// D8 꼬리질문을 만들지 못했다 — 이 질문을 처음부터 다시 답해야 한다.
+  followupFailed,
 }
 
-/// D1~D5 작성 — 앱의 핵심 흐름.
+/// D1~D8 작성 — 앱의 핵심 흐름.
+///
+/// 질문 하나에 **두 번 답하고 한 번 저장한다**:
+///
+///   질문 → 1차 답변 → (AI) 꼬리질문 → 꼬리답변 → (AI) 윤문 → 저장 → 다음 질문
+///
+/// 두 번 다 같은 화면을 쓴다([isFollowup]로 갈린다) — 시니어 사용자가 배워야
+/// 할 화면을 늘리지 않으려는 것이다. 꼬리질문일 때만 "이어서 여쭤볼게요"
+/// 배지가 붙고 질문판에 AI가 만든 긴 글이 들어간다.
 ///
 /// 어느 쪽으로 답하든 **확인 화면을 한 번 거친다**:
-///   · 음성   : ask → recording → confirm → 저장 → 다음 질문
-///   · 키보드 : ask → keyboard  → confirm → 저장 → 다음 질문
+///   · 음성   : ask → recording → confirm → …
+///   · 키보드 : ask → keyboard  → confirm → …
 class WriteController extends GetxController {
   WriteController(this._api, this._speech, this._toast);
 
@@ -46,6 +64,15 @@ class WriteController extends GetxController {
 
   final Rxn<Question> question = Rxn<Question>();
   final Rxn<Chapter> chapter = Rxn<Chapter>();
+
+  /// 지금 화면이 **꼬리질문**을 묻고 있는지.
+  ///
+  /// 1차 답변과 꼬리답변이 같은 화면을 쓰기 때문에, 무엇을 묻고 있고 답이
+  /// 어디로 갈지는 이 값 하나가 정한다.
+  final RxBool isFollowup = false.obs;
+
+  /// AI가 되물어 온 질문. [isFollowup]이 true일 때만 채워져 있다.
+  final Rxn<Followup> followup = Rxn<Followup>();
 
   /// 확인 화면에 보여줄 답변. 음성이면 받아쓴 글, 키보드면 적은 글이다.
   final RxString transcript = ''.obs;
@@ -130,6 +157,30 @@ class WriteController extends GetxController {
       isLoading.value = false;
     }
   }
+
+  /// 질문판에 들어갈 글. 1차면 원래 질문, 꼬리질문이면 AI가 만든 글이다.
+  String get displayQuestion => isFollowup.value
+      ? followup.value?.text ?? ''
+      : question.value?.text ?? '';
+
+  /// 질문판 위에 붙는 배지. 1차 답변에는 붙지 않는다.
+  ///
+  /// 꼬리질문은 원래 질문과 생김새가 같아서, 배지가 없으면 사용자가 "아까
+  /// 답했는데 왜 또 묻지"로 읽는다.
+  String? get followupBadge => isFollowup.value ? '이어서 여쭤볼게요' : null;
+
+  /// 로딩 화면(D6·D7) 제목.
+  ///
+  /// 두 대기가 성격이 다르다 — 앞은 되물을 말을 고르는 중이고, 뒤는 이미
+  /// 받은 이야기를 글로 옮기는 중이다. 같은 문구를 쓰면 사용자는 방금과
+  /// 똑같은 화면이 다시 떴다고 읽는다.
+  String get loadingTitle => stage.value == WriteStage.saving
+      ? '이야기를 정리하고 있어요'
+      : '말씀을 듣고 있어요';
+
+  String get loadingSubtitle => stage.value == WriteStage.saving
+      ? '잠시만 기다려 주세요'
+      : '조금만 더 여쭤볼게요';
 
   /// "제1장 · 어린 시절"
   String get headerTitle {
@@ -292,12 +343,51 @@ class WriteController extends GetxController {
 
   // ── 공통 ──────────────────────────────────────────────────
 
+  /// 답변이 들어온 경로. 서버에 함께 보낸다.
+  ComposeMode get _inputMode => answerSource.value == WriteStage.keyboard
+      ? ComposeMode.keyboard
+      : ComposeMode.voice;
+
+  /// 적은 글에는 "말한 시간"이 없다. 0을 보내면 "0초 말했다"로 읽히므로
+  /// 아예 빼서 보낸다.
+  int? get _spokenSecondsOrNull =>
+      _inputMode == ComposeMode.keyboard ? null : spokenSeconds.value;
+
   Future<void> _save(String text) async {
     final q = question.value;
     if (q == null || text.isEmpty || isBusy.value) return;
+
+    // 어느 단계의 답인지 **보내기 전에** 붙잡아 둔다. 응답을 기다리는 동안
+    // 상태가 바뀌면 실패 처리가 엉뚱한 갈래로 간다.
+    final wasFollowup = isFollowup.value;
+    final pending = followup.value;
+    if (wasFollowup && pending == null) return;
+
     isBusy.value = true;
+    stage.value = wasFollowup
+        ? WriteStage.saving
+        : WriteStage.generatingFollowup;
     try {
-      final next = await _api.saveAnswer(questionId: q.id, text: text);
+      if (!wasFollowup) {
+        followup.value = await _api.submitAnswer(
+          questionId: q.id,
+          text: text,
+          inputMode: _inputMode,
+          spokenSeconds: _spokenSecondsOrNull,
+        );
+        isFollowup.value = true;
+        _clearInput();
+        stage.value = WriteStage.ask;
+        return;
+      }
+
+      final next = await _api.submitFollowupAnswer(
+        questionId: q.id,
+        followupId: pending!.id,
+        text: text,
+        inputMode: _inputMode,
+        spokenSeconds: _spokenSecondsOrNull,
+      );
       saveFailed.value = false;
       _toast.show(
         '저장되었습니다.',
@@ -305,13 +395,40 @@ class WriteController extends GetxController {
       );
       await _moveTo(next);
     } on ApiException {
-      // ⚠️ 토스트로 알리지 않는다. 몇 초 뒤 사라지는 안내로는 "내 이야기가
-      //    날아갔나"라는 걱정을 지울 수 없다. 확인 화면에 그대로 머물면서
-      //    D5(저장 실패) 안내 박스를 띄우고, 글은 화면에 남겨 둔다.
-      saveFailed.value = true;
+      if (wasFollowup) {
+        // ⚠️ 토스트로 알리지 않는다. 몇 초 뒤 사라지는 안내로는 "내 이야기가
+        //    날아갔나"라는 걱정을 지울 수 없다. 확인 화면에 그대로 머물면서
+        //    D5(저장 실패) 안내 박스를 띄우고, 글은 화면에 남겨 둔다.
+        //    서버도 초안을 들고 있으니 같은 버튼을 다시 누르면 된다.
+        saveFailed.value = true;
+        stage.value = WriteStage.confirm;
+        return;
+      }
+      // 꼬리질문을 못 만들었다 — 서버가 1차 답변을 버렸으므로 화면에 남겨
+      // 두면 거짓말이 된다. 지우고 처음부터 다시 받는다(D8).
+      followup.value = null;
+      isFollowup.value = false;
+      _clearInput();
+      stage.value = WriteStage.followupFailed;
     } finally {
       isBusy.value = false;
     }
+  }
+
+  /// D8에서 "다시 답해볼게요" — 같은 질문을 처음부터 받는다.
+  void restartQuestion() {
+    _clearInput();
+    followup.value = null;
+    isFollowup.value = false;
+    stage.value = WriteStage.ask;
+  }
+
+  /// 입력 흔적을 지운다. 질문은 건드리지 않는다.
+  void _clearInput() {
+    transcript.value = '';
+    spokenSeconds.value = 0;
+    saveFailed.value = false;
+    answerController.clear();
   }
 
   Future<void> skip() async {
@@ -329,10 +446,10 @@ class WriteController extends GetxController {
 
   /// 다음 질문으로 상태를 갈아 끼운다. null이면 전부 끝났다는 뜻이다.
   Future<void> _moveTo(Question? next) async {
-    transcript.value = '';
-    spokenSeconds.value = 0;
-    saveFailed.value = false;
-    answerController.clear();
+    _clearInput();
+    // 새 질문은 언제나 1차 답변부터다.
+    followup.value = null;
+    isFollowup.value = false;
     stage.value = WriteStage.ask;
 
     question.value = next;

@@ -5,11 +5,14 @@ import 'package:life_legacy/service/services.dart';
 
 import 'support/test_env.dart';
 
-/// 저장 실패(D5)를 잠근다.
+/// 답변 확인(D4)과 저장 실패(D5)의 **문구 규칙**을 잠근다.
 ///
 /// 저장이 실패해도 **화면을 떠나지 않는다.** 토스트만 띄우고 넘겨 버리면
 /// 방금 말한 이야기가 어디로 갔는지 알 수 없다. 확인 화면에 그대로 머물면서
 /// 글은 남기고, 제목·버튼 문구만 "다시 저장"으로 바뀐다.
+///
+/// 꼬리질문 흐름 자체(어느 단계에서 무엇이 저장되는지)는
+/// `write_followup_test.dart`가 맡는다.
 void main() {
   setUpAll(() => initTestEnv('write'));
 
@@ -26,6 +29,16 @@ void main() {
     c.useKeyboard();
     c.answerController.text = text;
     c.submitTyped();
+  }
+
+  /// 저장이 일어나는 지점, 즉 **꼬리답변 확인 화면**까지 밀어 넣는다.
+  ///
+  /// 저장(윤문)은 꼬리답변을 보낼 때 일어난다. 1차 답변을 보내는 호출은
+  /// 꼬리질문을 받아 오는 것이라 실패해도 D5가 아니라 D8로 간다.
+  Future<void> reachSaveStep(WriteController c, String text) async {
+    typeAnswer(c, '제주도에 갔던 게 기억납니다');
+    await c.confirmTranscript();
+    typeAnswer(c, text);
   }
 
   test('적은 글도 확인 화면을 거친다', () async {
@@ -47,7 +60,7 @@ void main() {
 
   test('저장에 실패하면 확인 화면에 머물며 문구가 바뀐다', () async {
     final (c, api) = await build();
-    typeAnswer(c, '감나무가 있었어요');
+    await reachSaveStep(c, '감나무가 있었어요');
     api.failNextSave = true;
 
     await c.confirmTranscript();
@@ -63,7 +76,7 @@ void main() {
   test('다시 저장하면 성공하고 다음 질문으로 넘어간다', () async {
     final (c, api) = await build();
     final first = c.question.value!.id;
-    typeAnswer(c, '감나무가 있었어요');
+    await reachSaveStep(c, '감나무가 있었어요');
     api.failNextSave = true;
     await c.confirmTranscript();
 
@@ -76,7 +89,7 @@ void main() {
 
   test('"다시 쓰기"를 누르면 실패 표시가 걷히고 적던 글로 돌아간다', () async {
     final (c, api) = await build();
-    typeAnswer(c, '감나무가 있었어요');
+    await reachSaveStep(c, '감나무가 있었어요');
     api.failNextSave = true;
     await c.confirmTranscript();
 

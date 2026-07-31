@@ -80,13 +80,38 @@ abstract interface class ApiClient {
 
   Future<Question> question(String questionId);
 
-  /// 답변을 확정 저장하고 다음 질문으로 넘어간다.
-  /// 다음 질문이 없으면 null(장 완료).
+  /// 1차 답변을 보내고 **AI 꼬리질문**을 받는다.
   ///
-  /// 음성이든 키보드든 최종 저장은 이 하나를 지난다.
-  Future<Question?> saveAnswer({
+  /// 아직 확정 저장이 아니다 — 서버는 초안으로만 들고 있다가 꼬리답변까지
+  /// 받아야 저장한다([submitFollowupAnswer]).
+  ///
+  /// AI 호출이 들어 있어 느리다. 화면은 전용 로딩을 띄우고 기다린다.
+  ///
+  /// 꼬리질문을 만들지 못하면 `FOLLOWUP_FAILED`로 던진다. 이때 서버는
+  /// 초안을 버리므로 **사용자는 질문부터 다시 답해야 한다** — 아직 한 번밖에
+  /// 답하지 않은 시점이라 감수하기로 한 동작이다.
+  Future<Followup> submitAnswer({
     required String questionId,
     required String text,
+    required ComposeMode inputMode,
+    int? spokenSeconds,
+  });
+
+  /// 꼬리답변을 보내 **확정 저장**하고 다음 질문으로 넘어간다.
+  /// 다음 질문이 없으면 null(모든 장 완료).
+  ///
+  /// 서버가 이 호출 안에서 원문 둘을 작가체로 다듬어 저장한다. 다듬은 글은
+  /// 돌려주지 않는다 — 작성 화면에서는 보여주지 않기로 했고, 처음 눈에 띄는
+  /// 곳은 자서전 미리보기([bookPages])다.
+  ///
+  /// 저장에 실패하면 `POLISH_FAILED`로 던진다. 이때 서버는 초안을 **남기므로**
+  /// 같은 파라미터로 다시 부르면 된다 — 두 번 답한 이야기를 날리지 않는다.
+  Future<Question?> submitFollowupAnswer({
+    required String questionId,
+    required String followupId,
+    required String text,
+    required ComposeMode inputMode,
+    int? spokenSeconds,
   });
 
   /// 이 질문 건너뛰기.

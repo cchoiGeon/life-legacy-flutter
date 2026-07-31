@@ -110,17 +110,29 @@ class _MoreButton extends GetView<WriteController> {
                 controller.skip();
               },
             ),
-            // ⚠️ 목업 전용. 저장 실패 화면(D5)을 손으로 확인하려고 둔 것이다.
-            //    실제 API가 붙으면 이 줄과 `MockApiClient.failNextSave`를
-            //    같이 지운다.
-            if (api is MockApiClient)
+            // ⚠️ 목업 전용. 실패 화면 둘을 손으로 확인하려고 둔 것이다.
+            //    실제 API가 붙으면 이 두 줄과 `MockApiClient`의 같은 이름
+            //    스위치를 함께 지운다.
+            //
+            //    두 실패는 **결과가 다르다** — 저장 실패(D5)는 적은 글이
+            //    살아 있어 버튼만 다시 누르면 되지만, 꼬리질문 실패(D8)는
+            //    서버가 1차 답변을 버려서 질문부터 다시 답해야 한다.
+            if (api is MockApiClient) ...[
               AppSettingRow(
-                title: '목업 · 다음 저장을 실패시키기',
+                title: '목업 · 다음 저장을 실패시키기 (D5)',
                 onTap: () {
                   api.failNextSave = true;
                   Navigator.of(sheetContext).pop();
                 },
               ),
+              AppSettingRow(
+                title: '목업 · 다음 꼬리질문을 실패시키기 (D8)',
+                onTap: () {
+                  api.failNextFollowup = true;
+                  Navigator.of(sheetContext).pop();
+                },
+              ),
+            ],
           ],
         ),
       ),

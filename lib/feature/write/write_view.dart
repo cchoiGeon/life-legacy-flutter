@@ -6,8 +6,10 @@ import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 
+import 'stages/ai_loading_stage.dart';
 import 'stages/ask_stage.dart';
 import 'stages/confirm_stage.dart';
+import 'stages/followup_failed_stage.dart';
 import 'stages/keyboard_stage.dart';
 import 'stages/recording_stage.dart';
 import 'write_controller.dart';
@@ -47,6 +49,11 @@ class WriteView extends GetView<WriteController> {
           WriteStage.recording => const RecordingStage(),
           WriteStage.keyboard => const KeyboardStage(),
           WriteStage.confirm => const ConfirmStage(),
+          // D6·D7은 같은 화면이고 문구만 바뀐다 — 사용자가 보기엔 둘 다
+          // "기다리는 중"이라 서로 다른 그림을 만들 이유가 없다.
+          WriteStage.generatingFollowup ||
+          WriteStage.saving => const AiLoadingStage(),
+          WriteStage.followupFailed => const FollowupFailedStage(),
         },
       );
     });

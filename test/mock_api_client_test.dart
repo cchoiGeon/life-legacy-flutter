@@ -46,14 +46,42 @@ void main() {
     expect(session.user.phone, '01012345678');
   });
 
-  test('답변을 저장하면 진행률이 오르고 다음 질문이 나온다', () async {
+  test('1차 답변만으로는 진행률이 오르지 않는다', () async {
     final api = MockApiClient();
 
     final before = await api.home();
     final q = await api.currentQuestion();
     expect(q, isNotNull, reason: '시드 데이터에 미답변 질문이 있어야 한다');
 
-    final next = await api.saveAnswer(questionId: q!.id, text: '테스트 답변');
+    await api.submitAnswer(
+      questionId: q!.id,
+      text: '테스트 답변',
+      inputMode: ComposeMode.keyboard,
+    );
+    final after = await api.home();
+
+    expect(after.progress, before.progress, reason: '아직 초안이다');
+    expect(await api.currentQuestion(), isNotNull);
+    expect((await api.currentQuestion())?.id, q.id, reason: '같은 질문에 머문다');
+  });
+
+  test('꼬리답변까지 받아야 진행률이 오르고 다음 질문이 나온다', () async {
+    final api = MockApiClient();
+
+    final before = await api.home();
+    final q = await api.currentQuestion();
+    final followup = await api.submitAnswer(
+      questionId: q!.id,
+      text: '테스트 답변',
+      inputMode: ComposeMode.keyboard,
+    );
+
+    final next = await api.submitFollowupAnswer(
+      questionId: q.id,
+      followupId: followup.id,
+      text: '이어서 답한 내용',
+      inputMode: ComposeMode.keyboard,
+    );
     final after = await api.home();
 
     expect(after.progress, greaterThan(before.progress));
@@ -75,11 +103,23 @@ void main() {
     final api = MockApiClient();
     final q = await api.currentQuestion();
 
-    // AI 다듬기 단계가 없어졌으므로 saveAnswer 하나가 음성·키보드를 모두 받는다.
-    await api.saveAnswer(questionId: q!.id, text: '직접 적은 답변입니다');
+    // 음성이든 키보드든 확정 저장은 submitFollowupAnswer 하나를 지난다.
+    final followup = await api.submitAnswer(
+      questionId: q!.id,
+      text: '직접 적은 답변입니다',
+      inputMode: ComposeMode.keyboard,
+    );
+    await api.submitFollowupAnswer(
+      questionId: q.id,
+      followupId: followup.id,
+      text: '이어서 적은 답변입니다',
+      inputMode: ComposeMode.keyboard,
+    );
     final pages = await api.bookPages();
 
-    expect(pages.expand((p) => p.paragraphs), contains('직접 적은 답변입니다'));
+    final text = pages.expand((p) => p.paragraphs).join('\n');
+    expect(text, contains('직접 적은 답변입니다'));
+    expect(text, contains('이어서 적은 답변입니다'), reason: '꼬리답변도 책에 실린다');
   });
 
   test('책 미리보기는 답변한 장만 싣는다', () async {

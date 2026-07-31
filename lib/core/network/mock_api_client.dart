@@ -20,6 +20,10 @@ class MockApiClient implements ApiClient {
   /// 목차 생성처럼 오래 걸리는 작업(시안 09번 전용 로딩 화면).
   static const _slowLatency = Duration(milliseconds: 2600);
 
+  /// AI를 부르는 호출. 실제로는 꼬리질문 30초 · 윤문 60초까지 걸린다.
+  /// 전용 로딩 화면이 눈에 보일 만큼은 끌어 둔다.
+  static const _aiLatency = Duration(milliseconds: 1200);
+
   Future<T> _delay<T>(T value, [Duration d = _latency]) =>
       Future.delayed(d, () => value);
 
@@ -73,11 +77,24 @@ class MockApiClient implements ApiClient {
   /// 인증번호 — 어떤 번호로 요청하든 이 값이 정답이다.
   static const demoCode = '482915';
 
-  /// 다음 [saveAnswer] 한 번을 실패시킨다 — 시안 D5(저장 실패)를 눈으로
+  /// 다음 [submitFollowupAnswer] 한 번을 실패시킨다 — D5(저장 실패)를 눈으로
   /// 확인하기 위한 스위치다. 작성 화면 `⋯` 메뉴에서 켠다.
   ///
   /// ⚠️ 실제 구현에는 없을 코드다. 실패는 네트워크가 만들지 우리가 만들지 않는다.
   bool failNextSave = false;
+
+  /// 다음 [submitAnswer] 한 번을 실패시킨다 — D6(꼬리질문 실패)용.
+  ///
+  /// 저장 실패와 **결과가 다르다.** 이쪽은 적은 글이 버려지고 질문부터 다시다.
+  bool failNextFollowup = false;
+
+  /// 마지막 1차 답변에 실려 온 값들. 테스트가 "무엇을 보냈는지" 확인한다.
+  String? lastAnswerQuestionId;
+  ComposeMode? lastAnswerInputMode;
+  int? lastAnswerSpokenSeconds;
+
+  /// 질문 id → 확정 전 1차 답변. 꼬리답변이 오면 합쳐서 저장하고 지운다.
+  final Map<String, String> _drafts = {};
 
   late List<Chapter> _chapters = _seedChapters();
   late List<Question> _questions = _seedQuestions();
@@ -273,20 +290,61 @@ class MockApiClient implements ApiClient {
       _delay(_questions.firstWhere((q) => q.id == questionId));
 
   @override
-  Future<Question?> saveAnswer({
+  Future<Followup> submitAnswer({
     required String questionId,
     required String text,
+    required ComposeMode inputMode,
+    int? spokenSeconds,
   }) async {
-    await Future<void>.delayed(_latency);
+    lastAnswerQuestionId = questionId;
+    lastAnswerInputMode = inputMode;
+    lastAnswerSpokenSeconds = spokenSeconds;
+
+    // 실제 서버는 AI를 부르느라 30초까지 걸린다. 로딩 화면이 눈에 보이도록
+    // 보통 지연보다 길게 잡았다.
+    await Future<void>.delayed(_aiLatency);
+    if (failNextFollowup) {
+      failNextFollowup = false;
+      throw const ApiException(
+        '질문을 만들지 못했어요',
+        code: 'FOLLOWUP_FAILED',
+      );
+    }
+
+    _drafts[questionId] = text;
+    final q = _questions.firstWhere((e) => e.id == questionId);
+    return Followup(id: 'f_$questionId', text: _followupTextFor(q.text));
+  }
+
+  @override
+  Future<Question?> submitFollowupAnswer({
+    required String questionId,
+    required String followupId,
+    required String text,
+    required ComposeMode inputMode,
+    int? spokenSeconds,
+  }) async {
+    await Future<void>.delayed(_aiLatency);
     if (failNextSave) {
       failNextSave = false;
-      throw const ApiException('저장하지 못했어요', code: 'SAVE_FAILED');
+      throw const ApiException('저장하지 못했어요', code: 'POLISH_FAILED');
     }
+
+    // 확정 저장되는 건 **사용자 원문 둘**이다. 목업에는 다듬는 AI가 없으니
+    // 이어 붙여 둔다 — 실제 서버는 여기서 작가체로 고쳐 따로 보관한다.
+    final first = _drafts.remove(questionId) ?? '';
+    final joined = [first, text].where((e) => e.isNotEmpty).join('\n\n');
+
     final i = _questions.indexWhere((q) => q.id == questionId);
-    if (i >= 0) _questions[i] = _questions[i].copyWith(answer: text);
+    if (i >= 0) _questions[i] = _questions[i].copyWith(answer: joined);
     _syncChapters();
     return _findCurrentQuestion();
   }
+
+  /// 1차 답변을 받고 되묻는 말. 실제로는 AI가 답변 내용을 읽고 만든다.
+  String _followupTextFor(String question) =>
+      '말씀해 주신 장면이 눈에 그려집니다. 그 시간이 지금까지도 마음에 남아 계신 것 같아요.\n\n'
+      '그때 곁에 누가 함께 있었는지, 기억나는 대로 조금만 더 들려주시겠어요?';
 
   @override
   Future<Question?> skipQuestion(String questionId) async {

@@ -139,3 +139,24 @@ class Question {
     'answer': answer,
   };
 }
+
+/// 1차 답변을 보고 AI가 되물어 오는 질문. 질문 하나당 **한 번**이다.
+///
+/// [text]는 요약 + 공감 + 질문이 한 덩어리로 온다 —
+/// "제주도 이야기를 꺼내시니 … 가장 오래 머문 곳은 어디였나요?"
+/// 그래서 원래 질문보다 서너 배 길고, 화면이 스크롤을 열어 둔다.
+class Followup {
+  const Followup({required this.id, required this.text});
+
+  /// 꼬리답변을 보낼 때 경로에 실린다.
+  final String id;
+
+  final String text;
+
+  factory Followup.fromJson(Map<String, dynamic> json) => Followup(
+    id: json['id'] as String,
+    text: json['text'] as String? ?? '',
+  );
+
+  Map<String, dynamic> toJson() => {'id': id, 'text': text};
+}
