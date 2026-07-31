@@ -22,7 +22,10 @@ abstract interface class ApiClient {
   // ══════════════════════════════════════════════════════════
 
   /// 전화번호로 인증번호 발송.
-  Future<void> requestVerificationCode(String phone);
+  ///
+  /// 유효 시간과 재발송 대기 시간을 **서버가 알려준다** — 기기 시계가 틀어져
+  /// 있어도 화면의 남은 시간이 서버 기준으로 맞는다.
+  Future<VerificationChallenge> requestVerificationCode(String phone);
 
   /// 인증번호 확인 → 세션 발급.
   /// 코드가 틀리면 [ApiException]을 던진다(화면이 에러 상태를 그린다).
@@ -35,13 +38,6 @@ abstract interface class ApiClient {
 
   Future<void> logout();
 
-  /// 인증번호 재발송 대기 시간.
-  ///
-  /// ⚠️ 지금은 상수를 돌려주고 **클라이언트가 타이머를 센다**. 서버 계약이
-  ///    정해지면 [requestVerificationCode]가 만료 시각을 돌려주도록 바꾸고
-  ///    이 메서드는 지운다 — 앱 시계와 서버 시계가 어긋나면 "다시 받기"가
-  ///    아직 안 되는데 눌리는 상태가 생긴다.
-  Duration get verificationCodeTtl;
 
   // ══════════════════════════════════════════════════════════
   // 자기소개 → 목차 생성

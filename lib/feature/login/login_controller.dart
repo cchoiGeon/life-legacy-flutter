@@ -37,8 +37,14 @@ class LoginController extends GetxController {
   /// 입력된 인증번호 숫자 6자리
   final RxString code = ''.obs;
 
-  /// 재발송까지 남은 초. 0이면 "다시 받기"를 누를 수 있다.
+  /// 인증번호 만료까지 남은 초. 화면의 "2분 47초 남음".
   final RxInt secondsLeft = 0.obs;
+
+  /// 재발송이 열릴 때까지 남은 초. 0이면 "다시 받기"를 누를 수 있다.
+  ///
+  /// 만료 시간과 **따로 센다.** 하나로 묶으면 문자가 안 온 사람이 번호가
+  /// 만료될 때까지 아무것도 못 하고 기다리게 된다.
+  final RxInt resendSecondsLeft = 0.obs;
 
   Timer? _tick;
 
@@ -101,10 +107,10 @@ class LoginController extends GetxController {
     if (!canRequestCode || isSubmitting.value) return;
     isSubmitting.value = true;
     try {
-      await _api.requestVerificationCode(phoneDigits.value);
+      final challenge = await _api.requestVerificationCode(phoneDigits.value);
       code.value = '';
       codeError.value = null;
-      _startTimer();
+      _startTimer(challenge);
       Get.toNamed(AppRoutes.code);
     } on ApiException catch (e) {
       _toast.showError(e);
@@ -141,20 +147,22 @@ class LoginController extends GetxController {
     return '${s ~/ 60}분 ${s % 60}초 남음';
   }
 
-  /// 시간이 남아 있는 동안에는 "다시 받기"가 눌리지 않는다 —
+  /// 대기 시간이 지나야 "다시 받기"가 눌린다 —
   /// 문자를 연달아 보내면 어느 번호가 맞는지 사용자가 헷갈린다.
-  bool get canResend => secondsLeft.value <= 0;
+  bool get canResend => resendSecondsLeft.value <= 0;
 
-  void _startTimer() {
+  /// 만료·재발송 두 시계를 서버가 준 값으로 맞춘다.
+  ///
+  /// 타이머는 하나로 돌린다 — 두 개를 두면 둘이 어긋났을 때 화면이
+  /// 설명할 수 없는 상태가 된다.
+  void _startTimer(VerificationChallenge challenge) {
     _tick?.cancel();
-    secondsLeft.value = _api.verificationCodeTtl.inSeconds;
+    secondsLeft.value = challenge.expiresIn.inSeconds;
+    resendSecondsLeft.value = challenge.resendAfter.inSeconds;
     _tick = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (secondsLeft.value <= 1) {
-        secondsLeft.value = 0;
-        t.cancel();
-        return;
-      }
-      secondsLeft.value--;
+      if (secondsLeft.value > 0) secondsLeft.value--;
+      if (resendSecondsLeft.value > 0) resendSecondsLeft.value--;
+      if (secondsLeft.value == 0 && resendSecondsLeft.value == 0) t.cancel();
     });
   }
 
@@ -181,10 +189,10 @@ class LoginController extends GetxController {
   Future<void> resendCode() async {
     if (!canResend) return;
     try {
-      await _api.requestVerificationCode(phoneDigits.value);
+      final challenge = await _api.requestVerificationCode(phoneDigits.value);
       code.value = '';
       codeError.value = null;
-      _startTimer();
+      _startTimer(challenge);
       _toast.show('인증번호를 다시 보냈어요');
     } on ApiException catch (e) {
       _toast.showError(e);

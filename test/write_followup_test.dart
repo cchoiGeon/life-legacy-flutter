@@ -68,6 +68,23 @@ void main() {
       expect(c.displayQuestion, c.question.value!.text);
     });
 
+    test('1차 답변 확인 화면은 저장한다고 말하지 않는다', () async {
+      final (c, _) = await build();
+      typeAnswer(c, '제주도에 갔습니다');
+
+      // 이 버튼을 누르면 저장되지도, 다음 질문으로 가지도 않는다 —
+      // 꼬리질문이 하나 더 뜬다. "저장하고 다음 질문"은 거짓말이다.
+      expect(c.saveLabel, '이어서 답하기');
+    });
+
+    test('꼬리답변 확인 화면에서만 저장한다고 말한다', () async {
+      final (c, _) = await build();
+      await reachFollowup(c, '제주도에 갔습니다');
+      typeAnswer(c, '성산일출봉에 있었습니다');
+
+      expect(c.saveLabel, '저장하고 다음 질문');
+    });
+
     test('꼬리질문을 만드는 동안 전용 안내를 보여준다', () async {
       final (c, _) = await build();
       typeAnswer(c, '제주도에 갔습니다');

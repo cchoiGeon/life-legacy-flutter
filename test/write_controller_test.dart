@@ -48,7 +48,8 @@ void main() {
     expect(c.stage.value, WriteStage.confirm);
     expect(c.transcript.value, '감나무가 있었어요');
     expect(c.confirmTitle, '이렇게 정리했어요');
-    expect(c.saveLabel, '저장하고 다음 질문');
+    // 1차 답변이라 아직 저장 단계가 아니다 — 문구 규칙은 write_followup_test가 맡는다.
+    expect(c.saveLabel, '이어서 답하기');
   });
 
   test('적은 글에는 "말한 시간"이 붙지 않는다', () async {

@@ -95,18 +95,24 @@ void main() {
   });
 
   group('재발송 타이머', () {
-    test('인증번호를 받으면 3분을 세고, 그동안 "다시 받기"가 막힌다', () {
+    /// 인증번호를 요청한 직후 상태로 만든다.
+    LoginController requested(FakeAsync async) {
+      final c = build();
+      for (final d in '01012345678'.split('')) {
+        c.onPhoneDigit(d);
+      }
+      c.requestCode();
+      async.elapse(const Duration(seconds: 1)); // 목업 지연 통과
+      return c;
+    }
+
+    test('유효시간은 서버가 준 값을 센다', () {
       fakeAsync((async) {
-        final c = build();
-        for (final d in '01012345678'.split('')) {
-          c.onPhoneDigit(d);
-        }
+        final c = requested(async);
 
-        c.requestCode();
-        async.elapse(const Duration(seconds: 1)); // 목업 지연 통과
-
+        // ⚠️ 클라이언트 상수가 아니다. 기기 시계가 틀어져 있어도 서버가 말한
+        //    만료까지 남은 시간을 보여줘야 한다.
         expect(c.secondsLeft.value, 180);
-        expect(c.canResend, isFalse);
         expect(c.timerLabel, '3분 0초 남음');
 
         async.elapse(const Duration(seconds: 13));
@@ -114,10 +120,45 @@ void main() {
 
         async.elapse(const Duration(minutes: 3));
         expect(c.secondsLeft.value, 0);
-        expect(c.canResend, isTrue);
         expect(c.timerLabel, '시간이 지났어요');
 
         // 타이머가 계속 돌면 테스트 종료 시 pending timer로 잡힌다.
+        c.onClose();
+      });
+    });
+
+    test('"다시 받기"는 유효시간과 따로, 더 짧게 풀린다', () {
+      fakeAsync((async) {
+        final c = requested(async);
+
+        // 문자를 연달아 보내면 어느 번호가 맞는지 헷갈린다. 다만 3분을 통째로
+        // 막으면 문자가 안 온 사람이 3분을 기다려야 한다.
+        expect(c.canResend, isFalse);
+        expect(c.resendSecondsLeft.value, 30);
+
+        async.elapse(const Duration(seconds: 29));
+        expect(c.canResend, isFalse);
+
+        async.elapse(const Duration(seconds: 1));
+        expect(c.canResend, isTrue);
+        expect(c.secondsLeft.value, greaterThan(0), reason: '유효시간은 아직 남았다');
+
+        c.onClose();
+      });
+    });
+
+    test('다시 받으면 두 타이머가 함께 되감긴다', () {
+      fakeAsync((async) {
+        final c = requested(async);
+        async.elapse(const Duration(seconds: 40));
+
+        c.resendCode();
+        async.elapse(const Duration(seconds: 1));
+
+        expect(c.secondsLeft.value, 180);
+        expect(c.resendSecondsLeft.value, 30);
+        expect(c.canResend, isFalse);
+
         c.onClose();
       });
     });

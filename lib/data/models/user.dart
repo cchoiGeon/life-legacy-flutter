@@ -46,6 +46,35 @@ class User {
   };
 }
 
+/// 인증번호 발송 결과.
+///
+/// ⚠️ 두 시간은 **다른 것**이다. [expiresIn]은 번호가 언제까지 유효한지고,
+///    [resendAfter]는 "다시 받기"를 언제부터 누를 수 있는지다. 하나로 묶으면
+///    문자가 안 온 사람이 만료될 때까지 아무것도 못 하게 된다.
+class VerificationChallenge {
+  const VerificationChallenge({
+    required this.expiresIn,
+    required this.resendAfter,
+  });
+
+  /// 인증번호 유효 시간. 화면의 "2분 47초 남음"이 여기서 나온다.
+  final Duration expiresIn;
+
+  /// 재발송이 열릴 때까지 남은 시간.
+  final Duration resendAfter;
+
+  factory VerificationChallenge.fromJson(Map<String, dynamic> json) =>
+      VerificationChallenge(
+        expiresIn: Duration(seconds: json['expires_in'] as int? ?? 180),
+        resendAfter: Duration(seconds: json['resend_after'] as int? ?? 30),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'expires_in': expiresIn.inSeconds,
+    'resend_after': resendAfter.inSeconds,
+  };
+}
+
 /// 로그인 결과 — 토큰과 사용자, 그리고 다음에 가야 할 화면 정보.
 class AuthSession {
   const AuthSession({

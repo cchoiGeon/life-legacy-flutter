@@ -113,7 +113,12 @@ class MockApiClient implements ApiClient {
   // ══════════════════════════════════════════════════════════
 
   @override
-  Future<void> requestVerificationCode(String phone) => _delay(null);
+  Future<VerificationChallenge> requestVerificationCode(String phone) => _delay(
+    const VerificationChallenge(
+      expiresIn: Duration(minutes: 3),
+      resendAfter: Duration(seconds: 30),
+    ),
+  );
 
   @override
   Future<AuthSession> verifyCode({
@@ -149,8 +154,6 @@ class MockApiClient implements ApiClient {
   Future<void> logout() => _delay(null);
 
   /// 시안 343:713은 "2분 47초 남음"으로 그려져 있다 — 3분에서 13초 지난 모습이다.
-  @override
-  Duration get verificationCodeTtl => const Duration(minutes: 3);
 
   // ══════════════════════════════════════════════════════════
   // 자기소개 → 목차

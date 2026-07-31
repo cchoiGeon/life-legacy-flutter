@@ -8,10 +8,12 @@ import 'package:life_legacy/feature/write/stages/question_panel.dart';
 /// 시안의 고정 높이 244를 그대로 두면 화면 밖으로 넘친다.
 void main() {
   const short = '어린 시절 살던 동네는 어떤 모습이었나요?';
+
+  /// 꼬리질문의 실제 모양 — 요약·공감 뒤에 빈 줄, 그다음이 묻는 문장이다.
+  const question = '그때 곁에 누가 함께 있었는지, 기억나는 대로 조금만 더 들려주시겠어요?';
   const long =
-      '말씀해 주신 장면이 눈에 그려집니다. 그 시간이 지금까지도 마음에 남아 계신 것 같아요. '
-      '그때 곁에 누가 함께 있었는지, 기억나는 대로 조금만 더 들려주시겠어요? '
-      '작은 이야기라도 괜찮으니 떠오르는 대로 말씀해 주세요.';
+      '말씀해 주신 장면이 눈에 그려집니다. 그 시간이 지금까지도 마음에 남아 계신 것 같아요.\n\n'
+      '$question';
 
   Future<void> pump(
     WidgetTester tester, {
@@ -61,11 +63,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('글자 입력 화면에서는 긴 꼬리질문을 줄여 보여준다', (tester) async {
+  testWidgets('글자 입력 화면은 꼬리질문의 "묻는 문장"만 남긴다', (tester) async {
     await pump(tester, question: long, badge: '이어서 여쭤볼게요', tall: false);
 
-    // 입력칸에 자리를 내줘야 해서 전문을 펼치지 않는다.
-    final text = tester.widget<Text>(find.text(long));
+    // 꼬리질문은 [요약·공감] 빈 줄 [질문] 꼴로 온다. 입력칸에 자리를 내주려고
+    // 앞에서부터 잘라 버리면 정작 물어보는 문장이 사라진다 — 뒤쪽만 남긴다.
+    expect(find.text(question), findsOneWidget);
+    expect(find.text(long), findsNothing);
+  });
+
+  testWidgets('빈 줄이 없는 꼬리질문은 통째로 두되 줄 수를 제한한다', (tester) async {
+    const flat = '말씀해 주신 장면이 눈에 그려집니다. 그때 곁에 누가 함께 있었는지 조금만 더 들려주시겠어요?';
+    await pump(tester, question: flat, badge: '이어서 여쭤볼게요', tall: false);
+
+    final text = tester.widget<Text>(find.text(flat));
     expect(text.maxLines, 4);
     expect(text.overflow, TextOverflow.ellipsis);
   });

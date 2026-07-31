@@ -313,8 +313,15 @@ class WriteController extends GetxController {
   /// "저장하고 다음 질문" / (실패 후) "다시 저장하기"
   Future<void> confirmTranscript() => _save(transcript.value);
 
-  /// 주 버튼 문구. 한 번 실패했으면 재시도라는 걸 문구로 알린다.
-  String get saveLabel => saveFailed.value ? '다시 저장하기' : '저장하고 다음 질문';
+  /// 주 버튼 문구.
+  ///
+  /// ⚠️ 1차 답변에서는 **"저장"이라고 말하지 않는다.** 그 버튼을 눌러도
+  ///    저장되지 않고 다음 질문으로도 가지 않는다 — 꼬리질문이 하나 더 뜬다.
+  ///    실제로 저장이 일어나는 건 꼬리답변을 보낼 때뿐이다.
+  String get saveLabel {
+    if (saveFailed.value) return '다시 저장하기';
+    return isFollowup.value ? '저장하고 다음 질문' : '이어서 답하기';
+  }
 
   /// 화면 제목 — 실패했으면 "정리는 마쳤어요 / 저장만 남았어요"로 바뀐다.
   /// 글은 살아 있다는 걸 제목에서부터 알려야 사용자가 다시 말하지 않는다.

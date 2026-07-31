@@ -38,6 +38,19 @@ class QuestionPanel extends StatelessWidget {
   /// 크기와 정렬을 그대로 두면 화면 밖으로 넘친다.
   bool get _isLong => badge != null;
 
+  /// 좁은 화면(글자 입력)에 남길 글.
+  ///
+  /// 꼬리질문은 `[요약·공감]` 빈 줄 `[질문]` 꼴로 온다. 입력칸에 자리를
+  /// 내주려고 **앞에서부터** 잘라 내면 정작 물어보는 문장이 사라진다 —
+  /// 실제로 그렇게 만들었더니 화면에 공감 문구만 남았다.
+  /// 전문은 바로 앞 화면(음성 대기)에서 이미 읽고 넘어온다.
+  String get _compactQuestion {
+    if (!_isLong) return question;
+    final split = question.lastIndexOf('\n\n');
+    if (split < 0) return question;
+    return question.substring(split + 2).trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!tall) {
@@ -52,10 +65,9 @@ class QuestionPanel extends StatelessWidget {
               _Badge(label: badge!),
               const SizedBox(height: 12),
             ],
-            // 글자 입력 화면에서는 입력칸에 자리를 내주려고 긴 꼬리질문도
-            // 최대 4줄까지만 보여준다. 전문은 음성 대기 화면에서 읽는다.
+            // 빈 줄이 없어 잘라 낼 수 없는 꼬리질문은 통째로 두되 4줄로 막는다.
             Text(
-              question,
+              _compactQuestion,
               maxLines: _isLong ? 4 : null,
               overflow: _isLong ? TextOverflow.ellipsis : null,
               style: AppTypography.titleScreen.copyWith(
