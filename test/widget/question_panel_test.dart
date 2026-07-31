@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:life_legacy/common/text/korean_wrap.dart';
 import 'package:life_legacy/feature/write/stages/question_panel.dart';
 
 /// 질문판이 1차 질문과 꼬리질문을 다르게 그리는 규칙 (시안 341:654).
@@ -35,8 +36,18 @@ void main() {
   testWidgets('1차 질문에는 배지가 붙지 않는다', (tester) async {
     await pump(tester, question: short);
 
-    expect(find.text(short), findsOneWidget);
+    expect(find.text(keepAll(short)), findsOneWidget);
     expect(find.text('이어서 여쭤볼게요'), findsNothing);
+  });
+
+  testWidgets('질문은 어절이 쪼개지지 않게 묶어서 그린다', (tester) async {
+    await pump(tester, question: short);
+
+    // 큰 글씨라 한 줄에 들어가는 글자가 적다. 그대로 두면 "들려/주세요"처럼
+    // 낱말 한가운데서 줄이 갈린다.
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.data, contains('⁠'));
+    expect(text.data, keepAll(short));
   });
 
   testWidgets('꼬리질문에는 배지가 붙는다', (tester) async {
@@ -68,15 +79,15 @@ void main() {
 
     // 꼬리질문은 [요약·공감] 빈 줄 [질문] 꼴로 온다. 입력칸에 자리를 내주려고
     // 앞에서부터 잘라 버리면 정작 물어보는 문장이 사라진다 — 뒤쪽만 남긴다.
-    expect(find.text(question), findsOneWidget);
-    expect(find.text(long), findsNothing);
+    expect(find.text(keepAll(question)), findsOneWidget);
+    expect(find.text(keepAll(long)), findsNothing);
   });
 
   testWidgets('빈 줄이 없는 꼬리질문은 통째로 두되 줄 수를 제한한다', (tester) async {
     const flat = '말씀해 주신 장면이 눈에 그려집니다. 그때 곁에 누가 함께 있었는지 조금만 더 들려주시겠어요?';
     await pump(tester, question: flat, badge: '이어서 여쭤볼게요', tall: false);
 
-    final text = tester.widget<Text>(find.text(flat));
+    final text = tester.widget<Text>(find.text(keepAll(flat)));
     expect(text.maxLines, 4);
     expect(text.overflow, TextOverflow.ellipsis);
   });
@@ -84,6 +95,6 @@ void main() {
   testWidgets('글자 입력 화면의 1차 질문은 줄 수를 제한하지 않는다', (tester) async {
     await pump(tester, question: short, tall: false);
 
-    expect(tester.widget<Text>(find.text(short)).maxLines, isNull);
+    expect(tester.widget<Text>(find.text(keepAll(short))).maxLines, isNull);
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
+import 'package:life_legacy/common/text/korean_wrap.dart';
 
 /// 화면 맨 위의 제목 한 덩어리 — Figma A·B·F 전 화면이 같은 자리에 쓴다.
 ///
@@ -32,14 +33,14 @@ class AppScreenHeading extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          title,
+          keepAll(title),
           style: compact
               ? AppTypography.titleSerifSm
               : AppTypography.titleScreen,
         ),
         if (subtitle != null) ...[
           SizedBox(height: compact ? AppDimens.space1 : 14),
-          Text(subtitle!, style: AppTypography.subtitle),
+          Text(keepAll(subtitle!), style: AppTypography.subtitle),
         ],
       ],
     );

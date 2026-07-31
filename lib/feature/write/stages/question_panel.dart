@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
+import 'package:life_legacy/common/text/korean_wrap.dart';
 
 /// 크림 바탕의 질문판 — Figma 341:654 (D1·D2) · 351:881 (D3).
 ///
@@ -67,7 +68,7 @@ class QuestionPanel extends StatelessWidget {
             ],
             // 빈 줄이 없어 잘라 낼 수 없는 꼬리질문은 통째로 두되 4줄로 막는다.
             Text(
-              _compactQuestion,
+              keepAll(_compactQuestion),
               maxLines: _isLong ? 4 : null,
               overflow: _isLong ? TextOverflow.ellipsis : null,
               style: AppTypography.titleScreen.copyWith(
@@ -97,7 +98,7 @@ class QuestionPanel extends StatelessWidget {
               const SizedBox(height: 16),
             ],
             Text(
-              question,
+              keepAll(question),
               textAlign: TextAlign.center,
               style: _isLong
                   ? AppTypography.titleScreen.copyWith(
