@@ -20,11 +20,19 @@ class AuthService extends GetxService {
   String get displayName => user.value?.givenName ?? '';
 
   /// 세션을 저장하고 사용자 정보를 메모리에 올린다.
+  ///
+  /// ⚠️ 자기소개 완료 표시는 **서버가 진실**이다(`needs_intro`). 로그인할
+  ///    때마다 로컬 표시를 그 값에 맞춘다 — 앱을 지웠다 다시 깔면 로컬
+  ///    표시가 사라지는데, 그대로 두면 이미 확정한 목차를 또 만들라고 하고
+  ///    확정에서 409로 막혀 갇힌다.
   Future<void> applySession(AuthSession session) async {
     await Storage.saveTokens(
       session.tokens.accessToken,
       session.tokens.refreshToken,
     );
+    if (!session.needsIntro) {
+      await Storage.markIntroDone();
+    }
     user.value = session.user;
   }
 

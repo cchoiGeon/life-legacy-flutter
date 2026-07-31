@@ -88,4 +88,39 @@ void main() {
     expect(Storage.refreshToken, isNull);
     expect(auth.user.value, isNull);
   });
+
+  test('서버가 자기소개를 마쳤다고 하면 로컬 표시도 맞춘다', () async {
+    await Storage.clearSession();
+    final api = MockApiClient();
+    final auth = AuthService(api);
+
+    await auth.applySession(
+      const AuthSession(
+        tokens: AuthTokens(accessToken: 'at', refreshToken: 'rt'),
+        user: User(id: 'u1', name: '김영희', phone: '01012345678'),
+        needsIntro: false,
+      ),
+    );
+
+    // ⚠️ 진실은 서버에 있다(needs_intro). 로컬 표시만 믿으면 앱을 지웠다
+    //    다시 깔았을 때 이미 확정한 목차를 또 만들라고 하고, 확정에서
+    //    409로 막혀 갇힌다.
+    expect(Storage.introDone, isTrue);
+  });
+
+  test('아직 안 마쳤다고 하면 표시를 세우지 않는다', () async {
+    await Storage.clearSession();
+    final api = MockApiClient();
+    final auth = AuthService(api);
+
+    await auth.applySession(
+      const AuthSession(
+        tokens: AuthTokens(accessToken: 'at', refreshToken: 'rt'),
+        user: User(id: 'u1', name: '', phone: '01012345678'),
+        needsIntro: true,
+      ),
+    );
+
+    expect(Storage.introDone, isFalse);
+  });
 }
