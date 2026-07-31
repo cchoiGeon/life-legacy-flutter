@@ -172,9 +172,10 @@ class WriteController extends GetxController {
       ? '이야기를 정리하고 있어요'
       : '말씀을 듣고 있어요';
 
+  /// 줄바꿈은 시안(398:16 · 398:40)이 끊어 놓은 자리다.
   String get loadingSubtitle => stage.value == WriteStage.saving
-      ? '잠시만 기다려 주세요'
-      : '조금만 더 여쭤볼게요';
+      ? '잠시만\n기다려 주세요'
+      : '조금만 더\n여쭤볼게요';
 
   /// "제1장 · 어린 시절"
   String get headerTitle {
