@@ -1,0 +1,342 @@
+// ─────────────────────────────────────────────────────────────
+// previous-erd.dbml
+// 변경 전 = 현재 운영 중인 웹 서비스(lifelegacy-web) 스키마
+//   PostgreSQL / Drizzle ORM
+//   출처: lifelegacy-web/app/lib/db/schema.ts (migration 0000~0017)
+//
+// 앱 백엔드는 아직 존재하지 않는다. 지금 돌아가는 유일한 스키마가 이것이라
+// 이 문서를 "이전 상태"로 둔다. 목표 스키마는 new-erd.dbml.
+// ─────────────────────────────────────────────────────────────
+
+// ══════════════ NextAuth (Drizzle Adapter) ══════════════
+
+Table "user" {
+  id text [pk]
+  name text [unique]
+  email text [not null, unique]
+  emailVerified timestamp
+  image text
+  password text
+  role text [not null, default: 'user']
+  phone text
+  postal_code text
+  road_address text
+  address_detail text
+  chat_font_size integer [note: '채팅/작성 글씨 크기(px). null이면 기본값']
+  write_ai_mode text [note: 'on | off. null이면 on']
+  write_input_mode text [note: 'together | voice. null이면 together']
+  created_at timestamp
+
+  Note: '이메일+비밀번호 로그인. 앱의 전화번호+SMS 인증과 호환되지 않는다.'
+}
+
+Table account {
+  userId text [not null]
+  type text [not null]
+  provider text [not null]
+  providerAccountId text [not null]
+  refresh_token text
+  access_token text
+  expires_at integer
+  token_type text
+  scope text
+  id_token text
+  session_state text
+
+  indexes {
+    (provider, providerAccountId) [pk]
+  }
+}
+
+Table session {
+  sessionToken text [pk]
+  userId text [not null]
+  expires timestamp [not null]
+}
+
+Table verification_token {
+  identifier text [not null]
+  token text [not null]
+  expires timestamp [not null]
+
+  indexes {
+    (identifier, token) [pk]
+  }
+}
+
+// ══════════════ 자기소개 · 케이스 ══════════════
+
+Table profile {
+  id text [pk]
+  userId text [not null, unique]
+  data text [not null, note: '자기소개 원문(자유 텍스트)']
+  case_name text
+  updated_at timestamp
+
+  Note: '자기소개를 자유 텍스트 한 덩어리로 받고 AI가 케이스를 판정한다. 앱은 5문항 선택식이라 방식이 다르다.'
+}
+
+Table case_definition {
+  id text [pk]
+  case_key text [not null, unique]
+  "group" text [not null, note: 'legacy | direction']
+  title text [not null]
+  description text [not null]
+  sort_order integer [not null]
+
+  Note: 'legacy 8종 + direction 7종 = 15종. 앱 1차는 legacy 8종만 쓴다.'
+}
+
+// ══════════════ 목차 · 질문 카탈로그 ══════════════
+
+Table content {
+  id text [pk]
+  content_id integer [not null, unique]
+  title text [not null]
+  sort_order integer [not null]
+  is_required boolean [not null, default: true]
+
+  Note: '대주제 카탈로그. 조건(대학/결혼/자녀) 정보를 갖고 있지 않다.'
+}
+
+Table question {
+  id text [pk]
+  content_id integer [not null]
+  question_id integer [not null]
+  content text [not null]
+  sort_order integer [not null]
+}
+
+Table case_content {
+  id text [pk]
+  case_key text [not null]
+  content_id integer [not null]
+  title text [not null]
+  sort_order integer [not null]
+
+  Note: '케이스별 목차를 전부 나열한다. 대주제 하나 추가 시 15개 케이스를 모두 손봐야 한다.'
+}
+
+Table case_question {
+  id text [pk]
+  case_key text [not null]
+  content_id integer [not null]
+  question_id integer [not null]
+  content text [not null]
+  sort_order integer [not null]
+
+  Note: '케이스별 질문 전량 복제. 문구가 케이스별로 다르지 않은데도 15배로 늘어난다.'
+}
+
+// ══════════════ 사용자별 스냅샷 ══════════════
+
+Table user_content {
+  id text [pk]
+  userId text [not null]
+  case_name text
+  content_id integer [not null]
+  title text [not null]
+  sort_order integer [not null]
+  updated_at timestamp
+}
+
+Table user_question {
+  id text [pk]
+  userId text [not null]
+  case_name text
+  content_id integer [not null]
+  question_id integer [not null]
+  content text [not null]
+  sort_order integer [not null]
+  updated_at timestamp
+}
+
+// ══════════════ 답변 ══════════════
+
+Table answer {
+  id text [pk]
+  userId text [not null]
+  content_id integer [not null]
+  question_id integer [not null]
+  case_name text
+  question_text text
+  response text [not null]
+  image_url text
+  skipped boolean [not null, default: false]
+  updated_at timestamp
+
+  Note: '확정 답변. 원문과 윤문 결과를 구분해 담는 칸이 없다.'
+}
+
+Table answer_draft {
+  id text [pk]
+  userId text [not null]
+  content_id integer [not null]
+  question_id integer [not null]
+  case_name text [not null, default: '']
+  first_answer text [not null, default: '']
+  followups json [not null, default: '[]', note: '[{question, answer}] — 꼬리질문 N회']
+  current_followup_question text
+  phase text [not null, default: 'first', note: 'first | followup | polished']
+  polished_draft text
+  edit_text text
+  image_url text
+  updated_at timestamp
+
+  indexes {
+    (userId, content_id, question_id, case_name) [unique]
+  }
+
+  Note: '꼬리질문·윤문 진행 상태. 확정 시 삭제된다.'
+}
+
+Table writing_progress {
+  id text [pk]
+  userId text [not null, unique]
+  case_name text
+  current_content_id integer
+  current_question_id integer
+  completed_content_id integer
+  completed_question_id integer
+  status text [not null, default: 'in_progress']
+  updated_at timestamp
+
+  Note: '장 잠금 개념이 없다. 진행 위치만 기록한다.'
+}
+
+// ══════════════ 사진 (앱 1차 제외) ══════════════
+
+Table answer_attachment {
+  id text [pk]
+  userId text [not null]
+  content_id integer [not null]
+  question_id integer [not null]
+  case_name text
+  mime_type text [not null]
+  size_bytes integer [not null]
+  data bytea [not null]
+  ai_description text
+  ai_highlights text
+  updated_at timestamp
+
+  indexes {
+    (userId, content_id, question_id, case_name) [unique]
+  }
+}
+
+Table photo_inbox {
+  id text [pk]
+  userId text [not null]
+  case_name text
+  mime_type text [not null]
+  size_bytes integer [not null]
+  data bytea [not null]
+  ai_description text
+  ai_highlights text
+  suggestions json [default: '[]']
+  status text [not null, default: 'pending', note: 'pending | applied | discarded']
+  applied_content_id integer
+  applied_question_id integer
+  created_at timestamp
+  updated_at timestamp
+}
+
+// ══════════════ 원고 · 승인 (앱 1차 제외) ══════════════
+
+Table manuscript_edit_history {
+  id text [pk]
+  userId text [not null]
+  case_name text
+  title text
+  snapshot json [not null]
+  format text [not null, default: 'blocks']
+  is_active boolean [not null, default: false]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table approval_request {
+  id text [pk]
+  userId text [not null]
+  status text [not null, default: 'pending_review', note: 'pending_review | on_hold | rejected | approved | paid | in_production | shipped']
+  rejection_reason text
+  admin_note text
+  reviewed_by text
+  reviewed_at timestamp
+  paid_at timestamp
+  shipped_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+// ══════════════ AI · 설정 ══════════════
+
+Table prompt_template {
+  id text [pk]
+  key text [not null, unique, note: 'second_question | polish | polish_rewrite | generate_question']
+  title text [not null]
+  body text [not null]
+  updated_at timestamp
+  updated_by text
+}
+
+Table user_style_memory {
+  userId text [pk]
+  style_notes text [not null, default: '']
+  sample_excerpts json [not null, default: '[]']
+  updated_at timestamp
+}
+
+Table app_setting {
+  key text [pk]
+  value text [not null]
+  updated_at timestamp
+
+  Note: '전역 설정(관리자 AI 모델 등). 사용자별 설정이 아니다.'
+}
+
+Table outline {
+  id text [pk]
+  userId text [not null]
+  chapters json [not null, note: '{ "1": "제목", ... }']
+  updated_at timestamp
+
+  Note: '맞춤 목차 캐시. user_content와 역할이 겹친다.'
+}
+
+// ══════════════ 관계 ══════════════
+
+Ref: account.userId > "user".id [delete: cascade]
+Ref: session.userId > "user".id [delete: cascade]
+Ref: profile.userId - "user".id [delete: cascade]
+Ref: outline.userId > "user".id [delete: cascade]
+Ref: user_content.userId > "user".id [delete: cascade]
+Ref: user_question.userId > "user".id [delete: cascade]
+Ref: answer.userId > "user".id [delete: cascade]
+Ref: answer_draft.userId > "user".id [delete: cascade]
+Ref: answer_attachment.userId > "user".id [delete: cascade]
+Ref: photo_inbox.userId > "user".id [delete: cascade]
+Ref: manuscript_edit_history.userId > "user".id [delete: cascade]
+Ref: writing_progress.userId - "user".id [delete: cascade]
+Ref: user_style_memory.userId - "user".id [delete: cascade]
+Ref: approval_request.userId > "user".id [delete: cascade]
+
+Ref: case_content.case_key > case_definition.case_key
+Ref: case_question.case_key > case_definition.case_key
+Ref: question.content_id > content.content_id
+Ref: case_content.content_id > content.content_id
+Ref: case_question.content_id > content.content_id
+
+// ─────────────────────────────────────────────────────────────
+// 이 스키마의 한계 (new-erd.dbml에서 고치는 것들)
+//
+// 1. FK가 대부분 없다. content_id / question_id가 정수 코드로 떠 있고
+//    user_question ↔ answer가 (userId, content_id, question_id, case_name)
+//    4개 컬럼 조합으로 이어진다. 참조 무결성을 DB가 보장하지 못한다.
+// 2. case_content / case_question이 케이스별 전량 복제라 대주제 하나를
+//    추가하면 15개 케이스를 손봐야 한다.
+// 3. 답변의 원문 / 꼬리질문 / 꼬리답변 / 윤문 결과가 answer_draft의
+//    json 컬럼에 섞여 있고, 확정되면(answer) 원문 한 칸만 남는다.
+// 4. 장 순차 잠금 상태를 담을 곳이 없다.
+// 5. 인증이 이메일+비밀번호 기준이라 전화번호 SMS 인증이 들어갈 자리가 없다.
+// ─────────────────────────────────────────────────────────────

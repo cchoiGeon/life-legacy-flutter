@@ -46,3 +46,6 @@ app.*.map.json
 
 # 실행 중 생기는 로컬 산출물
 .run.pid
+
+# 참고용으로 옆에 둔 웹 서비스 저장소 (별도 git 저장소)
+lifelegacy-web/
