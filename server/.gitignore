@@ -1,0 +1,20 @@
+# 의존성
+/node_modules
+
+# 빌드 산출물
+/dist
+/build
+
+# 테스트
+/coverage
+/.nyc_output
+
+# 환경변수 (운영값은 SSM)
+.env
+.env.*
+
+# 로그·에디터
+*.log
+.DS_Store
+.idea
+.vscode
