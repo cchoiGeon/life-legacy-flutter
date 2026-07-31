@@ -89,10 +89,17 @@ class QuestionPanel extends StatelessWidget {
       constraints: BoxConstraints(minHeight: 244, maxHeight: _isLong ? 330 : 244),
       color: AppColors.cream,
       padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 20),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+      // ⚠️ [SingleChildScrollView] 안의 [Column]은 내용만큼만 커진다 —
+      //    `mainAxisAlignment.center`만 걸면 아무 일도 일어나지 않고 글이
+      //    판 위쪽에 붙는다. 남은 높이를 최소 높이로 되돌려 줘야 가운데로 온다.
+      //    스크롤은 글이 판보다 길 때만 필요하므로 이 조합이 둘 다 만족한다.
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
             if (badge != null) ...[
               _Badge(label: badge!),
               const SizedBox(height: 16),
@@ -132,8 +139,10 @@ class QuestionPanel extends StatelessWidget {
                 ),
               ),
             ),
-          ],
-          ],
+              ],
+              ],
+            ),
+          ),
         ),
       ),
     );

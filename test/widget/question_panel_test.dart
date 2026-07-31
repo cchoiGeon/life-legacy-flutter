@@ -21,13 +21,20 @@ void main() {
     required String question,
     String? badge,
     bool tall = true,
+    VoidCallback? onReplay,
   }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: Column(
-          children: [
-            QuestionPanel(question: question, badge: badge, tall: tall),
-          ],
+        // 바깥은 Align으로 감싼다 — Column으로 감싸면 질문판 안의 Column과
+        // 섞여서 `find.byType(Column)`이 어느 쪽을 잡았는지 알 수 없다.
+        body: Align(
+          alignment: Alignment.topCenter,
+          child: QuestionPanel(
+            question: question,
+            badge: badge,
+            tall: tall,
+            onReplay: onReplay,
+          ),
         ),
       ),
     ),
@@ -60,6 +67,36 @@ void main() {
     await pump(tester, question: short);
 
     expect(tester.getSize(find.byType(QuestionPanel)).height, 244);
+  });
+
+  testWidgets('질문과 "다시 들려주기"가 한 덩어리로 판 가운데에 놓인다', (tester) async {
+    await pump(tester, question: short, onReplay: () {});
+
+    // 가운데로 오는 건 질문 글자가 아니라 **덩어리 전체**다. 질문만 가운데에
+    // 두면 아래 "다시 들려주기"가 밀려 내려가 둘이 따로 놀아 보인다.
+    final panel = tester.getRect(find.byType(QuestionPanel));
+    final group = tester.getRect(find.byType(Column));
+    expect(group.center.dy, closeTo(panel.center.dy, 1.0));
+
+    // 질문 글자만 보면 덩어리 위쪽이라 판 중앙보다 위에 있는 게 맞다.
+    final text = tester.getRect(find.text(keepAll(short)));
+    expect(text.center.dy, lessThan(panel.center.dy));
+  });
+
+  testWidgets('"다시 들려주기"가 없으면 질문이 곧 덩어리다', (tester) async {
+    await pump(tester, question: short);
+
+    final panel = tester.getRect(find.byType(QuestionPanel));
+    final text = tester.getRect(find.text(keepAll(short)));
+    expect(text.center.dy, closeTo(panel.center.dy, 1.0));
+  });
+
+  testWidgets('긴 꼬리질문도 덩어리째 한가운데에 놓인다', (tester) async {
+    await pump(tester, question: long, badge: '이어서 여쭤볼게요', onReplay: () {});
+
+    final panel = tester.getRect(find.byType(QuestionPanel));
+    final group = tester.getRect(find.byType(Column));
+    expect(group.center.dy, closeTo(panel.center.dy, 1.0));
   });
 
   testWidgets('긴 꼬리질문도 화면을 넘기지 않는다', (tester) async {
