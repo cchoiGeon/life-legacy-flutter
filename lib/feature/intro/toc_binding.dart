@@ -19,6 +19,12 @@ import 'toc_controller.dart';
 class TocBinding extends Bindings {
   @override
   void dependencies() {
-    Get.put(TocController(Get.find<ApiClient>(), Get.find<ToastService>()));
+    Get.put(
+      TocController(
+        Get.find<ApiClient>(),
+        Get.find<AuthService>(),
+        Get.find<ToastService>(),
+      ),
+    );
   }
 }

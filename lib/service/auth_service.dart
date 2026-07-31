@@ -65,6 +65,20 @@ class AuthService extends GetxService {
     }
   }
 
+  /// 서버에서 사용자 정보를 다시 읽어 화면에 반영한다.
+  ///
+  /// 성함은 **자기소개(i1)에서 서버에 저장**되므로, 로그인 시점의 사용자에는
+  /// 아직 이름이 없다. 목차를 확정한 뒤 이걸 부르지 않으면 홈 인사말이
+  /// "님, 오늘의 질문"으로 뜬다.
+  Future<void> reload() async {
+    try {
+      user.value = await _api.me();
+    } on ApiException {
+      // 이름을 못 읽어도 화면은 계속 쓸 수 있어야 한다. 다음 앱 시작 때
+      // restore()가 다시 시도한다.
+    }
+  }
+
   Future<void> logout() async {
     // 서버 로그아웃이 실패해도 로컬 세션은 반드시 지운다.
     try {

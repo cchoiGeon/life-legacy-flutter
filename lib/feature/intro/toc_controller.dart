@@ -8,9 +8,10 @@ import 'package:life_legacy/service/services.dart';
 
 /// B6 목차 준비 중 · B7 목차 제안 확인.
 class TocController extends GetxController {
-  TocController(this._api, this._toast);
+  TocController(this._api, this._auth, this._toast);
 
   final ApiClient _api;
+  final AuthService _auth;
   final ToastService _toast;
 
   final RxList<Chapter> chapters = <Chapter>[].obs;
@@ -74,6 +75,15 @@ class TocController extends GetxController {
     isConfirming.value = true;
     try {
       await _api.confirmToc(chapters);
+
+      // ⚠️ 이 표시는 **앱이** 세운다. 스플래시가 로그인/자기소개/홈 중 어디로
+      //    보낼지 정하는 근거다. 예전에는 목업 구현 안에서 세우고 있어서,
+      //    실제 서버에 붙이면 앱을 다시 열 때마다 자기소개로 되돌아갔다.
+      await Storage.markIntroDone();
+
+      // 성함은 방금 자기소개에서 서버에 저장됐다. 다시 읽지 않으면 홈
+      // 인사말에 이름이 비어 뜬다.
+      await _auth.reload();
       Get.offAllNamed(AppRoutes.home);
     } on ApiException catch (e) {
       _toast.showError(e);

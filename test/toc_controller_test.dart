@@ -29,7 +29,11 @@ void main() {
     await Storage.init();
   });
 
-  TocController build() => TocController(MockApiClient(), ToastService());
+  (TocController, AuthService) build() {
+    final api = MockApiClient();
+    final auth = AuthService(api);
+    return (TocController(api, auth, ToastService()), auth);
+  }
 
   const sample = [
     Chapter(
@@ -51,7 +55,7 @@ void main() {
   ];
 
   test('List<Chapter> 인자를 받으면 그대로 목차로 세운다', () {
-    final controller = build();
+    final (controller, _) = build();
     controller.applyArguments(sample);
 
     expect(controller.chapters, hasLength(2));
@@ -59,14 +63,14 @@ void main() {
   });
 
   test('인자가 없으면 목차가 비어 있다 — 이게 화면이 비어 보이던 상태다', () {
-    final controller = build();
+    final (controller, _) = build();
     controller.applyArguments(null);
 
     expect(controller.chapters, isEmpty);
   });
 
   test('Map 인자를 받으면 이름을 뽑고 목차를 생성한다', () async {
-    final controller = build();
+    final (controller, _) = build();
     controller.applyArguments({'i1': '김영희'});
 
     expect(controller.name.value, '김영희');
@@ -83,4 +87,28 @@ void main() {
     // 시안 B7·C1·E1의 장 제목. 예전에는 "안동에서의 어린 시절"이었다.
     expect(chapters.map((c) => c.title), contains('어린 시절'));
   }, timeout: const Timeout(Duration(seconds: 15)));
+
+  test('목차를 확정하면 사용자 정보를 다시 읽는다', () async {
+    final (c, auth) = build();
+    c.chapters.value = List.of(sample);
+
+    await c.confirm();
+
+    // 성함은 자기소개(i1)에서 서버에 저장된다. 다시 읽지 않으면 홈 인사말이
+    // "님, 오늘의 질문"으로 뜬다 — 로그인 시점의 이름은 아직 비어 있다.
+    expect(auth.user.value, isNotNull);
+    expect(auth.displayName, isNotEmpty);
+  });
+
+  test('목차를 확정하면 자기소개를 마쳤다고 표시한다', () async {
+    await Storage.clearSession();
+    final (c, _) = build();
+    c.chapters.value = List.of(sample);
+
+    await c.confirm();
+
+    // ⚠️ 이 표시는 **앱이** 세운다. 예전에는 목업 구현 안에서 세우고 있어서,
+    //    실제 서버에 붙이면 앱을 다시 열 때마다 자기소개로 되돌아갔다.
+    expect(Storage.introDone, isTrue);
+  });
 }

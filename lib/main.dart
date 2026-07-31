@@ -6,8 +6,13 @@ import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
+import 'package:dio/dio.dart';
+
 import 'package:life_legacy/core/network/api_client.dart';
+import 'package:life_legacy/core/network/api_env.dart';
+import 'package:life_legacy/core/network/auth_interceptor.dart';
 import 'package:life_legacy/core/network/mock_api_client.dart';
+import 'package:life_legacy/core/network/real_api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/service/services.dart';
@@ -45,12 +50,36 @@ Future<void> main() async {
   runApp(const LifeLegacyApp());
 }
 
+/// dio를 세우고 토큰 인터셉터를 붙인다.
+///
+/// 인터셉터가 만료된 액세스 토큰을 **한 번** 되살려 재시도한다. 그래도
+/// 안 되면 세션을 버려서, 다음 앱 시작 때 스플래시가 로그인으로 보낸다.
+ApiClient _buildRealApi() {
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: ApiEnv.baseUrl,
+      connectTimeout: ApiEnv.connectTimeout,
+      receiveTimeout: ApiEnv.receiveTimeout,
+      contentType: Headers.jsonContentType,
+    ),
+  );
+
+  dio.interceptors.add(
+    AuthInterceptor(dio, onSessionExpired: Storage.clearSession),
+  );
+
+  return RealApiClient(dio);
+}
+
 /// 앱 생애주기 내내 살아있는 싱글턴. 등록 순서가 곧 의존성 순서다.
 void _registerGlobals() {
-  // ⚠️ **여기가 API 교체 지점이다.** 실제 서버가 정해지면 이 한 줄을
-  //    `Get.put<ApiClient>(RealApiClient(...))` 로 바꾸면 된다.
-  //    화면·컨트롤러는 `ApiClient` 추상 타입만 알고 있어서 손댈 게 없다.
-  final api = Get.put<ApiClient>(MockApiClient(), permanent: true);
+  // ⚠️ **여기가 API 교체 지점이다.** 화면·컨트롤러는 `ApiClient` 추상 타입만
+  //    알고 있어서, 목업이든 실제 서버든 손댈 게 없다.
+  //    기본은 목업이고 `--dart-define=USE_MOCK=false`로 실제 서버에 붙는다.
+  final api = Get.put<ApiClient>(
+    ApiEnv.useMock ? MockApiClient() : _buildRealApi(),
+    permanent: true,
+  );
 
   Get.put(AuthService(api), permanent: true);
   Get.put(ToastService(), permanent: true);

@@ -273,7 +273,6 @@ class MockApiClient implements ApiClient {
         ),
     ];
     _questions = _seedQuestions();
-    await Storage.markIntroDone();
   }
 
   @override
