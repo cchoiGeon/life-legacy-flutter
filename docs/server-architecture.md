@@ -253,7 +253,7 @@ sequenceDiagram
   alt AI 실패
     S->>DB: 초안 삭제
     Note over S: 화면에 없는 글을 서버가 들고 있으면<br/>사용자가 다시 답한 내용과 어긋난다
-    S-->>A: 503 FOLLOWUP_FAILED → 앱은 "다시 시도" 화면
+    S-->>A: 422 FOLLOWUP_FAILED → 앱은 "다시 시도" 화면
   end
   S->>DB: answer_draft 저장 (질문당 1건, 덮어쓰기)
   S-->>A: 200 { followup: { id, text } }
@@ -268,7 +268,7 @@ sequenceDiagram
   S->>Ai: polish (최대 2회 재시도)
   alt AI 실패
     Note over S: 초안은 **남긴다.** 같은 요청을 다시 보내면<br/>그대로 이어서 저장된다 — 두 번 답한 이야기를 날리지 않는다
-    S-->>A: 503 POLISH_FAILED
+    S-->>A: 422 POLISH_FAILED
   end
   S->>T: commitAnswer
   activate T
