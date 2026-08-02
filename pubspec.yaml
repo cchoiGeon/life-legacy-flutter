@@ -25,12 +25,14 @@ dependencies:
   flutter_svg: ^2.0.10
   speech_to_text: ^7.4.0
   dio: ^5.11.0
+  showcaseview: ^5.1.0
+  path_provider: ^2.1.6
+  open_filex: ^4.7.0
 
-  # ⚠️ 네트워크 패키지(dio/retrofit)는 아직 넣지 않았다.
-  #    지금은 MockApiClient가 ApiClient 인터페이스를 구현한다.
-  #    실제 서버가 정해지면 dio + retrofit을 추가하고 같은 인터페이스를
-  #    구현하는 클래스만 새로 만들면 된다 — 화면 코드는 손대지 않는다.
-  #    (교체 순서는 README "API 갈아 끼우기" 참고)
+  # dio는 파일 다운로드와 향후 실제 API 클라이언트에 사용한다.
+  #    현재 화면 API는 MockApiClient가 ApiClient 인터페이스를 구현한다.
+  #    실제 서버 연동 시 같은 인터페이스를 구현하는 클래스로 교체한다 —
+  #    화면 코드는 손대지 않는다. (교체 순서는 README "API 갈아 끼우기" 참고)
 
 dev_dependencies:
   flutter_test:
