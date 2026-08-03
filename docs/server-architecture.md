@@ -1,8 +1,12 @@
 # Life-Legacy Server — 동작 구조와 플로우
 
 `server/` 디렉터리의 NestJS 서버가 **실제로 어떻게 도는지** 정리한 문서다.
-계약 자체는 [api-spec.md](api-spec.md), 표 구조는 [../erd/new-erd.dbml](../erd/new-erd.dbml)에 있고,
+계약 자체는 [api-spec.md](api-spec.md), 표 구조는 [../erd/previous-erd.dbml](../erd/previous-erd.dbml)에 있고,
 여기서는 **요청이 들어와서 나갈 때까지 무슨 일이 일어나는지**를 다룬다.
+
+> ⚠️ **이 문서는 As-Is다.** 지금 `server/src`에 구현된 것만 적혀 있다.
+> 화면 스펙이 요구하는 목표 상태는 [`../erd/new-erd.dbml`](../erd/new-erd.dbml)과
+> `api-spec.md`의 `[변경]`·`[신규]` 표기를 보라. 둘의 간극이 앞으로 할 일이다.
 
 - 런타임: Node 24 / NestJS 11 / TypeORM 0.3 / PostgreSQL
 - 전역 프리픽스: `/v1` (단 `/health`는 제외)

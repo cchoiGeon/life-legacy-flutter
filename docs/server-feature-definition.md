@@ -1,8 +1,12 @@
 # Life Legacy 백엔드 기능 정의서
 
-> 기준: 현재 `feat/all_v1` 브랜치의 `server/src` 코드  
-> 보조 근거: `docs/api-spec.md`, `docs/server-architecture.md`, `erd/new-erd.dbml`  
+> 기준: 현재 `server/src` 코드  
+> 보조 근거: `docs/api-spec.md`, `docs/server-architecture.md`, `erd/previous-erd.dbml`  
 > 목적: 현재 NestJS 백엔드가 제공하는 기능과 데이터 구조를 제품 기능 단위로 정리한다.
+
+> ⚠️ **이 문서는 As-Is다.** 목표 상태는 `erd/new-erd.dbml`(표 40개)과
+> `docs/api-spec.md`의 `[변경]`·`[신규]` 표기에 있다.
+> 화면별 요구사항은 [`screens/`](screens/) 참고.
 
 ## 1. 백엔드 개요
 
@@ -349,4 +353,5 @@ DB 연결 기본값은 PostgreSQL `localhost:5432`이며, 실제 계정·DB명�
 | 설정 | `server/src/settings/` |
 | 엔티티 전체 | `server/src/**/entities/*.entity.ts` |
 | 상세 API 계약 | `docs/api-spec.md` |
-| DBML ERD | `erd/new-erd.dbml` |
+| DBML ERD (현재) | `erd/previous-erd.dbml` |
+| DBML ERD (목표) | `erd/new-erd.dbml` |

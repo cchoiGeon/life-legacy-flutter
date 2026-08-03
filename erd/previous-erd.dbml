@@ -1,342 +1,604 @@
 // ─────────────────────────────────────────────────────────────
 // previous-erd.dbml
-// 변경 전 = 현재 운영 중인 웹 서비스(lifelegacy-web) 스키마
-//   PostgreSQL / Drizzle ORM
-//   출처: lifelegacy-web/app/lib/db/schema.ts (migration 0000~0017)
+// 변경 전 = 지금 도는 v1 앱 백엔드 스키마
 //
-// 앱 백엔드는 아직 존재하지 않는다. 지금 돌아가는 유일한 스키마가 이것이라
-// 이 문서를 "이전 상태"로 둔다. 목표 스키마는 new-erd.dbml.
+// **이것이 server/src에 실제로 구현된 상태다.** 표 24개.
+// 목표 스키마는 new-erd.dbml (표 40개).
+//   web-erd.dbml  참고 = 운영 중인 웹 서비스 스키마
+//
+// 기준 문서
+//   docs/api-spec.md      API 명세 (현재는 To-Be까지 담고 있다. [기존] 표기가 이 파일에 해당)
+//   docs/목차-케이스.md    케이스 8종 · 대주제 조건
+//
+// 대상 DBMS: PostgreSQL (uuid / jsonb / timestamptz 사용)
+//
+// v1 범위 제외: 사진 첨부, 관리자, 승인·결제·인쇄 발주,
+//              인생 방향 케이스(direction_*)
+//
+// (예전 파일명: new-erd.dbml — To-Be가 새로 작성되면서 이름을 옮겼다)
 // ─────────────────────────────────────────────────────────────
 
-// ══════════════ NextAuth (Drizzle Adapter) ══════════════
-
-Table "user" {
-  id text [pk]
-  name text [unique]
-  email text [not null, unique]
-  emailVerified timestamp
-  image text
-  password text
-  role text [not null, default: 'user']
-  phone text
-  postal_code text
-  road_address text
-  address_detail text
-  chat_font_size integer [note: '채팅/작성 글씨 크기(px). null이면 기본값']
-  write_ai_mode text [note: 'on | off. null이면 on']
-  write_input_mode text [note: 'together | voice. null이면 together']
-  created_at timestamp
-
-  Note: '이메일+비밀번호 로그인. 앱의 전화번호+SMS 인증과 호환되지 않는다.'
+Enum chapter_status {
+  locked  [note: '앞 장을 끝내야 열린다']
+  writing [note: '작성 중. 사용자당 최대 1개']
+  done    [note: '모든 질문 완료']
 }
 
-Table account {
-  userId text [not null]
-  type text [not null]
-  provider text [not null]
-  providerAccountId text [not null]
-  refresh_token text
-  access_token text
-  expires_at integer
-  token_type text
-  scope text
-  id_token text
-  session_state text
+Enum question_status {
+  pending  [note: '아직 답하지 않음']
+  answered [note: '확정 저장됨']
+  skipped  [note: '건너뜀. 자서전 본문에 실리지 않는다']
+}
+
+Enum input_mode {
+  voice
+  keyboard
+}
+
+Enum draft_phase {
+  first    [note: '1차 답변 저장됨, 꼬리질문 생성 대기/완료']
+  followup [note: '꼬리질문 제시됨, 꼬리답변 대기']
+}
+
+Enum polish_status {
+  ok
+  failed [note: '윤문 실패. 원문은 살아 있다']
+}
+
+Enum condition_axis {
+  always
+  college  [note: '학력이 대학교 이상일 때만']
+  marriage [note: '결혼 O일 때만']
+  children [note: '자녀 O일 때만']
+}
+
+Enum ai_task_kind {
+  followup [note: '꼬리질문 생성']
+  polish   [note: '작가체 윤문']
+}
+
+// ═══════════════════════════════════════════════════════════
+// 1. 사용자 · 인증
+// ═══════════════════════════════════════════════════════════
+
+Table app_user {
+  id uuid [pk, default: `gen_random_uuid()`]
+  phone varchar(11) [unique, note: '숫자만 11자리. 카카오 전용 가입이면 null']
+  name varchar(50) [not null, default: '', note: '자기소개 i1에서 채워진다. 가입 직후엔 빈 문자열']
+  child_linked boolean [not null, default: false, note: '자녀 계정 연결. 흐름은 2차']
+  intro_completed_at timestamptz [note: 'null이면 API의 needs_intro=true']
+  last_login_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz [note: '탈퇴. soft delete로 두고 본문은 보존 기간 후 파기']
 
   indexes {
-    (provider, providerAccountId) [pk]
+    phone [unique, name: 'ux_app_user_phone']
+  }
+
+  Note: '''
+  전화번호 SMS 인증 또는 카카오로 로그인한다. 비밀번호가 없다.
+  name은 표시 전용 비정규화 값이다 — 원본은 user_intro_answer에 있다.
+  '''
+}
+
+Table social_account {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  provider varchar(20) [not null, note: 'kakao']
+  provider_user_id varchar(100) [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (provider, provider_user_id) [unique, name: 'ux_social_provider_uid']
+    user_id [name: 'ix_social_user']
   }
 }
 
-Table session {
-  sessionToken text [pk]
-  userId text [not null]
-  expires timestamp [not null]
-}
-
-Table verification_token {
-  identifier text [not null]
-  token text [not null]
-  expires timestamp [not null]
+Table phone_verification {
+  id uuid [pk, default: `gen_random_uuid()`]
+  phone varchar(11) [not null]
+  code_hash varchar(255) [not null, note: '평문 저장 금지']
+  expires_at timestamptz [not null, note: 'API의 expires_in 계산 근거']
+  resend_available_at timestamptz [not null, note: 'API의 resend_after 계산 근거']
+  attempt_count smallint [not null, default: 0, note: '5회 초과 시 폐기']
+  consumed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (identifier, token) [pk]
+    (phone, created_at) [name: 'ix_phone_verification_lookup']
   }
+
+  Note: '만료 건은 배치로 삭제한다.'
 }
 
-// ══════════════ 자기소개 · 케이스 ══════════════
+Table refresh_token {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  token_hash varchar(255) [not null, unique]
+  expires_at timestamptz [not null, note: '60일']
+  revoked_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
 
-Table profile {
-  id text [pk]
-  userId text [not null, unique]
-  data text [not null, note: '자기소개 원문(자유 텍스트)']
-  case_name text
-  updated_at timestamp
+  indexes {
+    user_id [name: 'ix_refresh_token_user']
+  }
 
-  Note: '자기소개를 자유 텍스트 한 덩어리로 받고 AI가 케이스를 판정한다. 앱은 5문항 선택식이라 방식이 다르다.'
+  Note: '갱신 시 회전(rotation). 이전 토큰은 revoked_at을 찍는다.'
+}
+
+Table device_push_token {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  platform varchar(10) [not null, note: 'ios | android']
+  token varchar(255) [not null, unique]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '"오늘의 질문 알림" 발송 대상.'
+}
+
+// ═══════════════════════════════════════════════════════════
+// 2. 자기소개 · 케이스 판정
+// ═══════════════════════════════════════════════════════════
+
+Table intro_question {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(10) [not null, unique, note: 'i1 ~ i5. API의 question_id']
+  sort_order smallint [not null]
+  text varchar(200) [not null, note: '\\n이 줄바꿈 위치다']
+  subtitle varchar(200)
+  hint varchar(100) [note: 'choices가 없을 때만 쓰는 placeholder']
+  axis condition_axis [not null, default: 'always', note: '이 문항이 가르는 축. i3=marriage, i4=children, i5=college, i1·i2=always(케이스와 무관)']
+  is_active boolean [not null, default: true]
+
+  Note: '5문항 고정. 문항 추가 시 이 표에 줄만 늘린다.'
+}
+
+Table intro_choice {
+  id uuid [pk, default: `gen_random_uuid()`]
+  intro_question_id uuid [not null]
+  sort_order smallint [not null]
+  label varchar(50) [not null, note: '화면에 뜨는 글자. "대학교 이상"']
+  axis_value boolean [note: '이 선택지가 축을 켜는가. i5의 "대학교 이상"만 true, 나머지 3개는 false. axis=always면 null']
+
+  indexes {
+    (intro_question_id, sort_order) [unique, name: 'ux_intro_choice_order']
+  }
+
+  Note: '''
+  선택지를 표로 두는 이유 — 학력 4지선다의 원본 값을 그대로 보존하면서
+  "대학 O/X" 판정을 axis_value 한 칸으로 파생시키기 위해서다.
+  나중에 "고등학교 졸업"과 "중학교 졸업"을 나눠 질문을 주고 싶어지면
+  user_intro_answer에 원본이 남아 있으므로 데이터가 있다.
+  '''
+}
+
+Table user_intro_answer {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  intro_question_id uuid [not null]
+  intro_choice_id uuid [note: '선택지 문항일 때. 텍스트 문항이면 null']
+  value_text varchar(200) [not null, note: '사용자가 고르거나 적은 원본 문자열. 판정용으로 접지 않는다']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, intro_question_id) [unique, name: 'ux_user_intro_answer']
+  }
 }
 
 Table case_definition {
-  id text [pk]
-  case_key text [not null, unique]
-  "group" text [not null, note: 'legacy | direction']
-  title text [not null]
-  description text [not null]
-  sort_order integer [not null]
+  id uuid [pk, default: `gen_random_uuid()`]
+  case_key varchar(60) [not null, unique, note: 'legacy_college_married_children 등 8종']
+  title varchar(100) [not null]
+  description varchar(300) [not null]
+  has_college boolean [not null]
+  has_marriage boolean [not null]
+  has_children boolean [not null]
+  sort_order smallint [not null]
 
-  Note: 'legacy 8종 + direction 7종 = 15종. 앱 1차는 legacy 8종만 쓴다.'
+  indexes {
+    (has_college, has_marriage, has_children) [unique, name: 'ux_case_axes']
+  }
+
+  Note: '''
+  8종 = 2(대학) x 2(결혼) x 2(자녀). 세 축이 서로 독립이다.
+  축 조합에 unique를 걸어 중복·누락 케이스가 들어오지 못하게 한다.
+  케이스별 목차 목록을 이 표에 나열하지 않는다 — chapter_template.condition에서 파생된다.
+  '''
 }
 
-// ══════════════ 목차 · 질문 카탈로그 ══════════════
+Table user_profile {
+  user_id uuid [pk]
+  case_id uuid [not null]
+  display_name varchar(50) [not null, note: '책 표지에 들어갈 이름']
+  gender varchar(10) [note: '문체 호칭용. 케이스와 무관']
+  education_level varchar(30) [not null, note: 'i5 원본 값. "고등학교" 등']
+  has_college boolean [not null]
+  has_marriage boolean [not null]
+  has_children boolean [not null]
+  toc_confirmed_at timestamptz [note: 'null이면 목차 확정 전']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 
-Table content {
-  id text [pk]
-  content_id integer [not null, unique]
-  title text [not null]
-  sort_order integer [not null]
-  is_required boolean [not null, default: true]
-
-  Note: '대주제 카탈로그. 조건(대학/결혼/자녀) 정보를 갖고 있지 않다.'
+  Note: '''
+  자기소개에서 파생된 판정 결과. 원본은 user_intro_answer에 그대로 있다.
+  has_* 세 개를 여기 복사해 두는 이유는 케이스 정의가 나중에 바뀌어도
+  이미 목차를 확정한 사용자가 흔들리지 않게 하기 위해서다.
+  '''
 }
 
-Table question {
-  id text [pk]
-  content_id integer [not null]
-  question_id integer [not null]
-  content text [not null]
-  sort_order integer [not null]
+// ═══════════════════════════════════════════════════════════
+// 3. 목차 · 질문 카탈로그 (전 사용자 공용, 시드 데이터)
+// ═══════════════════════════════════════════════════════════
+
+Table chapter_template {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code smallint [not null, unique, note: '1~10. 문서의 대주제 번호']
+  title varchar(100) [not null]
+  sort_order smallint [not null, note: '목차에 놓이는 순서']
+  condition condition_axis [not null, default: 'always']
+  is_active boolean [not null, default: true]
+
+  Note: '''
+  대주제 10개. 이 중 3개만 조건부다 —
+    code 4  20대 시절-대학생활  condition=college
+    code 6  결혼 이야기         condition=marriage
+    code 7  자녀 이야기         condition=children
+  나머지 7개는 always(36문항).
+
+  케이스별 목차를 따로 저장하지 않는 이유: 대주제를 하나 추가할 때
+  8개 케이스를 모두 손대야 하는 구조를 피하려는 것이다.
+  목차 = chapter_template 중 condition을 사용자 축이 만족하는 것들.
+  '''
 }
 
-Table case_content {
-  id text [pk]
-  case_key text [not null]
-  content_id integer [not null]
-  title text [not null]
-  sort_order integer [not null]
+Table question_template {
+  id uuid [pk, default: `gen_random_uuid()`]
+  chapter_template_id uuid [not null]
+  sort_order smallint [not null]
+  text varchar(500) [not null]
+  is_active boolean [not null, default: true]
 
-  Note: '케이스별 목차를 전부 나열한다. 대주제 하나 추가 시 15개 케이스를 모두 손봐야 한다.'
+  indexes {
+    (chapter_template_id, sort_order) [unique, name: 'ux_question_template_order']
+  }
+
+  Note: '''
+  총 52문항(대주제별 5~6개). 케이스별로 문구가 달라지지 않으므로
+  케이스 축으로 복제하지 않는다.
+  '''
 }
 
-Table case_question {
-  id text [pk]
-  case_key text [not null]
-  content_id integer [not null]
-  question_id integer [not null]
-  content text [not null]
-  sort_order integer [not null]
+// ═══════════════════════════════════════════════════════════
+// 4. 사용자별 스냅샷
+//    목차 확정 시점에 카탈로그를 복제한다.
+//    이유 (1) 질문 문구 수정이 다른 사용자에게 번지면 안 된다
+//         (2) 카탈로그가 바뀌어도 쓰기 시작한 자서전은 흔들리면 안 된다
+// ═══════════════════════════════════════════════════════════
 
-  Note: '케이스별 질문 전량 복제. 문구가 케이스별로 다르지 않은데도 15배로 늘어난다.'
-}
+Table user_chapter {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  chapter_template_id uuid [note: '출처. 카탈로그에서 지워져도 남게 nullable']
+  sort_order smallint [not null, note: '1부터. "제1장"의 숫자. 사용자가 순서를 바꾸면 다시 매긴다']
+  title varchar(100) [not null, note: '복제 시점의 제목']
+  status chapter_status [not null, default: 'locked']
+  question_count smallint [not null, default: 0, note: '캐시. user_question 개수']
+  answered_count smallint [not null, default: 0, note: '캐시. answered + skipped 개수']
+  completed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 
-// ══════════════ 사용자별 스냅샷 ══════════════
+  indexes {
+    (user_id, sort_order) [unique, name: 'ux_user_chapter_order']
+    (user_id, status) [name: 'ix_user_chapter_status']
+  }
 
-Table user_content {
-  id text [pk]
-  userId text [not null]
-  case_name text
-  content_id integer [not null]
-  title text [not null]
-  sort_order integer [not null]
-  updated_at timestamp
+  Note: '''
+  장 순차 잠금 —
+    목차 확정 시 sort_order=1만 writing, 나머지 locked.
+    한 장이 done이 되면 다음 장 하나만 writing으로 연다.
+    writing은 사용자당 최대 1개다(앱이 이 가정 위에 서 있다).
+    DB 제약으로 강제하려면 부분 유니크 인덱스를 건다:
+      CREATE UNIQUE INDEX ux_user_chapter_writing
+        ON user_chapter(user_id) WHERE status = 'writing';
+  '''
 }
 
 Table user_question {
-  id text [pk]
-  userId text [not null]
-  case_name text
-  content_id integer [not null]
-  question_id integer [not null]
-  content text [not null]
-  sort_order integer [not null]
-  updated_at timestamp
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_chapter_id uuid [not null]
+  question_template_id uuid [note: '출처']
+  sort_order smallint [not null, note: '장 안에서의 순번. "질문 3 / 6"의 앞 숫자']
+  text varchar(500) [not null, note: '복제 시점의 문구. 사용자가 고칠 수 있다']
+  is_edited boolean [not null, default: false, note: '문구를 고쳤는지']
+  status question_status [not null, default: 'pending']
+  answered_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_chapter_id, sort_order) [unique, name: 'ux_user_question_order']
+    (user_chapter_id, status) [name: 'ix_user_question_status']
+  }
+
+  Note: '''
+  문구 수정은 status=pending일 때만 허용한다 —
+  이미 답한 질문의 문구를 바꾸면 저장된 원고와 어긋난다(API 409 ALREADY_ANSWERED).
+  '''
 }
 
-// ══════════════ 답변 ══════════════
+// ═══════════════════════════════════════════════════════════
+// 5. 답변
+//    질문 1개 = 묶음 1개
+//    (원질문, 1차 답변, 꼬리질문, 꼬리답변, 윤문 결과)
+// ═══════════════════════════════════════════════════════════
 
 Table answer {
-  id text [pk]
-  userId text [not null]
-  content_id integer [not null]
-  question_id integer [not null]
-  case_name text
-  question_text text
-  response text [not null]
-  image_url text
-  skipped boolean [not null, default: false]
-  updated_at timestamp
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_question_id uuid [not null, unique, note: '질문당 1행. 1:1']
+  question_text varchar(500) [not null, note: '답변 당시의 질문 문구 스냅샷']
+  first_text text [not null, note: '사용자 원문. 음성이면 받아쓴 결과 그대로']
+  first_input_mode input_mode [not null]
+  first_spoken_seconds smallint [note: 'voice일 때 말한 시간']
+  polished_text text [note: 'AI 작가체 윤문 결과. 사용자에게 작성 화면에서는 보여주지 않는다']
+  polish_status polish_status [not null, default: 'ok']
+  polish_attempts smallint [not null, default: 0]
+  answered_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 
-  Note: '확정 답변. 원문과 윤문 결과를 구분해 담는 칸이 없다.'
+  Note: '''
+  사용자에게 보이는 것은 first_text(와 꼬리답변)뿐이다.
+  polished_text가 처음 눈에 띄는 곳은 자서전 미리보기(book_page)다.
+  건너뛴 질문은 이 행을 만들지 않는다 — user_question.status=skipped로만 남는다.
+  '''
+}
+
+Table answer_followup {
+  id uuid [pk, default: `gen_random_uuid()`]
+  answer_id uuid [not null]
+  seq smallint [not null, default: 1, note: 'v1은 항상 1']
+  question_text text [not null, note: 'AI가 만든 꼬리질문. 요약+공감+질문 한 덩어리']
+  answer_text text [not null, note: '사용자 원문']
+  input_mode input_mode [not null]
+  spoken_seconds smallint
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (answer_id, seq) [unique, name: 'ux_answer_followup_seq']
+  }
+
+  Note: '''
+  v1 사양은 질문당 꼬리질문 정확히 1회다. 그래도 별도 표로 두는 이유 —
+  answer에 followup_question/followup_answer 컬럼을 박으면 2회로 늘릴 때
+  마이그레이션이 필요하지만, seq만 늘리면 스키마가 그대로다.
+  운영 중인 웹은 이미 N회를 쓰고 있어 늘어날 여지가 실재한다.
+  '''
 }
 
 Table answer_draft {
-  id text [pk]
-  userId text [not null]
-  content_id integer [not null]
-  question_id integer [not null]
-  case_name text [not null, default: '']
-  first_answer text [not null, default: '']
-  followups json [not null, default: '[]', note: '[{question, answer}] — 꼬리질문 N회']
-  current_followup_question text
-  phase text [not null, default: 'first', note: 'first | followup | polished']
-  polished_draft text
-  edit_text text
-  image_url text
-  updated_at timestamp
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_question_id uuid [not null, unique]
+  phase draft_phase [not null, default: 'first']
+  first_text text [not null]
+  first_input_mode input_mode [not null]
+  first_spoken_seconds smallint
+  followup_question_text text [note: 'AI가 만든 꼬리질문. phase=followup부터 채워진다']
+  followup_id uuid [note: 'API 경로의 followup_id. 앱이 되돌려 보낸다']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  확정 전 임시 저장. 확정되면 삭제한다.
+
+  실패 처리가 두 갈래다 —
+    꼬리질문 생성 실패(422 FOLLOWUP_FAILED)
+      → 이 행을 삭제한다. 사용자는 질문부터 다시 답한다.
+        (사용자가 아직 한 번밖에 답하지 않은 시점이라 감수한다)
+    윤문 실패(422 POLISH_FAILED)
+      → 이 행을 남긴다. 앱은 저장 실패 화면에서 글을 보여준 채
+        같은 요청을 재전송하고, 서버는 멱등하게 처리한다.
+        (두 번 답한 이야기를 날리지 않는다)
+  '''
+}
+
+// ═══════════════════════════════════════════════════════════
+// 6. 자서전 결과물
+// ═══════════════════════════════════════════════════════════
+
+Table book {
+  user_id uuid [pk]
+  title varchar(100) [not null, default: '나의 이야기']
+  author_name varchar(50) [not null]
+  page_count integer [not null, default: 0]
+  photo_count integer [not null, default: 0, note: 'v1은 항상 0. 사진 첨부는 2차']
+  is_complete boolean [not null, default: false, note: '모든 장이 done']
+  generated_at timestamptz [note: '마지막으로 쪽을 다시 나눈 시각']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: 'chapter_count / question_count는 user_chapter에서 집계한다 — 여기 복사하지 않는다.'
+}
+
+Table book_page {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  user_chapter_id uuid [not null]
+  page_number integer [not null, note: '책 전체 통쪽수. 장마다 1로 돌아가지 않는다']
+  paragraphs jsonb [not null, note: 'string[]. 문단 단위']
+  created_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (userId, content_id, question_id, case_name) [unique]
+    (user_id, page_number) [unique, name: 'ux_book_page_number']
+    user_chapter_id [name: 'ix_book_page_chapter']
   }
 
-  Note: '꼬리질문·윤문 진행 상태. 확정 시 삭제된다.'
+  Note: '''
+  done 장의 polished_text를 이어 붙여 서버가 쪽을 나눈 결과.
+  장이 완료될 때마다 그 장의 쪽을 다시 만든다(기존 행 삭제 후 재삽입).
+  앱은 받은 대로 그리기만 한다.
+  '''
 }
 
-Table writing_progress {
-  id text [pk]
-  userId text [not null, unique]
-  case_name text
-  current_content_id integer
-  current_question_id integer
-  completed_content_id integer
-  completed_question_id integer
-  status text [not null, default: 'in_progress']
-  updated_at timestamp
+// ═══════════════════════════════════════════════════════════
+// 7. 알림 · 설정
+// ═══════════════════════════════════════════════════════════
 
-  Note: '장 잠금 개념이 없다. 진행 위치만 기록한다.'
-}
-
-// ══════════════ 사진 (앱 1차 제외) ══════════════
-
-Table answer_attachment {
-  id text [pk]
-  userId text [not null]
-  content_id integer [not null]
-  question_id integer [not null]
-  case_name text
-  mime_type text [not null]
-  size_bytes integer [not null]
-  data bytea [not null]
-  ai_description text
-  ai_highlights text
-  updated_at timestamp
+Table notification {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  type varchar(30) [not null, note: 'daily_question | chapter_done | book_ready']
+  title varchar(200) [not null, note: '"오늘의 질문이 도착했어요 · 학창 시절과 꿈"']
+  link_user_question_id uuid [note: '눌렀을 때 갈 질문']
+  read_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (userId, content_id, question_id, case_name) [unique]
+    (user_id, created_at) [name: 'ix_notification_user_recent']
   }
+
+  Note: '''
+  API의 time_label("오늘 오전 9:00")은 created_at을 서버가 포맷한 값이다.
+  기기 시계가 틀어지면 상대 시각이 엉뚱해지므로 앱에서 계산하지 않는다.
+  '''
 }
 
-Table photo_inbox {
-  id text [pk]
-  userId text [not null]
-  case_name text
-  mime_type text [not null]
-  size_bytes integer [not null]
-  data bytea [not null]
-  ai_description text
-  ai_highlights text
-  suggestions json [default: '[]']
-  status text [not null, default: 'pending', note: 'pending | applied | discarded']
-  applied_content_id integer
-  applied_question_id integer
-  created_at timestamp
-  updated_at timestamp
+Table user_setting {
+  user_id uuid [pk]
+  daily_question_alarm boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: 'v1에서 켜고 끌 수 있는 건 이 하나뿐이다.'
 }
 
-// ══════════════ 원고 · 승인 (앱 1차 제외) ══════════════
+Table shipping_address {
+  user_id uuid [pk]
+  recipient varchar(50) [not null, default: '']
+  phone varchar(11) [not null, default: '', note: '숫자만. 띄우는 건 표시할 때만']
+  postal_code varchar(10) [not null, default: '']
+  line1 varchar(200) [not null, default: '', note: '기본 주소']
+  line2 varchar(200) [not null, default: '', note: '상세 주소. 비어도 된다']
+  updated_at timestamptz [not null, default: `now()`]
 
-Table manuscript_edit_history {
-  id text [pk]
-  userId text [not null]
-  case_name text
-  title text
-  snapshot json [not null]
-  format text [not null, default: 'blocks']
-  is_active boolean [not null, default: false]
-  created_at timestamp
-  updated_at timestamp
+  Note: '''
+  등록 전에도 행을 만들어 빈 문자열로 둔다 — API가 404 대신 빈 객체를
+  돌려주기로 했고, 앱이 "없음"과 "못 불러옴"을 구분할 필요가 없다.
+  '''
 }
 
-Table approval_request {
-  id text [pk]
-  userId text [not null]
-  status text [not null, default: 'pending_review', note: 'pending_review | on_hold | rejected | approved | paid | in_production | shipped']
-  rejection_reason text
-  admin_note text
-  reviewed_by text
-  reviewed_at timestamp
-  paid_at timestamp
-  shipped_at timestamp
-  created_at timestamp
-  updated_at timestamp
-}
-
-// ══════════════ AI · 설정 ══════════════
+// ═══════════════════════════════════════════════════════════
+// 8. AI 운영
+// ═══════════════════════════════════════════════════════════
 
 Table prompt_template {
-  id text [pk]
-  key text [not null, unique, note: 'second_question | polish | polish_rewrite | generate_question']
-  title text [not null]
-  body text [not null]
-  updated_at timestamp
-  updated_by text
+  id uuid [pk, default: `gen_random_uuid()`]
+  key varchar(30) [not null, unique, note: 'followup | polish']
+  title varchar(100) [not null]
+  body text [not null, note: '{{chapter_title}} {{question}} {{answer}} 같은 플레이스홀더']
+  version integer [not null, default: 1]
+  updated_by varchar(100)
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '프롬프트를 코드에 박지 않는다. 문구 조정이 배포 없이 되어야 한다.'
 }
 
-Table user_style_memory {
-  userId text [pk]
-  style_notes text [not null, default: '']
-  sample_excerpts json [not null, default: '[]']
-  updated_at timestamp
+Table ai_generation_log {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_question_id uuid [not null]
+  kind ai_task_kind [not null]
+  model varchar(60) [not null]
+  prompt_template_version integer
+  attempt smallint [not null, default: 1]
+  succeeded boolean [not null]
+  error_code varchar(60)
+  input_tokens integer
+  output_tokens integer
+  latency_ms integer
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_question_id, kind) [name: 'ix_ai_log_question']
+    (created_at) [name: 'ix_ai_log_time']
+  }
+
+  Note: '''
+  실패 두 종(FOLLOWUP_FAILED / POLISH_FAILED)이 얼마나 자주 나는지가
+  이 서비스의 체감 품질을 좌우한다. 재시도 횟수와 원인을 남긴다.
+  본문(프롬프트·응답)은 남기지 않는다 — 민감 개인정보다.
+  '''
 }
 
-Table app_setting {
-  key text [pk]
-  value text [not null]
-  updated_at timestamp
+// ═══════════════════════════════════════════════════════════
+// 관계
+// ═══════════════════════════════════════════════════════════
 
-  Note: '전역 설정(관리자 AI 모델 등). 사용자별 설정이 아니다.'
-}
+// 사용자 · 인증
+Ref: social_account.user_id > app_user.id [delete: cascade]
+Ref: refresh_token.user_id > app_user.id [delete: cascade]
+Ref: device_push_token.user_id > app_user.id [delete: cascade]
 
-Table outline {
-  id text [pk]
-  userId text [not null]
-  chapters json [not null, note: '{ "1": "제목", ... }']
-  updated_at timestamp
+// 자기소개 · 케이스
+Ref: intro_choice.intro_question_id > intro_question.id [delete: cascade]
+Ref: user_intro_answer.user_id > app_user.id [delete: cascade]
+Ref: user_intro_answer.intro_question_id > intro_question.id [delete: restrict]
+Ref: user_intro_answer.intro_choice_id > intro_choice.id [delete: set null]
+Ref: user_profile.user_id - app_user.id [delete: cascade]
+Ref: user_profile.case_id > case_definition.id [delete: restrict]
 
-  Note: '맞춤 목차 캐시. user_content와 역할이 겹친다.'
-}
+// 카탈로그
+Ref: question_template.chapter_template_id > chapter_template.id [delete: cascade]
 
-// ══════════════ 관계 ══════════════
+// 사용자 스냅샷
+Ref: user_chapter.user_id > app_user.id [delete: cascade]
+Ref: user_chapter.chapter_template_id > chapter_template.id [delete: set null]
+Ref: user_question.user_chapter_id > user_chapter.id [delete: cascade]
+Ref: user_question.question_template_id > question_template.id [delete: set null]
 
-Ref: account.userId > "user".id [delete: cascade]
-Ref: session.userId > "user".id [delete: cascade]
-Ref: profile.userId - "user".id [delete: cascade]
-Ref: outline.userId > "user".id [delete: cascade]
-Ref: user_content.userId > "user".id [delete: cascade]
-Ref: user_question.userId > "user".id [delete: cascade]
-Ref: answer.userId > "user".id [delete: cascade]
-Ref: answer_draft.userId > "user".id [delete: cascade]
-Ref: answer_attachment.userId > "user".id [delete: cascade]
-Ref: photo_inbox.userId > "user".id [delete: cascade]
-Ref: manuscript_edit_history.userId > "user".id [delete: cascade]
-Ref: writing_progress.userId - "user".id [delete: cascade]
-Ref: user_style_memory.userId - "user".id [delete: cascade]
-Ref: approval_request.userId > "user".id [delete: cascade]
+// 답변
+Ref: answer.user_question_id - user_question.id [delete: cascade]
+Ref: answer_followup.answer_id > answer.id [delete: cascade]
+Ref: answer_draft.user_question_id - user_question.id [delete: cascade]
 
-Ref: case_content.case_key > case_definition.case_key
-Ref: case_question.case_key > case_definition.case_key
-Ref: question.content_id > content.content_id
-Ref: case_content.content_id > content.content_id
-Ref: case_question.content_id > content.content_id
+// 자서전
+Ref: book.user_id - app_user.id [delete: cascade]
+Ref: book_page.user_id > app_user.id [delete: cascade]
+Ref: book_page.user_chapter_id > user_chapter.id [delete: cascade]
+
+// 알림 · 설정
+Ref: notification.user_id > app_user.id [delete: cascade]
+Ref: notification.link_user_question_id > user_question.id [delete: set null]
+Ref: user_setting.user_id - app_user.id [delete: cascade]
+Ref: shipping_address.user_id - app_user.id [delete: cascade]
+
+// AI
+Ref: ai_generation_log.user_question_id > user_question.id [delete: cascade]
 
 // ─────────────────────────────────────────────────────────────
-// 이 스키마의 한계 (new-erd.dbml에서 고치는 것들)
+// 웹 스키마(web-erd.dbml) 대비 달라진 점
 //
-// 1. FK가 대부분 없다. content_id / question_id가 정수 코드로 떠 있고
-//    user_question ↔ answer가 (userId, content_id, question_id, case_name)
-//    4개 컬럼 조합으로 이어진다. 참조 무결성을 DB가 보장하지 못한다.
-// 2. case_content / case_question이 케이스별 전량 복제라 대주제 하나를
-//    추가하면 15개 케이스를 손봐야 한다.
-// 3. 답변의 원문 / 꼬리질문 / 꼬리답변 / 윤문 결과가 answer_draft의
-//    json 컬럼에 섞여 있고, 확정되면(answer) 원문 한 칸만 남는다.
-// 4. 장 순차 잠금 상태를 담을 곳이 없다.
-// 5. 인증이 이메일+비밀번호 기준이라 전화번호 SMS 인증이 들어갈 자리가 없다.
+// 1. 케이스별 목차·질문 복제 테이블(case_content / case_question)을 없앴다.
+//    목차는 chapter_template.condition과 user_profile.has_*의 조합으로
+//    파생된다. 대주제를 하나 추가해도 고칠 곳이 한 곳이다.
+//
+// 2. 모든 관계를 FK로 묶었다. 웹은 (userId, content_id, question_id,
+//    case_name) 4컬럼 조합으로 이어져 있어 참조 무결성이 없었다.
+//
+// 3. 답변의 네 조각을 각자 칸에 넣었다.
+//    원문 answer.first_text / 꼬리 answer_followup / 윤문 answer.polished_text.
+//    json 덩어리에서 꺼내지 않아도 된다.
+//
+// 4. user_chapter.status로 장 순차 잠금을 표현한다. 웹에는 없던 개념이다.
+//
+// 5. 인증을 전화번호 SMS + 카카오로 갈아 끼웠다.
+//    (NextAuth의 user/account/session/verification_token 4종 제거)
+//
+// 6. 자기소개를 자유 텍스트 한 덩어리(profile.data)에서 문항별 행
+//    (user_intro_answer)으로 바꿨다. 학력 원본 값이 남는다.
+//
+// 7. 앱 1차 범위 밖이라 뺀 것 — answer_attachment, photo_inbox,
+//    manuscript_edit_history, approval_request, user_style_memory,
+//    app_setting, outline, 관리자 계열.
 // ─────────────────────────────────────────────────────────────

@@ -1,10 +1,29 @@
-# LifeLegacy API 명세 (v1)
+# LifeLegacy API 명세
 
-앱(Flutter) 기준 서버 계약. 산출 근거는 Figma 시안을 옮긴 현재 앱 코드와
-`lib/core/network/api_client.dart`의 추상 인터페이스다.
+앱(Flutter) 기준 서버 계약.
 
 - 대상 클라이언트: Flutter 앱 1종 (웹 `lifelegacy-web`은 별도 서비스, 이 명세의 대상 아님)
-- 1차 범위 제외: 사진 첨부, 관리자, 승인·결제·인쇄 발주, 인생 방향 케이스(`direction_*`)
+- 데이터 모델: [`../erd/new-erd.dbml`](../erd/new-erd.dbml)
+- 화면별 요구사항: [`screens/`](screens/) — 앱 문서가 기준, 웹 문서는 참고
+- 케이스 판정: [`목차-케이스.md`](목차-케이스.md)
+
+## 상태 표기
+
+모든 엔드포인트 제목 옆에 붙는다.
+
+| 표기 | 뜻 |
+|------|-----|
+| `[기존]` | v1 서버에 구현되어 있고 계약이 그대로다 (`server/src`) |
+| `[변경]` | v1에 있으나 요청·응답이 바뀐다 |
+| `[신규]` | v1에 없다 |
+
+**수록 기준** — `screens/`가 "신규·변경"으로 확정한 것만 계약으로 적었다.
+"열린 이슈 / 미정 / 후보 / TODO"로 표시된 것은 각 절 끝의 **확정 대기** 블록에
+모아 두었고 엔드포인트를 만들지 않았다. 미정을 계약으로 굳히면 앱이 그 위에
+코드를 쓰고, 되돌리는 비용이 계약을 늦게 내는 비용보다 커진다.
+
+**v1 범위 제외** — 관리자, 승인·결제·인쇄 발주, 인생 방향 케이스(`direction_*`),
+가족 공유 참여자, 팩트 체크.
 
 ---
 
@@ -73,19 +92,60 @@ Authorization: Bearer {access_token}
 | 422 | `POLISH_FAILED` | AI 윤문 실패 → **저장만 재시도** (§5.4) |
 | 500 | `SERVER_ERROR` | 그 외 |
 
+**신규 코드**
+
+| HTTP | code | 상황 |
+|------|------|------|
+| 401 | `VERIFICATION_NOT_COMPLETED` | 인증 세션이 아직 `verified`가 아님 (§1.9·§1.10) |
+| 410 | `VERIFICATION_EXPIRED` | 인증 세션 만료 → 새로 발급받아야 한다 |
+| 409 | `CONSENT_REQUIRED` | 필수 약관 미동의 상태로 가입 시도 |
+| 403 | `FORBIDDEN_BOOK` | 내 책이 아님 — **응답은 404로 내린다** (아래 주의) |
+| 409 | `CHAPTER_NOT_REVIEWED` | 리뷰 저장 전 챕터로 산출물 생성·조회 시도 |
+| 403 | `PLAN_REQUIRED` | 해당 기능의 entitlement 없음 |
+| 429 | `QUOTA_EXCEEDED` | 기능별 제공 한도 소진 |
+| 409 | `JOB_IN_PROGRESS` | 같은 챕터에 진행 중인 생성 작업이 있음 |
+| 422 | `SYNTHESIZE_FAILED` | 챕터 종합 원고 생성 실패 |
+
+> ⚠️ **남의 리소스는 403이 아니라 404다.** `FORBIDDEN_BOOK`은 서버 내부 로그용
+> 구분이고, 클라이언트에는 `404 NOT_FOUND`로 나간다. 403을 주면 "그 id는 존재한다"를
+> 알려주는 셈이다. v1 `ChaptersService.getOwnedQuestion`이 이미 이 방식이다.
+
 ### 0.5 호출 제한
 
 | 대상 | 제한 |
 |------|------|
 | `POST /auth/phone/code` | 전화번호당 5회 / 1시간 |
+| `POST /auth/octomo/challenge` | 전화번호당 5회 / 1시간 |
+| `POST /auth/octomo/verify` (폴링) | 세션당 최대 시도 횟수 — 주기·상한은 §1 확정 대기 |
 | `POST /questions/{id}/answer` (AI 호출) | 사용자당 60회 / 시간 |
+| 생성 작업(`.../jobs`, `.../generate`) | entitlement 한도로 통제 (§12) |
 | 그 외 | 사용자당 100회 / 10초 |
+
+### 0.6 책 범위 경로
+
+다권 전환 이후 책에 딸린 리소스는 `/books/{book_id}/…` 아래로 들어간다.
+
+```
+/v1/books/{book_id}/chapters
+/v1/books/{book_id}/questions/current
+/v1/books/{book_id}/chapters/{chapter_id}/review
+```
+
+**`book_id`를 신뢰하지 않는다.** `AccessTokenGuard`가 심은 사용자 ID로 소유 관계를
+서버에서 매번 확인한다. URL의 값, 클라이언트가 들고 있는 플랜, 비활성화된 버튼은
+권한 근거가 될 수 없다.
+
+기존 단일 책 경로(`/chapters`, `/questions/current`, `/book`)는 **바로 지우지 않는다.**
+전환 기간에는 "사용자의 첫 책"으로 해석해 그대로 동작시키고, 앱이 `book_id`를
+넘기기 시작하면 그때 정리한다.
 
 ---
 
 ## 1. 인증
 
-### 1.1 인증번호 발송
+### 1.1 인증번호 발송 `[기존]`
+
+> v1 SMS OTP다. OCTOMO(§1.7~1.10)로 전환할지·병행할지는 §1 확정 대기 1.
 
 ```
 POST /auth/phone/code
@@ -114,7 +174,7 @@ POST /auth/phone/code
 
 **에러**: `400 INVALID_REQUEST` (11자리 숫자 아님), `429 TOO_MANY_REQUESTS`
 
-### 1.2 인증번호 확인 (로그인/가입)
+### 1.2 인증번호 확인 (로그인/가입) `[기존]`
 
 ```
 POST /auth/phone/verify
@@ -150,7 +210,7 @@ POST /auth/phone/verify
 
 **에러**: `401 INVALID_CODE`, `410 CODE_EXPIRED`
 
-### 1.3 카카오 로그인
+### 1.3 카카오 로그인 `[기존]`
 
 ```
 POST /auth/kakao
@@ -166,7 +226,7 @@ POST /auth/kakao
 
 > 📌 현재 앱은 카카오 SDK를 붙이지 않았다. `MockApiClient.loginWithKakao()`가 바로 세션을 돌려준다.
 
-### 1.4 토큰 갱신
+### 1.4 토큰 갱신 `[기존]`
 
 ```
 POST /auth/refresh
@@ -184,7 +244,7 @@ POST /auth/refresh
 
 리프레시 토큰은 매번 새로 발급한다(rotation). 이전 토큰은 즉시 폐기.
 
-### 1.5 내 정보
+### 1.5 내 정보 `[기존]`
 
 ```
 GET /users/me
@@ -192,7 +252,7 @@ GET /users/me
 
 **200** — `User` (§1.2의 `user`와 동일 형태)
 
-### 1.6 로그아웃
+### 1.6 로그아웃 `[기존]`
 
 ```
 POST /auth/logout
@@ -202,15 +262,239 @@ POST /auth/logout
 
 ---
 
+### OCTOMO 인증 — 방향이 반대다
+
+§1.1~1.2는 **서버가 문자를 보내고 사용자가 번호를 입력**한다.
+§1.7~1.10은 **사용자가 문자를 보내고 서버가 수신 여부를 조회**한다.
+
+```
+POST /auth/phone/lookup      번호로 기존 사용자 후보를 판단
+        │
+        ▼
+POST /auth/octomo/challenge  수신번호 + 보낼 문자(text) + 만료를 받는다
+        │
+        ▼  사용자가 자기 메시지 앱에서 수신번호로 text를 직접 보낸다
+        │
+POST /auth/octomo/verify     서버가 OCTOMO에 수신 여부를 묻는다 (앱은 폴링)
+        │
+        ├─ 기존 사용자 ─────▶ 세션 발급. 끝
+        │
+        ▼  신규 사용자
+POST /auth/signup            이름 + 필수 약관 동의 → 계정 생성 + 세션 발급
+```
+
+**OCTOMO API Key는 서버만 갖는다.** Flutter 번들·로그·분석 도구 어디에도 넣지 않는다.
+앱은 `exists` 결과를 직접 받지 못하고, 서버가 판정한 세션 상태만 본다 —
+그래야 클라이언트가 인증 결과를 위조할 수 없다.
+
+### 1.7 전화번호 조회 `[신규]`
+
+```
+POST /auth/phone/lookup
+```
+
+```json
+{ "phone": "01012345678" }
+```
+
+**200**
+
+```json
+{ "next_step": "verify" }
+```
+
+| 필드 | 설명 |
+|------|------|
+| `next_step` | 항상 `verify`. 가입 여부와 무관하게 같은 값을 준다 |
+
+> ⚠️ **가입 여부를 노출하지 않는다.** 응답을 `login`/`signup`으로 나누면 임의의 번호를
+> 넣어 가입 여부를 캐낼 수 있다. 화면 문구도 양쪽 모두 "인증을 진행해 주세요"다.
+> 실제 분기는 §1.9에서 인증이 끝난 뒤에 알려준다.
+
+### 1.8 인증 문자 발급 `[신규]`
+
+```
+POST /auth/octomo/challenge
+```
+
+```json
+{ "phone": "01012345678" }
+```
+
+**200**
+
+```json
+{
+  "session_id": "avs_8f21",
+  "receiver_number": "0503xxxxxxx",
+  "verify_text": "3538",
+  "expires_in": 300,
+  "poll_interval": 3
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `receiver_number` | 사용자가 문자를 **보낼** 번호. 앱이 복사·메시지 앱 열기를 제공한다 |
+| `verify_text` | 보낼 문자 원문 |
+| `expires_in` | 세션 유효 초 |
+| `poll_interval` | §1.9를 다시 부르기까지 권장 대기 초 |
+
+**에러**: `400 INVALID_REQUEST`, `429 TOO_MANY_REQUESTS`
+
+### 1.9 인증 확인 (폴링) `[신규]`
+
+```
+POST /auth/octomo/verify
+```
+
+```json
+{ "session_id": "avs_8f21" }
+```
+
+**200 — 아직 안 옴**
+
+```json
+{ "status": "pending", "expires_in": 214 }
+```
+
+**200 — 기존 사용자**
+
+```json
+{
+  "status": "verified",
+  "account": "existing",
+  "session": {
+    "access_token": "eyJ…",
+    "refresh_token": "rt_…",
+    "expires_in": 3600,
+    "needs_intro": false,
+    "user": { "id": "u_001", "name": "김영희", "phone": "01012345678", "child_linked": false }
+  }
+}
+```
+
+**200 — 신규 사용자**
+
+```json
+{
+  "status": "verified",
+  "account": "new",
+  "signup_token": "st_…",
+  "required_consents": [
+    { "key": "terms_of_service", "version": "1.0", "title": "서비스 이용약관", "url": "https://…", "required": true },
+    { "key": "privacy_policy",   "version": "1.0", "title": "개인정보 처리방침", "url": "https://…", "required": true },
+    { "key": "age_14",           "version": "1.0", "title": "만 14세 이상입니다", "url": null,      "required": true },
+    { "key": "marketing",        "version": "1.0", "title": "마케팅 정보 수신",   "url": "https://…", "required": false }
+  ]
+}
+```
+
+`signup_token`은 §1.10에서만 쓰는 단기 토큰이다. 액세스 토큰이 아니다 —
+아직 계정이 없다.
+
+**에러**: `410 VERIFICATION_EXPIRED`, `404 NOT_FOUND`
+
+### 1.10 회원가입 `[신규]`
+
+```
+POST /auth/signup
+```
+
+```json
+{
+  "signup_token": "st_…",
+  "name": "김영희",
+  "consents": [
+    { "key": "terms_of_service", "version": "1.0", "agreed": true },
+    { "key": "privacy_policy",   "version": "1.0", "agreed": true },
+    { "key": "age_14",           "version": "1.0", "agreed": true },
+    { "key": "marketing",        "version": "1.0", "agreed": false }
+  ]
+}
+```
+
+**200** — `AuthSession` (§1.2와 동일 형태, `needs_intro: true`)
+
+서버가 한 트랜잭션에서 하는 일:
+
+1. `signup_token`의 인증 세션이 `verified`이고 아직 소비되지 않았는지 확인
+2. 필수 3종이 모두 `agreed: true`인지 확인
+3. `app_user` 생성 — 식별은 `(name, normalized_phone)` 복합 유니크
+4. `user_consent` 행들을 함께 기록
+5. 인증 세션을 `consumed`로 원자 갱신
+6. 세션 발급
+
+**약관에 동의하지 않은 계정이 생겨서는 안 된다.** 사용자 생성과 동의 이력이
+같은 트랜잭션인 이유다. 같은 세션으로 두 요청이 동시에 와도 5번의 원자 갱신이
+중복 생성을 막는다.
+
+**에러**: `401 VERIFICATION_NOT_COMPLETED`, `409 CONSENT_REQUIRED`, `410 VERIFICATION_EXPIRED`
+
+### 1.11 약관 문서 `[신규]`
+
+```
+GET /consents/documents
+```
+
+인증 불필요. 현재 시행 중인 버전만 내려준다.
+
+**200**
+
+```json
+{
+  "items": [
+    { "key": "terms_of_service", "version": "1.0", "title": "서비스 이용약관",
+      "url": "https://…", "required": true, "effective_at": "2026-08-01T00:00:00Z" }
+  ]
+}
+```
+
+설정 화면의 "이용약관·개인정보 처리방침"이 지금 준비 중 토스트만 띄우는데,
+이 응답의 `url`로 연결한다.
+
+### 1.12 회원 탈퇴 `[신규]`
+
+```
+DELETE /users/me
+```
+
+```json
+{ "reason": "…" }
+```
+
+**204**. `app_user.deleted_at`을 찍고 리프레시 토큰을 전부 폐기한다.
+
+- 재인증을 요구할지, 연관 데이터 보존 기간과 파기 배치를 어떻게 둘지는 §1 확정 대기 4
+- 컬럼(`deleted_at`)은 v1부터 있었으나 이를 쓰는 API가 없었다
+
+### 확정 대기 — 인증
+
+1. **v1 OTP와 OCTOMO의 관계.** `/auth/phone/code`·`/auth/phone/verify`를 폐기할지
+   병행할지, 카카오 스텁을 존치할지, 전환 시점은 언제인지.
+2. **OCTOMO 프로토콜 세부.** `verify_text`를 고정값으로 둘지 세션마다 발급할지,
+   재사용 방지, 폴링 주기·최대 시도·비용·레이트리밋. 위 `poll_interval: 3`은
+   자리를 잡아 둔 값이지 확정 수치가 아니다.
+3. **동일 번호 복수 가입.** `(name, normalized_phone)` 복합 유니크는 이름만 바꾸면
+   같은 번호로 여러 계정을 만들 수 있다. 의도한 가족 공유인지, 번호 단독 유니크를
+   유지할지, 계정 선택·연결 UX를 둘지. 기존 사용자 이관 방식도 함께 정한다.
+4. **탈퇴 처리.** 재인증 여부, 보존 기간, 파기 배치, 자서전 본문의 처리.
+5. **약관 운영.** 실제 URL, 버전 발행·재동의 규칙, 마케팅 동의 철회 UI와 보존 기간.
+6. **앱의 "ID, PW로 로그인하기".** 준비 중 안내로 둘지 웹 로그인으로 연결할지.
+   연결한다면 인앱 브라우저·딥링크 후 세션 전달 방식.
+
+---
+
 ## 2. 자기소개 → 목차
 
-### 2.1 자기소개 문항
+### 2.1 자기소개 문항 `[변경]`
 
 ```
 GET /intro/questions
 ```
 
-인증 필요. **5문항 고정**이며 순서대로 내려준다.
+인증 필요. 순서대로 내려준다. **문항 수는 고정이 아니다** — v1은 5문항이었으나
+생년월일·작성 계획이 들어오면서 늘어난다.
 
 **200**
 
@@ -218,18 +502,51 @@ GET /intro/questions
 {
   "items": [
     {
-      "id": "i1", "order": 1,
-      "text": "성함을\n알려주세요",
-      "subtitle": "책 표지에 들어갈 이름이에요",
-      "hint": "성함을 적어 주세요",
+      "id": "i2", "order": 1,
+      "text": "성별을\n알려주세요",
+      "subtitle": null,
+      "hint": null,
+      "answer_type": "choice",
+      "skippable": false,
+      "choices": [
+        { "id": "ch_m", "label": "남" },
+        { "id": "ch_f", "label": "여" }
+      ]
+    },
+    {
+      "id": "i6", "order": 2,
+      "text": "생년월일을\n알려주세요",
+      "answer_type": "date",
+      "skippable": false,
       "choices": []
+    },
+    {
+      "id": "i3", "order": 3,
+      "text": "결혼은\n하셨나요?",
+      "answer_type": "choice",
+      "skippable": true,
+      "choices": [
+        { "id": "ch_y", "label": "예" },
+        { "id": "ch_n", "label": "아니오" }
+      ]
     },
     {
       "id": "i5", "order": 5,
       "text": "학교는 어디까지\n다니셨나요?",
       "subtitle": "학창 시절 질문을 고를 때 써요",
-      "hint": null,
-      "choices": ["초등학교", "중학교", "고등학교", "대학교 이상"]
+      "answer_type": "choice",
+      "skippable": false,
+      "choices": [
+        { "id": "ch_e", "label": "초등학교", "details": [
+          { "id": "ch_e1", "label": "초등학교" },
+          { "id": "ch_e2", "label": "국민학교" }
+        ]},
+        { "id": "ch_u", "label": "대학교 이상", "details": [
+          { "id": "ch_u1", "label": "학사" },
+          { "id": "ch_u2", "label": "석사" },
+          { "id": "ch_u3", "label": "박사" }
+        ]}
+      ]
     }
   ]
 }
@@ -237,14 +554,19 @@ GET /intro/questions
 
 | 필드 | 설명 |
 |------|------|
-| `text` | 화면 제목. **`\n`이 줄바꿈 위치다** — 시안이 두 줄로 끊어 놓은 자리라 서버가 그대로 준다 |
+| `text` | 화면 제목. **`\n`이 줄바꿈 위치다** |
 | `subtitle` | 왜 묻는지 알려주는 한 줄 |
-| `hint` | 입력칸 placeholder. `choices`가 비었을 때만 쓴다 |
-| `choices` | 비어 있으면 텍스트 입력, 있으면 선택지. 앱은 **세로로 쌓아** 그리며 개수 제한이 없다 |
+| `hint` | 입력칸 placeholder. `answer_type: "text"`일 때만 |
+| `answer_type` | `text` \| `choice` \| `date` \| `multi_choice` |
+| `skippable` | `true`면 화면에 "건너뛰기"가 뜬다. 결혼·자녀만 해당 |
+| `choices[].details` | **선택 직후 같은 화면에 나타나는 상세 선택지.** 없으면 생략 |
 
-앱은 `choices`의 유무로 입력 방식을 정한다(`IntroAnswerType`). 별도 `type` 필드는 두지 않는다.
+> **v1에서 바뀐 점** — 예전에는 `choices`가 비었는지로 입력 방식을 갈랐고
+> 선택지가 문자열 배열이었다. 생년월일(`date`)과 복수 선택(`multi_choice`)이
+> 생기면서 `answer_type`이 필요해졌고, 조건부 상세 때문에 선택지가 객체가 됐다.
+> 앱의 `IntroAnswerType`은 `choices` 유무가 아니라 이 필드를 읽는다.
 
-### 2.2 자기소개 제출 → 목차 생성
+### 2.2 자기소개 제출 → 목차 생성 `[변경]`
 
 ```
 POST /intro/answers
@@ -253,32 +575,50 @@ POST /intro/answers
 ```json
 {
   "answers": [
-    { "question_id": "i1", "value": "김영희" },
-    { "question_id": "i2", "value": "여성" },
-    { "question_id": "i3", "value": "했어요" },
-    { "question_id": "i4", "value": "있어요" },
-    { "question_id": "i5", "value": "대학교 이상" }
+    { "question_id": "i2", "choice_id": "ch_f", "value": "여" },
+    { "question_id": "i6", "value": "1962-04-17" },
+    { "question_id": "i3", "skipped": true },
+    { "question_id": "i4", "choice_id": "ch_y", "value": "있어요" },
+    { "question_id": "i5", "choice_id": "ch_u", "detail_choice_id": "ch_u1",
+      "value": "대학교 이상", "detail_value": "학사" }
   ]
 }
 ```
 
-**답변은 고른 문자열 원본을 그대로 보낸다.** 서버가 `대학 O/X` 같은 불리언으로 접어서
-저장하지 않고 원본을 남긴다 — 나중에 "고등학교 졸업"과 "중학교 졸업"을 나눠 질문을
-주고 싶어질 때 데이터가 있어야 한다. 케이스 판정값은 원본에서 파생시킨다.
+| 필드 | 필수 | 설명 |
+|------|:---:|------|
+| `question_id` | O | |
+| `value` | 조건부 | 고르거나 적은 **원본 문자열**. `skipped: true`면 생략 |
+| `choice_id` | 조건부 | 선택형일 때 |
+| `detail_choice_id` / `detail_value` | — | 조건부 상세를 골랐을 때 |
+| `values` | 조건부 | `multi_choice`일 때 문자열 배열 |
+| `skipped` | — | `true`면 건너뜀. `skippable: true` 문항에만 허용 |
+
+**원본을 접어서 저장하지 않는다.** 규칙이 두 가지다.
+
+1. **`skipped: true`를 `아니오`로 바꾸지 않는다.** 바꾸면 "안 했어요"와
+   "말하지 않았다"가 같은 값이 되어 되돌릴 수 없다.
+2. **학업 상세를 `대학 O/X` 하나로 덮어쓰지 않는다.** 덮어쓰면 나중에
+   "고등학교 졸업"과 "중학교 졸업"을 나눠 질문을 주고 싶어질 때 데이터가 없다.
+
+케이스 판정값은 원본에서 **파생**시킨다. 저장은 원본, 판정은 파생이다.
 
 **200**
 
 ```json
 {
   "case_key": "legacy_college_married_children",
+  "book_id": "b_001",
   "chapters": [
     {
       "id": "c_01", "order": 1, "title": "탄생과 유아기 시절",
+      "source_type": "template",
       "status": "writing", "answered_count": 0, "question_count": 5,
       "next_question_text": null
     },
     {
       "id": "c_02", "order": 2, "title": "가족환경과 성장환경",
+      "source_type": "template",
       "status": "locked", "answered_count": 0, "question_count": 5,
       "next_question_text": null
     }
@@ -286,30 +626,141 @@ POST /intro/answers
 }
 ```
 
+- **`book_id`가 이 시점에 만들어진다.** 이후 목차 편집·확정·작성이 전부 이 책 범위다
 - 케이스 판정 규칙과 8종 정의는 [`목차-케이스.md`](목차-케이스.md) 참조
-- 이 시점에 사용자별 목차·질문 **스냅샷을 복제해 둔다** (§9.2)
+- 이 시점에 사용자별 목차·질문 **스냅샷을 복제해 둔다** (§13.2)
 - 오래 걸리는 작업이다. 앱은 전용 로딩 화면(B6)을 띄우고 기다린다. **타임아웃 60초**
 
-**에러**: `400 INVALID_REQUEST` (5문항이 다 오지 않음)
+**에러**: `400 INVALID_REQUEST` (필수 문항 누락, 건너뛸 수 없는 문항에 `skipped`)
 
-### 2.3 목차 확정
+### 2.3 카탈로그 대목차 `[신규]`
+
+```
+GET /catalog/chapters?book_id=b_001
+```
+
+목차 편집에서 "추가하기"를 눌렀을 때 고를 수 있는 후보.
+
+**200**
+
+```json
+{
+  "items": [
+    { "id": "ct_08", "title": "현재의 삶", "question_count": 5, "already_added": false },
+    { "id": "ct_04", "title": "20대 시절 - 대학생활", "question_count": 5, "already_added": true }
+  ]
+}
+```
+
+`already_added: true`인 항목은 앱이 비활성으로 그린다. 목록에서 빼지 않고 내려주는 건
+"이미 들어 있다"를 보여 주기 위해서다.
+
+### 2.4 목차 초안 저장 `[신규]`
+
+```
+PATCH /intro/toc/draft
+```
+
+제목 수정·삭제·추가·순서 변경을 한 번에 반영한다. 확정 전까지 여러 번 부를 수 있다.
+
+```json
+{
+  "book_id": "b_001",
+  "chapters": [
+    { "id": "c_02", "title": "가족환경과 성장환경" },
+    { "id": "c_01", "title": "내가 태어난 날" },
+    { "template_id": "ct_08" },
+    { "title": "군대 이야기" }
+  ]
+}
+```
+
+**배열 순서가 곧 목차 순서다.** 각 항목은 셋 중 하나다.
+
+| 형태 | 뜻 |
+|------|-----|
+| `{ id, title? }` | 기존 장. `title`을 주면 제목을 고친다 |
+| `{ template_id }` | 카탈로그에서 새로 추가. **템플릿의 활성 질문도 함께 복제한다** |
+| `{ title }` | 사용자 정의 장. `source_type: "custom"` |
+
+**배열에 없는 기존 장은 삭제된다.** 삽입 위치를 따로 보내지 않는 이유 — 앱이
+"어디에 넣을지" 고른 결과가 이미 이 배열의 순서다. 위치를 별도 필드로 받으면
+서버와 앱이 각자 순서를 계산해 어긋날 여지가 생긴다.
+
+**200** — §2.2와 같은 `chapters` 배열
+
+**에러**: `409 TOC_ALREADY_CONFIRMED`, `404 NOT_FOUND`
+
+> 삭제는 **인트로 시점에 답변이 없다는 전제**다. 작성 시작 후의 목차 편집은
+> 답변·진행률·원고 보존 정책이 정해져야 열 수 있다 (§2 확정 대기 4).
+
+### 2.5 목차 확정 `[변경]`
 
 ```
 POST /intro/toc/confirm
 ```
 
-사용자가 B7에서 "순서 바꾸기"로 재배열했으면 **바뀐 순서 그대로** 보낸다.
-
 ```json
-{ "chapter_ids": ["c_02", "c_01", "c_03"] }
+{ "book_id": "b_001", "chapter_ids": ["c_02", "c_01", "c_03"] }
 ```
 
-**204**. 서버는 배열 순서대로 `order`를 1부터 다시 매기고, 1번 장을 `writing`,
-나머지를 `locked`로 초기화한다. 이후 `needs_intro`는 `false`가 된다.
+**200** — v1은 `204`였다. 작성 화면으로 가려면 `book_id`가 필요해 본문을 준다.
 
-**에러**: `409 TOC_ALREADY_CONFIRMED`
+```json
+{
+  "book_id": "b_001",
+  "first_question_id": "q_001",
+  "chapters": [ … ]
+}
+```
 
-### 2.4 자기소개 프로필 조회 (F3 내 정보)
+서버는 배열 순서대로 `order`를 1부터 다시 매기고, 1번 장을 `writing`,
+나머지를 `locked`로 초기화한다. `toc_confirmed_at`·`intro_completed_at`을 기록하고
+이후 `needs_intro`는 `false`가 된다.
+
+> 📌 **`(book_id, sort_order)` 유니크 때문에 두 번에 나눠 쓴다.** 재배열한 순서를
+> 곧바로 1..N으로 쓰면 중간에 충돌한다. 먼저 전부 음수(-1, -2, …)로 밀고 그다음 1..N.
+
+**에러**: `409 TOC_ALREADY_CONFIRMED`, `400 INVALID_REQUEST` (보유한 장 집합과 불일치)
+
+### 2.6 작성 계획 `[신규]`
+
+```
+GET  /intro/writing-plan
+PUT  /intro/writing-plan
+```
+
+```json
+{
+  "daily_minutes": 30,
+  "available_weekdays": [1, 3, 5],
+  "available_periods": ["am"],
+  "duration_weeks": 2,
+  "duration_source": "recommended",
+  "alarm_enabled": true
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `daily_minutes` | `10` \| `30` \| `60` \| `90` \| `120`(2시간 이상) |
+| `available_weekdays` | `0`=일 ~ `6`=토 |
+| `available_periods` | `am` \| `pm`. 복수 선택 |
+| `duration_weeks` | `1` \| `2` \| `4` \| `6` |
+| `duration_source` | `recommended`(서버 추천을 그대로 씀) \| `manual`(직접 고름) |
+| `alarm_enabled` | 계획 수립 시점의 알림 동의 |
+
+추천 기간은 `GET`이 함께 내려준다.
+
+```json
+{ "recommended_weeks": 2, "plan": { … } }
+```
+
+> ⚠️ **`available_periods`는 작성 가능 시간대이지 알림 발송 시각이 아니다.**
+> 그리고 `alarm_enabled: true`가 실제 푸시 수신을 보장하지 않는다 —
+> 발송 경로 자체가 아직 없다 (§2 확정 대기 3).
+
+### 2.7 자기소개 프로필 조회 `[변경]`
 
 ```
 GET /intro/profile
@@ -320,22 +771,41 @@ GET /intro/profile
 ```json
 {
   "entries": [
-    { "label": "성별", "value": "여성" },
-    { "label": "결혼", "value": "했어요" },
+    { "label": "성별", "value": "여" },
+    { "label": "생년월일", "value": "1962년 4월 17일" },
+    { "label": "결혼", "value": null, "skipped": true },
     { "label": "자녀", "value": "있어요" },
-    { "label": "학력", "value": "대학교 이상" }
+    { "label": "학력", "value": "대학교 이상 · 학사" }
   ]
 }
 ```
 
 라벨과 값을 **서버가 짝지어** 내려준다. 화면이 `i2`·`i5` 같은 질문 id를 알 필요가 없다.
-성함(i1)은 이 목록에 넣지 않는다 — 화면 상단에 이미 이름이 있다.
+
+- `skipped: true`인 항목은 값을 지어내지 않는다. 앱은 "답하지 않음"으로 그린다
+- 학력은 상세가 있으면 `단계 · 상세`로 합쳐 준다
+- 성함은 이 목록에 넣지 않는다 — 화면 상단에 이미 이름이 있다
+
+### 확정 대기 — 자기소개·목차
+
+1. **학업 단계와 학위의 관계.** 현 스펙은 중학교·고등학교에도 학사/석사/박사를
+   보이는데 학제상 어색한 조합이 만들어진다. "대학교 이상"에서만 보일지 결정 필요.
+2. **건너뛴 결혼·자녀의 축 파생.** `user_profile.has_*`는 `case_definition`의 축
+   유니크 때문에 not null이라 값이 있어야 한다. 미응답을 `false`로 처리하면
+   "아니오"와 섞인다. 원본은 보존되므로 규칙이 정해지면 재계산할 수 있다.
+3. **기간 추천 공식.** 복수 시간대가 실제 작성 횟수를 뜻하는지, 사용자가 추천을
+   거부할 수 있는지, 계획 변경 시 알림 재계산 규칙.
+4. **작성 시작 후 목차 편집.** §2.4의 삭제는 답변이 없다는 전제다. 이후 편집을
+   허용하려면 답변·원고·진행률의 보존/숨김/이관 정책이 먼저 필요하다.
+5. **사용자 정의 장의 초기 질문.** 비워 둘지, 기본 질문을 만들지, AI로 생성할지.
+6. **성함(i1) 문항의 거취.** 가입에서 이름을 받게 되면서 인트로에 남길 이유가
+   줄었다. 기존 `i2`~`i5` 선택값을 새 코드·라벨로 어떻게 매핑할지도 함께.
 
 ---
 
 ## 3. 홈
 
-### 3.1 홈 요약
+### 3.1 홈 요약 `[기존]`
 
 ```
 GET /home
@@ -365,10 +835,11 @@ GET /home
 
 ## 4. 목차 · 질문 조회
 
-### 4.1 장 목록
+### 4.1 장 목록 `[변경]`
 
 ```
-GET /chapters
+GET /books/{book_id}/chapters
+GET /chapters                      # 전환 기간: 첫 책으로 해석
 ```
 
 **200**
@@ -406,10 +877,11 @@ GET /chapters
 
 `next_question_text`는 `writing` 장에만 채운다 — 목록에 "다음 질문 · 첫 소풍의 기억"으로 뜬다.
 
-### 4.2 지금 답할 질문
+### 4.2 지금 답할 질문 `[변경]`
 
 ```
-GET /questions/current
+GET /books/{book_id}/questions/current
+GET /questions/current             # 전환 기간: 첫 책으로 해석
 ```
 
 **200**
@@ -432,7 +904,7 @@ GET /questions/current
 | `order` | 장 안에서의 순번(1부터). "질문 3 / 6"의 앞 숫자 |
 | `answer` | 확정 저장된 **사용자 원문**. 아직이면 `null`. AI 윤문 결과가 아니다 |
 
-### 4.3 질문 단건
+### 4.3 질문 단건 `[기존]`
 
 ```
 GET /questions/{question_id}
@@ -440,7 +912,10 @@ GET /questions/{question_id}
 
 **200** — §4.2와 동일. **에러**: `404 NOT_FOUND`, `409 CHAPTER_LOCKED`
 
-### 4.4 질문 문구 수정
+질문 id는 전역 고유하므로 책 범위를 경로에 넣지 않는다. 대신 서버가 그 질문이
+호출자의 책에 속하는지 확인하고, 아니면 **404**를 준다(§0.4).
+
+### 4.4 질문 문구 수정 `[기존]`
 
 ```
 PATCH /questions/{question_id}
@@ -477,17 +952,22 @@ POST /questions/{id}/followup/{fid}/answer
         │
         ├─ 422 POLISH_FAILED ────────────▶ 글은 살려둔 채 저장만 재시도 (§5.4)
         │
-        ▼  200 { next_question, chapter_completed }
-        서버: 원문 2개 + 윤문 결과를 확정 저장하고 다음 질문을 돌려준다
+        ▼  200 { followup | next_question, chapter_completed }
+        followup이 오면 한 번 더, next_question이 오면 확정된 것이다
 ```
 
-**질문 1개 = 묶음 1개.** 한 묶음은 (원질문, 1차 답변, 꼬리질문, 꼬리답변, 윤문 결과)로 구성된다.
-꼬리질문은 **정확히 1회**다.
+**질문 1개 = 묶음 1개.** 한 묶음은 (원질문, 1차 답변, 꼬리질문·꼬리답변 N쌍, 윤문 결과)다.
+
+> **v1에서 바뀐 점** — 꼬리질문이 정확히 1회였다. 이제 여러 회차가 가능하다.
+> `answer_followup.seq`가 회차를 담는다. 응답에 `followup`이 오면 아직 진행 중이고,
+> `next_question`이 오면 확정 저장이 끝난 것이다.
+> **최대 회차는 아직 정해지지 않았다** (§5 확정 대기 1) — 앱은 횟수를 세지 말고
+> 응답에 무엇이 왔는지로만 분기한다.
 
 **사용자에게 보여주는 것은 자기가 답한 원문뿐이다.** AI가 작가처럼 다듬은 글은 저장만 하고
-작성 화면에서는 보여주지 않는다. 처음 눈에 띄는 곳은 자서전 미리보기(§6.2)다.
+작성 화면에서는 보여주지 않는다. 처음 눈에 띄는 곳은 자서전 미리보기(§6.4)다.
 
-### 5.1 1차 답변 전송
+### 5.1 1차 답변 전송 `[기존]`
 
 ```
 POST /questions/{question_id}/answer
@@ -530,7 +1010,7 @@ POST /questions/{question_id}/answer
 | 409 | `CHAPTER_LOCKED` | 잠긴 장 |
 | 422 | `FOLLOWUP_FAILED` | §5.3 |
 
-### 5.2 꼬리질문 답변 → 확정 저장
+### 5.2 꼬리질문 답변 → 확정 저장 `[변경]`
 
 ```
 POST /questions/{question_id}/followup/{followup_id}/answer
@@ -544,7 +1024,15 @@ POST /questions/{question_id}/followup/{followup_id}/answer
 }
 ```
 
-**200**
+**200 — 아직 더 물을 게 있을 때**
+
+```json
+{
+  "followup": { "id": "f_9932", "seq": 2, "text": "성산일출봉 계단을 오르던 아이들 얘기가…" }
+}
+```
+
+**200 — 확정 저장됨**
 
 ```json
 {
@@ -558,8 +1046,12 @@ POST /questions/{question_id}/followup/{followup_id}/answer
 
 | 필드 | 설명 |
 |------|------|
+| `followup` | 다음 꼬리질문. 있으면 **아직 확정되지 않았다** — 같은 엔드포인트를 다시 부른다 |
 | `next_question` | 다음에 답할 질문. **`null`이면 모든 장을 끝냈다는 뜻** — 앱은 자서전 화면으로 이동 |
 | `chapter_completed` | 이 답변으로 장이 끝났으면 `true`. 다음 장이 열린다 |
+
+`followup`과 `next_question`은 **동시에 오지 않는다.** 둘 중 무엇이 왔는지가
+"한 번 더"와 "끝났다"를 가르는 유일한 신호다.
 
 서버가 이 요청 안에서 하는 일:
 
@@ -581,7 +1073,7 @@ POST /questions/{question_id}/followup/{followup_id}/answer
 | 404 | `NOT_FOUND` | `followup_id`가 이 질문의 것이 아님 |
 | 422 | `POLISH_FAILED` | §5.4 |
 
-### 5.3 꼬리질문 생성 실패 — 처음부터 다시
+### 5.3 꼬리질문 생성 실패 — 처음부터 다시 `[기존]`
 
 AI가 꼬리질문을 만들지 못하면(서버 내부 재시도 후에도) `422 FOLLOWUP_FAILED`.
 
@@ -593,10 +1085,10 @@ AI가 꼬리질문을 만들지 못하면(서버 내부 재시도 후에도) `42
 - 앱은 질문 화면으로 되돌아가 처음부터 다시 답을 받는다.
 - 사용자가 답을 다시 해야 한다 — 감수하기로 한 동작이다.
 
-> 📌 확장 지점: 초안을 남겨 두고 `GET /questions/{id}/draft`로 복원하면 다시 답하지 않아도 된다.
-> v1에서는 만들지 않는다.
+> 📌 §5.6의 초안 autosave가 붙어도 **이 규칙은 그대로다.** 실패 시 초안을 지운다.
+> 화면에 없는 글을 서버가 들고 있으면, 사용자가 다시 답한 내용과 어긋난다.
 
-### 5.4 윤문 실패 — 저장만 재시도
+### 5.4 윤문 실패 — 저장만 재시도 `[기존]`
 
 `422 POLISH_FAILED`.
 
@@ -611,7 +1103,7 @@ AI가 꼬리질문을 만들지 못하면(서버 내부 재시도 후에도) `42
 꼬리질문 실패(§5.3)와 다른 이유: 그때는 아직 사용자가 한 번밖에 답하지 않았지만, 여기서는
 두 번 답한 상태다. 두 번의 이야기를 날리고 처음부터 시키는 건 다른 문제다.
 
-### 5.5 건너뛰기
+### 5.5 건너뛰기 `[기존]`
 
 ```
 POST /questions/{question_id}/skip
@@ -626,14 +1118,179 @@ POST /questions/{question_id}/skip
 건너뛴 질문은 `skipped`로 표시하고 답변 없이 완료 처리한다. 장의 `answered_count`에는 포함된다
 (그래야 장이 끝난다). 자서전 본문에는 실리지 않는다.
 
+초안이 있으면 지운다. **건너뛰기에 윤문을 붙이지 않는다** — 화면 문서가
+"건너뛰기 시 기존 답변을 AI가 정리·저장"도 함께 말하지만 대상 버튼과 시점이
+충돌한다(§5 확정 대기 2). 확정 전에는 skip을 단순 폐기로 둔다.
+
+### 5.6 초안 autosave `[신규]`
+
+```
+PUT    /questions/{question_id}/draft
+GET    /questions/{question_id}/draft
+DELETE /questions/{question_id}/draft
+```
+
+```json
+{
+  "text": "제주도에 갔던 게 제일 기억에 남습니다…",
+  "input_mode": "voice",
+  "spoken_seconds": 42,
+  "recording_meta": { "transcribed_at": "2026-08-03T04:12:00Z", "partial": false }
+}
+```
+
+**200** — 저장된 초안
+
+STT 전사가 끝나면 앱이 **확정 전에** 여기 저장한다. 사용자가 확인·수정하는 동안
+앱이 죽거나 전화가 와도 글이 남는다.
+
+> ⚠️ **초안 저장과 확정 저장은 다른 것이다.** 불안정한 부분 전사를 `answer` 확정
+> 행으로 곧바로 쓰지 않는다. 전사 직후 자동 확정을 허용할지는 §5 확정 대기 3.
+
+`GET`은 초안이 없으면 **204**다. 앱은 이걸 "복원할 게 없다"로 읽는다.
+
+### 5.7 음성 (TTS · STT) `[신규]`
+
+```
+POST /voice/tts
+POST /voice/stt
+```
+
+**TTS** — 질문을 읽어 준다.
+
+```json
+{ "text": "가족과 함께 했던 여행 중…", "voice_code": "nara" }
+```
+
+**200** — `audio/mpeg` 스트림. 가능하면 `X-Voice-Duration-Ms` 헤더에 실측 길이를 싣는다.
+
+**STT** — 녹음을 받아쓴다. `multipart/form-data`로 오디오를 올린다.
+
+```json
+{ "text": "제주도에 갔던 게 제일 기억에 남습니다", "duration_ms": 42130 }
+```
+
+- **제공자 자격 증명은 서버만 갖는다.** 앱은 액세스 토큰으로 이 엔드포인트를 부르고,
+  네이버 Voice(Clova 계열) 키를 앱 번들에 넣거나 제공자 API를 직접 부르지 않는다
+- 질문 TTS와 한글 타이핑 애니메이션 동기화는 **제공자가 문자 단위 타이밍을 주는지에
+  달렸다.** 안 주면 실측 오디오 길이 + grapheme 단위 스케줄러로 근사한다.
+  완전한 음성-문자 일치는 보장하지 않는다
+- 긴 원고는 제공자 한도 이하로 쪼개 순차 호출한다 (챕터 리뷰 읽어주기, §9.4)
+
+### 확정 대기 — 작성
+
+1. **꼬리질문 반복 상한.** "loop는 최대 3번(1 → 2 → 3 → 3 → 자동 다음 질문)"에서
+   번호의 의미와 횟수가 불명확하다. (a) 최초 답변 이후 후속 최대 3회, 또는
+   (b) 최초 포함 전체 라운드 최대 3회 중 하나를 골라야 한다.
+2. **종료 시점의 윤문 규칙.** 건너뛰기·후속 종료·자동 전환 각각에서 윤문을 할지,
+   무엇을 확정 저장할지, 재답변 시 기존 답변을 버전 보존할지.
+3. **전사 후 자동 확정.** STT 결과를 사용자 확인 없이 `answer`로 확정할지.
+   현 설계는 초안까지만 자동이다.
+4. **`다시 답하기` / `기존 답에 추가하기`의 서버 계약.** 전자는 원문 폐기 후 재입력,
+   후자는 저장된 원문을 불러와 이어 쓰기다. 초안을 덮어쓸지 이어 붙일지 미정.
+5. **튜토리얼 완료 상태의 저장 위치.** 기기 로컬이면 간단하지만 가족이 여러 기기로
+   쓰면 매번 다시 뜬다. 서버 동기화 시 단계 중단 복원까지 할지도 함께.
+6. **녹음 일시정지**와 **`다른 질문`.** 기기별 테스트와 제품 결정이 선행되어야 한다.
+
 ---
 
 ## 6. 나의 자서전
 
-### 6.1 책 요약
+### 6.1 책 목록 `[신규]`
 
 ```
-GET /book
+GET /books
+```
+
+**200**
+
+```json
+{
+  "items": [
+    {
+      "id": "b_001",
+      "title": "나의 이야기",
+      "author_name": "김영희",
+      "status": "writing",
+      "cover_url": null,
+      "chapter_count": 9,
+      "chapter_done": 2,
+      "progress": 0.42,
+      "updated_at": "2026-08-01T09:00:00Z"
+    }
+  ]
+}
+```
+
+인증 사용자에게 허용된 책만 서버가 걸러서 준다. 앱은 `status`로 "제작 중"과
+"제작 완료" 섹션을 나눈다.
+
+> ⚠️ **`status` 값 집합은 아직 확정이 아니다** (§6 확정 대기 1). 앱은 알 수 없는
+> 값이 와도 깨지지 않게 그리고, 분류 규칙을 하드코딩하지 않는다.
+
+```
+POST /books
+```
+
+새 책을 만든다. **기존 책의 목차·답변을 초기화하지 않는다.** 생성 방식(인트로를
+다시 하는지, 기존 목차를 복제하는지)은 §6 확정 대기 2.
+
+### 6.2 책 상세 `[신규]`
+
+```
+GET /books/{book_id}
+```
+
+상세 허브 한 화면이 필요한 값을 한 번에 준다.
+
+**200**
+
+```json
+{
+  "id": "b_001",
+  "title": "나의 이야기",
+  "status": "writing",
+  "progress": 0.42,
+  "chapter_done": 2,
+  "chapter_total": 9,
+  "current_question": {
+    "id": "q_012", "chapter_id": "c_02", "chapter_title": "가족환경과 성장환경",
+    "order": 3, "text": "가족과 함께 했던 여행 중…"
+  },
+  "chapters": [
+    {
+      "id": "c_01", "order": 1, "title": "탄생과 유아기 시절",
+      "status": "done", "answered_count": 5, "question_count": 5,
+      "review_status": "reviewed", "ebook_eligible": true
+    },
+    {
+      "id": "c_02", "order": 2, "title": "가족환경과 성장환경",
+      "status": "writing", "answered_count": 3, "question_count": 5,
+      "review_status": null, "ebook_eligible": false
+    }
+  ],
+  "entitlements": {
+    "ebook":     { "allowed": true,  "reason": null },
+    "audiobook": { "allowed": false, "reason": "PLAN_REQUIRED" },
+    "storybook": { "allowed": false, "reason": "WEB_ONLY" }
+  }
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `current_question` | 다음에 답할 질문. `null`이면 다 끝났다 |
+| `chapters[].review_status` | `null` \| `draft` \| `reviewed`. **`status: done`과 다른 개념** |
+| `chapters[].ebook_eligible` | 이 장이 전자책에 실릴 자격이 되는지 |
+| `entitlements` | 기능별 허용 여부와 잠긴 이유. **UI 안내용이다** |
+
+> ⚠️ `entitlements`는 화면이 잠금을 그리라고 주는 값이지 접근 통제가 아니다.
+> 실제 통제는 각 생성·조회·다운로드 요청에서 서버가 다시 한다 (§11).
+
+### 6.3 책 요약 `[기존]`
+
+```
+GET /book                          # 전환 기간: 첫 책으로 해석
 ```
 
 **200**
@@ -653,13 +1310,17 @@ GET /book
 | 필드 | 설명 |
 |------|------|
 | `question_count` | 책에 실린 질문 수(건너뛴 것 제외) |
-| `photo_count` | **v1은 항상 0.** 사진 첨부는 2차 |
+| `photo_count` | 사진이 붙기 전에는 0 |
 | `is_complete` | 모든 장이 `done`이면 `true`. 완성 화면(E3) 진입 조건 |
 
-### 6.2 미리보기 쪽
+> v1 단일 책 계약이다. §6.2가 같은 정보를 책 범위로 더 넓게 준다.
+> 앱이 `book_id`를 넘기기 시작하면 이 경로는 정리한다.
+
+### 6.4 미리보기 쪽 `[변경]`
 
 ```
-GET /book/pages
+GET /books/{book_id}/pages
+GET /book/pages                    # 전환 기간: 첫 책으로 해석
 ```
 
 **200**
@@ -685,13 +1346,25 @@ GET /book/pages
 - `done` 장만 포함한다. 작성 중인 장은 나오지 않는다
 - `page_number`는 책 전체 기준 통쪽수 (장마다 1로 돌아가지 않는다)
 - `total_pages`가 쪽마다 실려 오는 건 중복이지만, 앱이 쪽 하나만 들고도 "12 / 34쪽"을 그릴 수 있어야 해서 그대로 둔다
-- 쪽 나누기는 **서버가 계산한다.** 앱은 받은 대로 그린다
+- 쪽 나누기는 **서버가 계산한다.** 앱은 받은 대로 그린다 — 기기 폭에 따라 쪽이 달라지면 "12 / 34쪽"이 사람마다 달라진다
+
+### 확정 대기 — 책
+
+1. **`book.status`의 값 집합과 "제작 완료"의 정의.** 질문 완료 / 챕터 리뷰 저장 /
+   전자책 생성 / 인쇄 완료 중 무엇인지. 상태 전이의 주체도 미정이다.
+   `draft`/`writing`/`reviewing`/`completed`는 후보일 뿐이다.
+2. **새 책 생성 방식.** 인트로를 다시 하는지, 기존 목차를 복제하는지,
+   빈 초안부터 시작하는지. 첫 책·에디션의 명명 규칙.
+3. **가족 공유 참여자.** 목록·상세·작성·리뷰별 읽기/편집 권한, 초대·철회, 감사 로그.
+   지금은 소유자만 있다.
+4. **하단 정보의 노출 항목.** 전화번호·배송지는 기본 비노출로 두었고,
+   자녀 연결 상태도 공유 동의 정책 전에는 내리지 않는다.
 
 ---
 
 ## 7. 알림
 
-### 7.1 목록
+### 7.1 목록 `[기존]`
 
 ```
 GET /notifications
@@ -717,7 +1390,7 @@ GET /notifications
 
 > 📌 확장 지점: 정렬·그룹핑이 필요해지면 원본 시각(`created_at`)을 함께 내려준다.
 
-### 7.2 모두 읽음
+### 7.2 모두 읽음 `[기존]`
 
 ```
 POST /notifications/read-all
@@ -725,11 +1398,41 @@ POST /notifications/read-all
 
 **200** — 갱신된 목록 (§7.1과 동일). 앱이 다시 조회하지 않아도 되게 결과를 돌려준다.
 
+### 7.3 단말 푸시 토큰 등록 `[신규]`
+
+```
+POST   /device-push-tokens
+DELETE /device-push-tokens/{token}
+```
+
+```json
+{ "platform": "ios", "token": "…" }
+```
+
+**204**. 같은 토큰이 이미 있으면 사용자·갱신 시각만 바꾼다(upsert).
+
+> ⚠️ **테이블만 있고 이 API가 없어 토큰이 한 건도 쌓이지 않던 상태였다.**
+> 등록이 붙어도 발송은 별개다 — provider·스케줄러·발송 워커가 모두 없다.
+> `user_setting.daily_question_alarm`이 켜져 있다는 것과 푸시가 실제로 간다는 것은
+> 다른 얘기이고, 화면 문구도 그렇게 써야 한다.
+
+### 확정 대기 — 알림
+
+1. **발송 경로 전체.** provider(FCM/APNs) 선택, 키 관리, 스케줄러, 발송 워커,
+   실패 재시도, 무효 토큰 폐기, 개인정보 고지.
+2. **발송 시각·빈도·시간대.** `writing_plan.available_periods`는 작성 가능
+   시간대이지 발송 시각이 아니다. 휴일·복수 슬롯 우선순위·미응답 재알림도 미정.
+3. **알림 카드 X의 의미.** 카드만 닫기 / 오늘 알림 해제 / 미루기 / 개별 읽음 중
+   무엇인지. 각각 저장 상태와 재노출 규칙이 다르다. 확정 전까지 X는
+   **로컬 화면 닫기**로만 두고 서버 상태를 바꾸지 않는다.
+4. **인앱 알림의 딥링크.** 지금은 탭하면 "준비 중" 토스트다. 다권 전환 후
+   `book_id` + 질문/챕터로 보내는 계약이 필요하다.
+
 ---
 
 ## 8. 설정
 
-### 8.1 앱 설정
+### 8.1 앱 설정 `[기존]`
 
 ```
 GET  /settings
@@ -744,7 +1447,7 @@ PATCH /settings
 
 v1에서 켜고 끌 수 있는 건 "오늘의 질문 알림" 하나뿐이다.
 
-### 8.2 인쇄본 배송지
+### 8.2 인쇄본 배송지 `[기존]`
 
 ```
 GET /shipping-address
@@ -767,40 +1470,431 @@ PUT /shipping-address
 
 ---
 
-## 9. 서버 구현 메모
+## 9. 챕터 리뷰 `[신규]`
 
-### 9.1 AI 호출
+한 챕터의 모든 확정 답변을 AI가 자서전 원고로 종합한 결과를 읽는 화면이다.
+
+**`done`과 `reviewed`는 다르다.**
+
+| 상태 | 뜻 | 어디에 |
+|------|-----|--------|
+| `user_chapter.status = done` | 모든 질문에 답했다(또는 건너뛰었다) | §4.1 |
+| `chapter_review.status = reviewed` | 종합 원고를 사람이 확인하고 저장했다 | 여기 |
+
+전자책·오디오북·스토리북의 생성 자격은 전부 **후자**다. v1에는 이 개념이 없었다.
+
+**앱은 읽기 전용이다.** 본문 직접 편집과 수동 사진 삽입은 웹에서 한다.
+
+### 9.1 리뷰 조회 `[신규]`
+
+```
+GET /books/{book_id}/chapters/{chapter_id}/review
+```
+
+**200**
+
+```json
+{
+  "chapter_id": "c_01",
+  "chapter_order": 1,
+  "chapter_title": "탄생과 유아기 시절",
+  "status": "draft",
+  "version": 3,
+  "paragraphs": [
+    "나는 1962년 봄, 전라남도 해남의 작은 마을에서 태어났다.",
+    "어머니는 늘 그날 유난히 볕이 좋았다고 말씀하셨다."
+  ],
+  "media": [
+    { "id": "m_01", "url": "…", "paragraph_index": 0, "source": "ai_generated" }
+  ],
+  "permissions": {
+    "manual_photo": false,
+    "ai_photo": true,
+    "ai_rewrite": false,
+    "edit_body": false
+  },
+  "edit_hint": "웹에서 수정할 수 있어요"
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `version` | 원고 버전. 오디오북·스토리북이 이 값을 고정해 두고 생성한다 |
+| `media[].paragraph_index` | 이 문단 **뒤에** 놓는다 |
+| `permissions` | 플랜에 따른 허용 여부. 앱은 이걸로 버튼을 그린다 |
+
+저장된 원고가 없으면 **204**다. 앱은 §9.2로 생성을 요청한다.
+
+### 9.2 종합 원고 생성 `[신규]`
+
+```
+POST /books/{book_id}/chapters/{chapter_id}/review/synthesize
+```
+
+**200** — §9.1과 동일한 형태
+
+- 챕터의 모든 확정 답변을 AI에 넘겨 자서전 문체로 종합한다
+- 이미 원고가 있으면 재생성이다. `ai_draft`는 남기고 `body`와 `version`을 갱신한다
+- **타임아웃 90초.** 챕터 전체를 다루므로 윤문(§5.2)보다 무겁다
+
+**에러**: `409 CHAPTER_LOCKED` (아직 `done`이 아님), `422 SYNTHESIZE_FAILED`
+
+### 9.3 리뷰 저장 `[신규]`
+
+```
+PATCH /books/{book_id}/chapters/{chapter_id}/review
+```
+
+```json
+{ "status": "reviewed", "version": 3 }
+```
+
+**200** — 갱신된 리뷰
+
+```json
+{
+  "status": "reviewed",
+  "version": 3,
+  "message": "챕터1 저장 완료",
+  "next_chapter_id": "c_02"
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `version` | **요청에 실어 보낸다.** 서버가 들고 있는 값과 다르면 `409` — 웹에서 먼저 고친 원고를 앱이 덮어쓰지 않게 한다 |
+| `message` | 첫 장은 "챕터1 저장 완료", 이후는 "현재 챕터 저장 완료" |
+| `next_chapter_id` | `null`이면 다음 장이 없다 → 앱은 `홈으로 이동`을 그린다 |
+
+**앱은 `body`를 보내지 못한다.** 본문 필드를 받지 않는다 — 편집은 웹의 몫이고,
+앱이 읽기 전용이라는 규칙을 계약 자체로 강제한다.
+
+### 9.4 원고 읽어주기 `[신규]`
+
+```
+POST /books/{book_id}/chapters/{chapter_id}/review/tts
+```
+
+```json
+{ "from_paragraph": 0, "chunk_size": 2 }
+```
+
+**200** — `audio/mpeg` + 다음 청크 위치
+
+긴 원고를 한 요청에 보내지 않는다. 제공자 한도 이하의 문장·문단 청크로 나눠
+순차 요청하고, 앱은 받은 순서대로 재생한다. 중지·재시도·다시 듣기 상태를 앱이 관리한다.
+
+### 9.5 AI 사진 생성 `[신규]`
+
+```
+POST /books/{book_id}/chapters/{chapter_id}/review/images/generate
+```
+
+**200** — 생성된 미디어와 배치
+
+무료 플랜도 쓸 수 있다. 챕터 본문을 바탕으로 1장을 만들어 **첫 이미지 슬롯에 우선**
+배치한다.
+
+> ⚠️ **외부 이미지 제공자에게 답변 본문을 보낸다.** 고지와 명시적 동의, 제공자의
+> 학습 이용·보관·삭제 정책 확인이 선행되어야 한다. 동의 없이 호출하지 않는다.
+
+**에러**: `403 PLAN_REQUIRED`, `429 QUOTA_EXCEEDED`, `409 CHAPTER_NOT_REVIEWED`
+
+### 확정 대기 — 리뷰
+
+1. **`reviewed`의 단일 정의.** NestJS `done`, 웹 `chapter_notebook.reviewed`,
+   이 문서의 `chapter_review.reviewed` 셋의 정합과 기존 데이터 이전 기준.
+2. **AI 사진의 슬롯 규칙.** 기존 첫 슬롯 사진을 덮어쓸지 다음 빈 슬롯으로 보낼지.
+   이미 수동 사진이 5장일 때의 처리. 생성 횟수·비용 한도.
+3. **`AI와 함께 수정하기`.** 중지 문장 ±1문장(총 3문장)과 음성 지시로 부분 수정안을
+   만드는 기능. 즉시 반영의 의미(자동 저장 여부), 사실 왜곡 방지, 되돌리기 이력,
+   유료 권한이 정해지지 않았다. 엔드포인트를 만들지 않았다.
+4. **웹 편집과의 충돌 정책.** 앱은 직접 편집하지 않으므로 웹 저장본을 우선한다는
+   방향까지는 정해졌으나, 버전 불일치 시 앱 화면의 복구 절차가 미정이다.
+5. **본문 저장 시 media placement의 재계산.** 문단 인덱스가 밀렸을 때
+   `anchor`로 얼마나 되찾을지, 못 찾으면 어디로 보낼지.
+
+---
+
+## 10. 산출물 `[신규]`
+
+전자책·오디오북·스토리북. 셋 다 **`reviewed` 원고**를 입력으로 삼는다.
+
+| 산출물 | 앱 | 최소 자격 |
+|--------|-----|----------|
+| 전자책 (PDF) | 열람·다운로드 | 챕터1 `reviewed` + 무료 포함 entitlement |
+| 오디오북 (MP3) | 재생·다운로드 | 유료 entitlement + 해당 챕터 `reviewed` |
+| 스토리북 (MP4) | **비범위** | 웹 전용 |
+
+> **스토리북은 앱에 만들지 않는다.** 화면·route·CTA·완료 알림 어느 것도 넣지 않는다.
+> 서버 계약은 웹과 공유하되 앱은 소비하지 않는다. 이 문서에도 계약을 적지 않는다.
+
+### 10.1 전자책 자격 `[신규]`
+
+```
+GET /books/{book_id}/ebook/eligibility
+```
+
+**200**
+
+```json
+{
+  "allowed": true,
+  "scope": "chapter_preview",
+  "included_chapters": ["c_01"],
+  "cover_kind": "default",
+  "downloadable": true,
+  "title_suggest_available": false,
+  "progress": 0.42
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `scope` | `chapter_preview`(챕터1만) \| `full` |
+| `cover_kind` | `default`(서비스 기본 표지) \| `user` |
+| `title_suggest_available` | 전체 진행률 80% 이상일 때만 `true` |
+
+`allowed: false`면 사유와 함께 온다.
+
+```json
+{ "allowed": false, "reason": "CHAPTER_NOT_REVIEWED", "blocking_chapter_id": "c_01" }
+```
+
+앱은 "챕터 1 리뷰를 저장하면 전자책을 확인할 수 있어요"와 리뷰 화면 CTA를 그린다.
+
+### 10.2 전자책 생성·다운로드 `[신규]`
+
+```
+POST /books/{book_id}/ebook/generate
+GET  /books/{book_id}/ebook/file
+```
+
+`generate`는 기존 생성본이 유효하면 그대로 돌려준다.
+
+```json
+{ "export_id": "ex_01", "status": "completed", "scope": "chapter_preview", "source_version": 3 }
+```
+
+`file`은 인증 확인 후 PDF 스트림 또는 **짧은 수명 URL**을 준다.
+
+> ⚠️ **PDF는 자서전 원고다.** 영구 공개 URL을 만들지 않는다. 생성과 다운로드
+> **양쪽 모두**에서 소유 관계·챕터1 `reviewed`·entitlement를 다시 검사한다.
+> 응답에 `scope`를 실어 앱이 "부분 전자책"임을 정확히 표시하게 한다 —
+> 전체 책처럼 보이는 제목·페이지 수를 띄우면 안 된다.
+
+### 10.3 AI 제목 추천 `[신규]`
+
+```
+POST /books/{book_id}/ebook/titles/suggest
+PATCH /books/{book_id}/ebook/metadata
+```
+
+**200** — 후보 4개
+
+```json
+{ "titles": ["해남에서 시작된 이야기", "볕이 좋던 날", "…", "…"] }
+```
+
+**전체 진행률 80% 이상일 때만 허용한다.** 앱이 버튼을 비활성으로 그리는 것과 별개로
+서버가 진행률을 다시 계산해 확인한다. 미달이면 `403`.
+
+### 10.4 오디오북 `[신규]`
+
+```
+GET  /books/{book_id}/audiobook                              목차별 상태·잔여 횟수
+GET  /books/{book_id}/audiobook/voices                       선택 가능한 음성
+POST /books/{book_id}/audiobook/voice-preview                음성 샘플
+GET  /books/{book_id}/audiobook/bgms                         BGM 카탈로그
+POST /books/{book_id}/audiobook/chapters/{chapter_id}/jobs   생성 요청
+GET  /books/{book_id}/audiobook/jobs/{job_id}                진행 상태
+POST /books/{book_id}/audiobook/jobs/{job_id}/cancel         취소
+GET  /books/{book_id}/audiobook/chapters/{chapter_id}/stream 재생
+POST /books/{book_id}/audiobook/chapters/{chapter_id}/downloads 다운로드
+```
+
+생성 요청 본문:
+
+```json
+{
+  "voice_code": "nara",
+  "bgm_track_id": "bgm_02",
+  "idempotency_key": "cli_8f21a"
+}
+```
+
+**200**
+
+```json
+{ "job_id": "aj_01", "status": "pending", "remaining_quota": 1 }
+```
+
+서버가 job 생성 전에 원자적으로 검사하는 것:
+
+1. 책 소유 관계
+2. 오디오북 entitlement
+3. 해당 챕터의 `chapter_review.status = reviewed`
+4. 남은 제공 한도
+5. 진행 중인 같은 챕터 job이 없는지 → 있으면 `409 JOB_IN_PROGRESS`
+
+> ⚠️ **한도 검사를 UI에 맡기지 않는다.** `entitlement_ledger`의 조건부 삽입으로
+> 처리하고, `idempotency_key`가 동시 클릭·HTTP 재시도로 두 번 차감되는 것을 막는다.
+> 실패·취소 시 복구도 ledger에 사유와 함께 남긴다 — 카운터 하나로는 분쟁이 났을 때
+> 왜 줄었다 늘었는지 설명할 수 없다.
+
+**무료 플랜에는 미디어 메타데이터도 주지 않는다.** 잠금 화면에 이전 생성 파일 정보가
+섞여 나가면 잠금이 아니다.
+
+**에러**: `403 PLAN_REQUIRED`, `409 CHAPTER_NOT_REVIEWED`, `409 JOB_IN_PROGRESS`, `429 QUOTA_EXCEEDED`
+
+### 확정 대기 — 산출물
+
+1. **챕터1 `reviewed`가 전자책 접근 전체를 여는지 부분만 여는지.** 이 문서는
+   화면 스펙에 맞춰 부분(`chapter_preview`)을 초기·무료 제안으로 적었고,
+   전체 전환 조건은 정하지 않았다.
+2. **진행률 80%의 분모.** 전체 질문 / `reviewed` 챕터 / 다른 기준 중 무엇인지,
+   건너뛴 질문을 포함하는지.
+3. **오디오북 "각 2회"의 대상.** 생성 횟수인지 다운로드 횟수인지 양쪽 모두인지.
+   재생을 카운트할지, 실패·취소 시 복구 시점.
+4. **BGM 라이선스.** 상업 이용·재배포·지역/기간, 출처 증빙, 음성 대비 볼륨,
+   믹싱 실패 시 처리. 검수 전에는 사용자 선택지에 올리지 않는다.
+5. **기본 표지의 디자인**과 제목·저자 기본값. 제목 변경 시 기존 생성본을
+   재생성할지 무효화할지.
+6. **파일 제공 방식.** 서버 스트림 / 서명 URL / 앱 로컬 암호화 저장 중 무엇인지,
+   만료·재발급·접근 로그 정책.
+
+---
+
+## 11. 권한 `[신규]`
+
+```
+GET /books/{book_id}/entitlements
+```
+
+**200**
+
+```json
+{
+  "plan_code": "free",
+  "features": {
+    "ebook":         { "allowed": true,  "reason": null,           "quota_remaining": null },
+    "audiobook":     { "allowed": false, "reason": "PLAN_REQUIRED", "quota_remaining": 0 },
+    "manual_photo":  { "allowed": false, "reason": "PLAN_REQUIRED", "quota_remaining": 0 },
+    "ai_photo":      { "allowed": true,  "reason": null,           "quota_remaining": 1 },
+    "ai_rewrite":    { "allowed": false, "reason": "PLAN_REQUIRED", "quota_remaining": 0 }
+  }
+}
+```
+
+`quota_remaining: null`은 한도 없음이다.
+
+**이 응답은 화면이 잠금을 그리라고 주는 값이다.** 접근 통제가 아니다.
+생성·조회·스트림·다운로드 각 요청에서 서버가 다시 판정한다. 버튼을 숨기거나
+비활성으로 만드는 것은 안내일 뿐이고, 클라이언트가 보낸 플랜 값은 근거가 될 수 없다.
+
+### 확정 대기 — 권한
+
+1. **T1~T4의 기능별 권한표.** 랜딩 가격 스펙과 기존 운영 로드맵 사이에 티어
+   재정의 이력이 있다. `plan_code`를 문자열로 둔 이유다.
+2. **프로모션과 상시 무료 티어의 우선순위.** "사전신청 100명 무료 T2"와
+   "상시 무료(챕터1까지)"가 서로 다른 메커니즘으로 공존한다.
+3. **결제·주문 모델.** 이 명세의 범위 밖이다. entitlement를 무엇이 부여하는지는
+   결제가 붙을 때 정한다.
+
+---
+
+## 12. 문의 (QnA) `[신규]`
+
+```
+POST /qna                내 문의 등록
+GET  /qna/me             내 문의 목록
+GET  /qna/published      공개 게시 문의 (인증 불필요)
+```
+
+```json
+{ "category": "작성", "question": "음성이 잘 안 들리는데 어떻게 하나요?" }
+```
+
+**200 — `GET /qna/me`**
+
+```json
+{
+  "items": [
+    {
+      "id": "qa_01", "category": "작성", "question": "…",
+      "status": "answered", "answer": "…",
+      "created_at": "2026-08-01T09:00:00Z"
+    }
+  ]
+}
+```
+
+`GET /qna/published`는 `status: published`이고 답변이 있는 항목만 준다.
+**문의자 정보·내부 메모는 공개 응답에 넣지 않는다.**
+
+**FAQ는 API를 만들지 않는다.** 앱 번들의 정적 콘텐츠로 제공한다 —
+운영자가 FAQ를 편집해야 한다는 요구가 확정되기 전에는 테이블과 CMS를 추가하지 않는다.
+
+### 확정 대기 — 문의
+
+1. **관리자 권한 모델.** 서버에 관리자 개념이 없어 답변·게시 상태를 바꿀 주체가
+   없다. 관리자 인증·운영 UI 위치를 먼저 정해야 한다.
+2. **QnA/FAQ의 앱 내 진입 위치.** 설정 하위인지 홈인지.
+3. **FAQ 콘텐츠의 전달 방식**과 담당·갱신 절차.
+4. 문의 수정·삭제·첨부·답변 알림·SLA는 근거가 없어 범위에 넣지 않았다.
+
+---
+
+## 13. 서버 구현 메모
+
+### 13.1 AI 호출
 
 | 시점 | 입력 | 출력 |
 |------|------|------|
 | 꼬리질문 생성 (§5.1) | 장 제목, 원질문, 1차 답변 | 요약+공감+질문 한 덩어리 |
-| 윤문 (§5.2) | 원질문, 1차 답변, 꼬리질문, 꼬리답변 | 작가체 본문 |
+| 윤문 (§5.2) | 원질문, 1차 답변, 꼬리질문·꼬리답변 N쌍 | 작가체 본문 |
+| 챕터 종합 (§9.2) | 장 제목, 그 장의 모든 확정 답변 | 자서전 문체의 챕터 원고 |
 
-- 프롬프트는 코드에 박지 말고 **테이블에 둔다** (웹의 `prompt_template`과 같은 방식). 문구 조정이 배포 없이 되어야 한다
+- 프롬프트는 코드에 박지 말고 **테이블에 둔다** (`prompt_template`). 문구 조정이 배포 없이 되어야 한다
 - 각 호출은 서버 내부에서 2회까지 재시도한 뒤 실패로 판정한다
+- 호출 이력은 `ai_generation_log`에 남기되 **본문(프롬프트·응답)은 남기지 않는다** — 민감 개인정보다
 - 사용자별 문체 메모리(웹 `user_style_memory`)는 2차
 
-### 9.2 사용자별 스냅샷
+### 13.2 사용자별 스냅샷
 
-목차 확정(§2.3) 시점에 카탈로그(대주제·질문)를 **사용자별로 복제**한다.
+목차 생성(§2.2) 시점에 카탈로그(대주제·질문)를 **책별로 복제**한다.
 
 - 이유 1: 질문 문구 수정(§4.4)이 다른 사용자에게 번지면 안 된다
 - 이유 2: 카탈로그 질문이 나중에 바뀌어도 이미 쓰기 시작한 자서전은 흔들리면 안 된다
-- 웹의 `user_content` / `user_question`과 같은 구조다
+- `user_question.text`가 그 사람이 실제로 본 문장이고, `answer.question_text`에 답변 시점의 문구를 한 번 더 박제한다
 
-### 9.3 개인정보
+### 13.3 트랜잭션 경계
+
+여러 표를 한 번에 바꿔야 하는 지점이다. 나뉘면 사용자가 갇힌다.
+
+| 경계 | 이유 |
+|------|------|
+| 자기소개 제출 → 케이스 판정 → 목차 생성 (§2.2) | 답변만 저장되고 목차가 없으면 자기소개를 다시 할 수도, 진행할 수도 없다 |
+| 가입 → 사용자 생성 + 동의 이력 (§1.10) | 약관에 동의하지 않은 계정이 생겨서는 안 된다 |
+| 답변 확정 → 저장 + 장 진행 (§5.2) | 저장만 되고 진행이 안 옮겨지면 같은 질문이 계속 나온다. 사용자 눈에는 저장이 안 된 것으로 보인다 |
+| job 생성 → 한도 차감 (§10.4) | 차감 없이 생성되면 한도가 무의미하고, 차감만 되면 사용자가 손해를 본다 |
+
+### 13.4 개인정보
 
 자서전 본문은 민감한 개인 기록이다.
 
-- 답변 원문·윤문 결과는 저장 시 암호화 대상으로 본다
+- 답변 원문·윤문 결과·챕터 원고는 저장 시 암호화 대상으로 본다
 - AI 제공자에 보내는 데이터의 학습 이용 여부를 계약에서 차단할 것
-- 접근 로그를 남긴다
+- **이미지·영상 생성은 본문을 외부로 보낸다.** 고지와 명시적 동의가 선행되어야 한다
+- 생성 파일(PDF·MP3·MP4)은 비공개 저장소에 두고 인증된 스트림 또는 짧은 수명 URL로만 내보낸다
+- 생성·재생·다운로드 접근 로그를 남긴다
+- 생년월일·가족·학업·작성 가능 시간은 민감 프로필 데이터다. 보존 기간과 열람 범위를 정한다
 
 ---
 
-## 10. 앱 코드와의 대응
+## 14. 앱 코드와의 대응
 
-### 10.1 `ApiClient` 메서드 ↔ 엔드포인트
+### 14.1 `ApiClient` 메서드 ↔ 엔드포인트
 
 | `lib/core/network/api_client.dart` | 엔드포인트 |
 |---|---|
@@ -829,7 +1923,40 @@ PUT /shipping-address
 | — (신규) | `PATCH /questions/{id}` (문구 수정) |
 | — (신규) | `POST /auth/refresh` |
 
-### 10.2 앱에 필요한 변경
+**To-Be에서 늘어나는 메서드**
+
+`ApiClient`는 추상 인터페이스이므로 `RealApiClient`와 `MockApiClient`를 **함께** 맞춰야
+화면 테스트와 계약 검증이 갈라지지 않는다.
+
+| 신규 메서드 | 엔드포인트 | 절 |
+|---|---|---|
+| `lookupPhone` / `requestOctomoChallenge` / `verifyOctomo` / `signUp` | `/auth/phone/lookup`, `/auth/octomo/*`, `/auth/signup` | §1.7~1.10 |
+| `consentDocuments()` | `GET /consents/documents` | §1.11 |
+| `withdraw()` | `DELETE /users/me` | §1.12 |
+| `catalogChapters(bookId)` | `GET /catalog/chapters` | §2.3 |
+| `saveTocDraft(bookId, chapters)` | `PATCH /intro/toc/draft` | §2.4 |
+| `writingPlan()` / `updateWritingPlan()` | `GET` / `PUT /intro/writing-plan` | §2.6 |
+| `saveDraft` / `loadDraft` / `deleteDraft` | `/questions/{id}/draft` | §5.6 |
+| `synthesizeSpeech` / `transcribe` | `POST /voice/tts`, `POST /voice/stt` | §5.7 |
+| `books()` / `createBook()` / `bookDetail(bookId)` | `/books`, `/books/{id}` | §6.1~6.2 |
+| `chapterReview(bookId, chapterId)` / `synthesizeReview` / `saveReview` | `/books/{id}/chapters/{id}/review` | §9 |
+| `ebookEligibility` / `generateEbook` / `downloadEbook` | `/books/{id}/ebook/*` | §10.1~10.2 |
+| `audiobook*` (9종) | `/books/{id}/audiobook/*` | §10.4 |
+| `entitlements(bookId)` | `GET /books/{id}/entitlements` | §11 |
+| `submitQna` / `myQna` / `publishedQna` | `/qna*` | §12 |
+| `registerPushToken` | `POST /device-push-tokens` | §7.3 |
+
+**기존 메서드 중 시그니처가 바뀌는 것**
+
+| 메서드 | 변화 |
+|---|---|
+| `introQuestions()` | 응답에 `answer_type`·`skippable`·`choices[].details` 추가 |
+| `generateToc(Map<String, String>)` | **타입이 바뀐다** — 건너뛰기·상세 선택·복수 선택·날짜를 단일 문자열로 표현할 수 없다 |
+| `confirmToc(chapters)` | 204 → `book_id`를 담은 200 |
+| `chapters()` / `currentQuestion()` / `bookPages()` | `bookId` 인자를 받는다 |
+| `submitFollowupAnswer(...)` | 응답이 `followup` 또는 `next_question` 둘 중 하나로 갈린다 |
+
+### 14.2 앱에 필요한 변경
 
 **반영 완료**
 
@@ -849,15 +1976,26 @@ PUT /shipping-address
    리프레시로 한 번 되살린다. 리프레시까지 실패해야 로그인 화면으로 보낸다
 9. ✅ **질문 문구 수정** (§4.4) — `⋯` 메뉴 → 바텀시트(D10)
 
+10. ✅ **401 인터셉터** — `AuthInterceptor`가 `TOKEN_EXPIRED`에서만 갱신을 시도하고
+    원래 요청을 1회 재시도한다. 갱신을 `Future<bool>?` 하나로 묶어 동시 401이
+    여러 번 갱신을 쏘지 않게 했다
+
 **남은 것**
 
-10. ⬜ **리프레시 토큰을 보안 저장소로** — 지금은 GetStorage(평문 파일)에 있다.
+11. ⬜ **리프레시 토큰을 보안 저장소로** — 지금은 GetStorage(평문 파일)에 있다.
     60일짜리라 새어 나가면 피해가 크다. `flutter_secure_storage`로 옮길 때
     가장 먼저 옮겨야 할 값이다
-11. ⬜ **401 인터셉터** — 지금은 앱 시작(`restore()`)에서만 갱신한다. 실제 dio
-    구현이 들어오면 모든 요청이 `TOKEN_EXPIRED`에서 한 번 갱신하고 재시도해야 한다
+12. ⬜ **`generateToc`의 입력 타입 교체** — `Map<String, String>`으로는 건너뛰기·
+    상세 선택·복수 선택·날짜를 표현할 수 없다(§2.2). 모델과 두 구현체
+    (`RealApiClient`·`MockApiClient`)를 함께 바꿔야 한다
+13. ⬜ **`bookId` 전달 경로** — Flutter에 웹식 `[id]` 경로를 만들지 않는다.
+    정적 GetX 라우트를 유지하고 `Get.toNamed(..., arguments: {'bookId': ...})`로
+    넘긴다. 바인딩·컨트롤러가 argument를 검증하고 API 요청에 싣는다
+14. ⬜ **PDF 뷰어 의존성** — `dio`·`path_provider`·`open_filex`는 있으나
+    PDF 렌더링 패키지가 없다. 라이선스·플랫폼 지원·대용량 성능을 비교해 고른다
+15. ⬜ **오디오 재생 패키지** — 오디오북 재생·백그라운드 재생용. 현재 없다
 
-### 10.3 Figma 신규 프레임
+### 14.3 Figma 신규 프레임
 
 파일: `PickDam` / 섹션 `★★ 최종 · A~F 전체 (C+ 방향)` / D 행 (y=3032)
 
@@ -913,14 +2051,49 @@ Figma는 그 결과를 손으로 적어 둔다.
 
 ---
 
-## 11. 열린 항목
+## 15. 남은 항목
 
-| 항목 | 상태 |
-|------|------|
-| 회원 탈퇴 | 설정 화면에 없다. 스토어 심사에서 요구되면 `DELETE /users/me` 추가 |
-| 자녀 계정 연결 (`child_linked`) | 모델에 필드만 있고 흐름이 없다 |
-| 인쇄본 주문·결제 | 웹에는 `approval_request`가 있다. 앱 2차 |
-| 사진 첨부 | 2차 확정 |
-| 이용약관·개인정보 처리방침 | 앱이 "준비 중"만 띄운다. 문서 URL 필요 |
-| 완성된 책 파일(PDF/DOCX) 내려받기 | 웹에는 있다. 앱 시안에 없어 제외 |
-| TTS(질문 읽어주기) | 앱에 자리만 있다(`replayQuestion`). 서버 TTS 붙일지, OS TTS 쓸지 미정 |
+### 15.1 v1 열린 항목의 현재
+
+| 항목 | 그때 | 지금 |
+|------|------|------|
+| 회원 탈퇴 | 화면에 없음 | **계약 확정** — `DELETE /users/me` (§1.12). 보존·파기 정책은 미정 |
+| 이용약관·개인정보 처리방침 | 문서 URL 필요 | **계약 확정** — `GET /consents/documents` (§1.11). 실제 URL은 미정 |
+| 완성된 책 파일(PDF/DOCX) | 앱 시안에 없어 제외 | **범위에 들어옴** — §10.1~10.2 |
+| TTS(질문 읽어주기) | 서버 TTS와 OS TTS 중 미정 | **서버 TTS로 확정** — §5.7. 제공자 키를 앱에 두지 않기 위해서다 |
+| 사진 첨부 | 2차 | **리뷰 화면에 한정해 들어옴** — §9.1·§9.5. 작성 화면은 여전히 없다 |
+| 자녀 계정 연결 (`child_linked`) | 필드만 있고 흐름 없음 | 그대로. 가족 공유 참여자 모델과 함께 정한다 |
+| 인쇄본 주문·결제 | 앱 2차 | 그대로. entitlement를 무엇이 부여하는지와 함께 정한다 |
+
+### 15.2 이 명세에 없는 것
+
+계약을 만들지 않았다. 확정되면 해당 절에 추가한다.
+
+| 항목 | 왜 |
+|------|-----|
+| 스토리북(AI 영상 그림책) | **앱 비범위.** 웹 전용 후처리다 |
+| 팩트 체크 | 화면 문서에서도 향후 TODO. 모델이 제안 단계다 |
+| 가족 공유 참여자 | 권한·초대·철회·감사 로그가 정해지지 않았다 |
+| 관리자 기능 | 서버에 관리자 개념 자체가 없다 |
+| 결제·주문 | entitlement의 부여 주체가 미정 |
+| 인생 방향 케이스(`direction_*`) | 웹에만 있고 앱 범위 밖 |
+| FAQ API | 앱 번들 정적 콘텐츠로 두기로 결정했다 (§12) |
+
+### 15.3 절별 확정 대기 색인
+
+각 절 끝에 붙어 있다. 결정이 필요한 순서대로 읽으려면 여기부터.
+
+| 절 | 핵심 미결 |
+|----|----------|
+| §1 인증 | v1 OTP와 OCTOMO의 관계, 동일 번호 복수 가입, 탈퇴 처리 |
+| §2 자기소개·목차 | 건너뛴 응답의 축 파생, 학업 단계와 학위, 기간 추천 공식 |
+| §5 작성 | 꼬리질문 반복 상한, 종료 시점의 윤문 규칙 |
+| §6 책 | `book.status` 값 집합과 "제작 완료"의 정의 |
+| §7 알림 | 발송 경로 전체, 알림 카드 X의 의미 |
+| §9 리뷰 | `reviewed`의 단일 정의 |
+| §10 산출물 | 전자책 범위, "각 2회"의 대상, 진행률 80%의 분모 |
+| §11 권한 | T1~T4 권한표, 프로모션 우선순위 |
+| §12 문의 | 관리자 권한 모델 |
+
+**가장 먼저 정해야 하는 것은 §9의 `reviewed` 정의다.** 전자책·오디오북·스토리북의
+자격이 전부 여기 걸려 있어서, 이게 흔들리면 §10 전체가 다시 그려진다.
