@@ -67,7 +67,8 @@ Enum condition_axis {
 Enum ai_task_kind {
   followup [note: '꼬리질문 생성']
   polish   [note: '작가체 윤문']
-  synthesize [note: '[신규] 챕터 종합 원고 생성']
+  synthesize       [note: '[신규] 챕터 종합 원고 생성']
+  custom_questions [note: '[신규] 사용자 정의 장의 제목으로 질문 생성']
 }
 
 // ── 신규 ──────────────────────────────────────────────
@@ -562,7 +563,12 @@ Table user_chapter {
   재배열은 여전히 두 번에 나눠 쓴다 — 먼저 전부 음수로 밀고, 그다음 1..N.
   (book_id, sort_order) unique 때문에 곧바로 1..N을 쓰면 중간에 충돌한다.
 
-  source_type=custom인 장의 초기 질문 정책은 §확정 대기 · 사용자 정의 장
+  **source_type=custom인 장의 질문은 AI가 제목으로 만든다.**
+  "군대 이야기"라고 적으면 거기 맞는 질문 5개를 생성한다(ai_task_kind=custom_questions).
+  범용 질문을 심으면 모든 커스텀 장이 같은 질문을 받아 장을 나눈 의미가 없어지고,
+  사용자가 직접 적게 하면 시니어에게 부담이 크다.
+  생성이 실패하면 범용 질문 3개로 폴백한다 — 질문이 0개인 장은
+  들어가도 답할 것이 없고 곧바로 done이 되어 진행이 이상해진다.
   '''
 }
 
@@ -607,7 +613,15 @@ Table answer {
   updated_at timestamptz [not null, default: `now()`]
 
   Note: '''
-  [기존] 건너뛴 질문은 이 행을 만들지 않는다 — user_question.status=skipped로만 남는다.
+  [변경] 건너뛰기의 처리가 **답변 유무로 갈린다** —
+
+    1차 답변 전에 건너뛰면  → 이 행을 만들지 않는다. user_question.status=skipped
+    1차 답변 후에 건너뛰면  → 그때까지의 답변을 윤문해 이 행을 만들고 answered
+
+  화면 문서가 "skipped 저장 후 다음"과 "기존 답변을 AI가 정리·저장"을 함께 말해
+  모순처럼 보였는데, 건너뛰기 버튼이 질문 화면과 꼬리질문 화면 두 곳에 있어서다.
+  각각 다른 경우를 가리킨 것으로 읽는다. 이미 말한 이야기를 버리지 않는다.
+
   재답변 시 이전 답변을 버전 보존할지는 §확정 대기 · 재답변 보존
   '''
 }
@@ -638,7 +652,10 @@ Table answer_followup {
   마이그레이션이 붙지 않아야 한다. 앱은 횟수를 세지 않고 응답에
   followup이 왔는지 next_question이 왔는지로만 분기한다.
 
-  종료 시점(건너뛰기·상한 도달·자동 전환)에 윤문을 할지는 §확정 대기 · 종료 시 윤문
+  종료 시점에 무엇을 하는지 —
+    상한 도달  → 그때까지의 답변을 윤문해 확정. 다음 질문으로
+    건너뛰기   → 1차 답변이 있으면 같은 처리. 없으면 skipped 폐기 (answer 참고)
+  어느 쪽이든 사용자가 이미 말한 이야기는 버리지 않는다.
   '''
 }
 
@@ -668,6 +685,12 @@ Table answer_draft {
 
   [신규] STT 전사본은 여기 autosave하고 answer 확정과 분리한다.
   불안정한 부분 전사를 answer 확정 행으로 곧바로 저장하지 않는다.
+
+  **"다시 답하기"와 "기존 답에 추가하기"는 이 행을 덮어쓴다.**
+  1차 답변 전송(POST /questions/{id}/answer)을 다시 부르면 되고 전용 계약이 없다 —
+  서버는 draft가 이미 있으면 덮어쓰고 꼬리질문을 새로 만든다.
+  답변이 바뀌었으니 그에 딸린 질문도 다시 만드는 것이 맞다.
+  앱은 입력칸을 비워 보내면 "다시", 기존 원문을 채워 보내면 "추가"가 된다.
   '''
 }
 
@@ -778,9 +801,8 @@ Table media_placement {
 Table ebook_export {
   id uuid [pk, default: `gen_random_uuid()`]
   book_id uuid [not null]
-  scope varchar(20) [not null, note: 'chapter_preview | full']
   format varchar(10) [not null, note: 'pdf | docx']
-  source_version integer [not null, note: '조립에 쓴 chapter_review.version 묶음의 기준값']
+  chapter_snapshot jsonb [not null, note: '[{chapter_id, version}] — 담긴 장과 그 시점의 원고 버전']
   cover_kind varchar(10) [not null, default: 'default', note: 'default | user']
   status job_status [not null, default: 'pending']
   media_asset_id uuid [note: '완료 시 생성된 파일']
@@ -789,18 +811,25 @@ Table ebook_export {
   updated_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (book_id, scope, format) [name: 'ix_ebook_export_book']
+    (book_id, format, created_at) [name: 'ix_ebook_export_book']
   }
 
   Note: '''
   [신규] 전자책 생성 결과.
 
-  최소 접근 조건은 챕터1의 chapter_review.status=reviewed 다.
-  무료 플랜도 다운로드할 수 있으나, UI가 아니라 이 조건을 서버가 판정한다.
+  **담기는 것은 reviewed된 장 전부다.** 규칙이 하나다 —
+  "chapter_review.status=reviewed인 장을 sort_order 순서대로 담는다".
 
-  scope를 응답에 실어 앱이 "부분 ebook"임을 정확히 표시하게 한다 —
-  전체 책처럼 보이는 제목·페이지 수를 띄우면 안 된다.
-  전체 ebook으로 전환되는 조건은 §확정 대기 · 전자책 범위
+  챕터1만 담는 "부분 전자책"이라는 특수 규칙을 두지 않았다. 그 규칙은
+  서버와 앱 양쪽에 박아야 하고, 3장까지 리뷰한 사용자가 1장만 받는 상황이 생긴다.
+  reviewed 규칙 하나면 챕터1이 자연히 최소 조건이 된다 — 1장을 리뷰하지 않으면
+  담을 것이 없어 생성 자체가 막힌다.
+
+  scope 컬럼 대신 chapter_snapshot을 둔 이유 — 캐시한 생성본이 아직 쓸 만한지
+  판단하려면 "어느 장이 어느 버전으로 담겼는지"를 알아야 한다.
+  장이 늘거나 원고가 개정되면 스냅샷이 달라지므로 다시 만든다.
+
+  무료 플랜도 다운로드할 수 있다. UI가 아니라 서버가 이 조건을 판정한다.
   '''
 }
 
@@ -1074,7 +1103,7 @@ Table qna_question {
 
 Table prompt_template {
   id uuid [pk, default: `gen_random_uuid()`]
-  key varchar(30) [not null, unique, note: 'followup | polish | synthesize']
+  key varchar(30) [not null, unique, note: 'followup | polish | synthesize | custom_questions']
   title varchar(100) [not null]
   body text [not null]
   version integer [not null, default: 1]
@@ -1304,6 +1333,28 @@ Ref: ai_generation_log.user_chapter_id > user_chapter.id [delete: cascade]
 //         만들어 둔 오디오북을 두 번밖에 못 듣게 하면 납득하기 어렵다.
 //   영향: entitlement_ledger에서 kind 컬럼과 ledger_kind enum을 없앴다 —
 //         모든 항목이 생성 한도라 구분이 필요 없어졌다.
+//
+// [2026-08-03] 건너뛰기 시 기존 답변
+//   답변 유무로 가른다. 1차 답변 전이면 skipped 폐기, 후면 윤문해 answered 확정.
+//   근거: 화면 문서의 모순된 두 문장은 건너뛰기 버튼이 질문 화면과 꼬리질문 화면
+//         두 곳에 있어서 생긴 것으로 읽힌다. 이미 말한 이야기를 버리지 않는다.
+//
+// [2026-08-03] 전자책 범위
+//   reviewed된 장을 전부 담는다. "챕터1만"이라는 특수 규칙을 두지 않는다.
+//   근거: 규칙이 하나면 챕터1이 자연히 최소 조건이 된다. 3장까지 리뷰한 사용자가
+//         1장만 받는 상황을 만들지 않는다.
+//   영향: ebook_export의 scope·source_version을 chapter_snapshot 하나로 합쳤다 —
+//         캐시 유효성을 판단하려면 어느 장이 어느 버전으로 담겼는지가 필요하다.
+//
+// [2026-08-03] 다시 답하기 / 기존 답에 추가하기
+//   전용 계약 없이 1차 답변 전송을 다시 부른다. draft를 덮어쓰고 꼬리질문을 새로 만든다.
+//   근거: 답변이 바뀌었으니 그에 딸린 질문도 다시 만드는 것이 맞다.
+//         앱은 입력칸을 비우면 "다시", 채우면 "추가"라 엔드포인트가 늘지 않는다.
+//
+// [2026-08-03] 사용자 정의 장의 질문
+//   AI가 제목으로 생성한다(ai_task_kind=custom_questions). 실패 시 범용 3개 폴백.
+//   근거: 범용 질문을 심으면 모든 커스텀 장이 같은 질문을 받아 장을 나눈 의미가 없다.
+//         질문 0개인 장은 곧바로 done이 되어 진행이 이상해지므로 폴백이 필요하다.
 // ─────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────
@@ -1326,20 +1377,14 @@ Ref: ai_generation_log.user_chapter_id > user_chapter.id [delete: cascade]
 //   v1 SMS OTP(phone_verification)를 폐기할지·병행할지·언제 전환할지.
 //   카카오 스텁의 존치 여부도 같은 결정에 묶인다.
 //
-// · 종료 시 윤문
-//   건너뛰기·상한 도달·자동 전환 각각에서 윤문을 할지, 무엇을 확정 저장할지.
-//
 // · 재답변 보존
 //   재답변 시 기존 answer를 버전 보존할지 덮어쓸지.
 //
-// · 사용자 정의 장
-//   source_type=custom 장의 초기 질문을 만들지, 비워 두고 후속 생성할지.
-//
-// · 전자책 범위
-//   챕터1 reviewed가 ebook 접근 전체를 여는지 부분만 여는지.
-//   전체 진행률 80%(제목 추천 조건)의 분모와 건너뛴 질문 포함 여부.
-//
 // ── 값·정책만 채우는 것 (스키마·계약이 안 바뀐다) ──
+//
+// · 진행률 80%
+//   AI 제목 추천의 활성 조건인 전체 진행률의 분모. 전체 질문 / reviewed 챕터 /
+//   다른 기준 중 무엇인지, 건너뛴 질문을 포함하는지.
 //
 // · 기간 추천
 //   작성 기간 추천 공식. 복수 시간대가 실제 작성 횟수를 뜻하는지.
