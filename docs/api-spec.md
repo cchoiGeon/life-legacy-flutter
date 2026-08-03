@@ -1226,6 +1226,76 @@ POST /voice/stt
   완전한 음성-문자 일치는 보장하지 않는다
 - 긴 원고는 제공자 한도 이하로 쪼개 순차 호출한다 (챕터 리뷰 읽어주기, §9.4)
 
+### 5.8 보이스·마이크 점검 `[신규]`
+
+작성 화면 최초 로드에서 "소리가 나는가 / 마이크가 잡히는가"를 확인한다.
+
+```
+GET  /voice/sample?voice_code=nara     보이스 체크
+POST /voice/stt                        마이크 체크 (§5.7 재사용)
+```
+
+**보이스 체크** — `audio/mpeg` 스트림. 짧은 안내 문장을 읽어 준다.
+
+**미리 렌더해 둔 샘플을 준다.** 점검은 작성 화면에 들어올 때마다 도는데 매번 TTS를
+부르면 비용과 지연이 붙는다. 음성을 바꾸지 않는 한 결과가 같으므로 음성별로 한 번
+만들어 두고 그대로 내보낸다.
+
+**마이크 체크** — 짧은 테스트 녹음을 `/voice/stt`로 올려 전사가 돌아오는지 본다.
+전용 엔드포인트를 만들지 않았다. 실제 작성에서 쓰는 것과 같은 경로로 점검해야
+"점검은 됐는데 정작 녹음이 안 된다"가 생기지 않는다.
+
+앱은 결과를 이렇게 쓴다.
+
+| 상황 | 화면 |
+|------|------|
+| 샘플 재생 실패 | 음량·출력 장치 안내. 작성은 계속할 수 있다 |
+| 마이크 권한 거부 | **타이핑 입력으로 안내한다.** 막지 않는다 |
+| 전사 결과가 빔 | 다시 시도 또는 타이핑 전환 |
+
+> 화면 문서 04는 `POST /books/:bookId/voice/check`를 제안했으나 **책 범위를 두지 않았다.**
+> 점검은 기기와 제공자 상태를 보는 것이지 특정 책과 무관하다. `bookId`를 받으면
+> 권한 검사를 붙여야 하는데 그 검사가 점검 결과를 바꾸지 않는다.
+
+### 5.9 챕터 완료 조회 `[신규]`
+
+```
+GET /books/{book_id}/chapters/{chapter_id}/completion
+```
+
+**200**
+
+```json
+{
+  "chapter_id": "c_02",
+  "chapter_order": 2,
+  "chapter_title": "가족환경과 성장환경",
+  "question_count": 6,
+  "answered_count": 5,
+  "skipped_count": 1,
+  "review_status": null,
+  "next_chapter": { "id": "c_03", "order": 3, "title": "청소년기와 학창시절" },
+  "actions": { "review": true, "hub": true }
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `review_status` | `null`이면 아직 리뷰 전. 완료 화면에서 `리뷰하러 가기`를 강조한다 |
+| `next_chapter` | `null`이면 마지막 장. 앱은 `홈으로 이동`만 그린다 |
+| `actions.review` | 장이 `done`이어야 `true` |
+
+**§5.2의 `chapter_completed`만으로는 부족해서 둔다.** 그건 "방금 끝났다"는 일회성
+신호라, 완료 화면에 들어간 뒤 앱이 죽거나 사용자가 뒤로 갔다 오면 사라진다.
+이 조회가 있어야 그 화면을 다시 그릴 수 있다.
+
+**에러**: `404 NOT_FOUND`, `409 CHAPTER_LOCKED`
+
+> 화면 문서 04의 `POST /books/:bookId/write/session`은 별도로 두지 않았다.
+> 그 제안이 묶어 놓은 것을 이미 있는 계약으로 나눴다 —
+> 책 권한·진행은 §6.2, 현재 질문은 §4.2, 음성 점검은 §5.8,
+> 튜토리얼 상태는 저장 위치가 정해지지 않아 확정 대기(아래 3번)다.
+
 ### 확정 대기 — 작성
 
 1. **재답변 시 버전 보존.** 확정된 답변을 다시 답할 수 있게 열지, 연다면 이전
@@ -1342,6 +1412,11 @@ GET /books/{book_id}
 
 > ⚠️ `entitlements`는 화면이 잠금을 그리라고 주는 값이지 접근 통제가 아니다.
 > 실제 통제는 각 생성·조회·다운로드 요청에서 서버가 다시 한다 (§11).
+
+> 화면 문서 06-1의 `GET /books/:bookId/progress`(길 이정표 상세 진행 뷰)는 두지 않았다.
+> 이 응답의 `chapters[]`가 이정표를 그리는 데 필요한 값을 이미 담고 있고,
+> 별도 뷰의 정보 구조는 Figma 시안이 확인되지 않아 무엇을 더 줘야 할지 모른다.
+> 시안이 나오고 이 응답으로 부족하면 그때 추가한다.
 
 ### 6.3 책 요약 `[기존]`
 
@@ -2020,6 +2095,8 @@ GET  /qna/published      공개 게시 문의 (인증 불필요)
 | `writingPlan()` / `updateWritingPlan()` | `GET` / `PUT /intro/writing-plan` | §2.6 |
 | `saveDraft` / `loadDraft` / `deleteDraft` | `/questions/{id}/draft` | §5.6 |
 | `synthesizeSpeech` / `transcribe` | `POST /voice/tts`, `POST /voice/stt` | §5.7 |
+| `voiceSample(voiceCode)` | `GET /voice/sample` | §5.8 |
+| `chapterCompletion(bookId, chapterId)` | `GET /books/{id}/chapters/{id}/completion` | §5.9 |
 | `books()` / `createBook()` / `bookDetail(bookId)` | `/books`, `/books/{id}` | §6.1~6.2 |
 | `chapterReview(bookId, chapterId)` / `synthesizeReview` / `saveReview` | `/books/{id}/chapters/{id}/review` | §9 |
 | `ebookEligibility` / `generateEbook` / `downloadEbook` | `/books/{id}/ebook/*` | §10.1~10.2 |
