@@ -1188,7 +1188,30 @@ DELETE /questions/{question_id}/draft
 }
 ```
 
-**200** — 저장된 초안
+**200** — `PUT`·`GET` 모두 같은 형태
+
+```json
+{
+  "question_id": "q_012",
+  "phase": "followup",
+  "text": "제주도에 갔던 게 제일 기억에 남습니다…",
+  "input_mode": "voice",
+  "spoken_seconds": 42,
+  "followup_round": 1,
+  "pending_followup": { "id": "f_9931", "text": "그날 제주도에서 가장 오래 머문 곳은…" },
+  "updated_at": "2026-08-03T04:12:00Z"
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `phase` | `first`(1차 답변만 있음) \| `followup`(꼬리질문 대기 중) |
+| `followup_round` | 지금까지 주고받은 회차. 앱은 이 값을 세지 말고 표시에만 쓴다 |
+| `pending_followup` | 답을 기다리는 꼬리질문. `null`이면 1차 답변 단계다 |
+
+앱은 작성 화면에 들어올 때 `GET`으로 복원할 초안이 있는지 본다.
+`phase`와 `pending_followup`으로 **어느 단계에서 끊겼는지** 알 수 있어야
+그 화면으로 되돌려 놓을 수 있다.
 
 STT 전사가 끝나면 앱이 **확정 전에** 여기 저장한다. 사용자가 확인·수정하는 동안
 앱이 죽거나 전화가 와도 글이 남는다.
@@ -1724,7 +1747,18 @@ POST /books/{book_id}/chapters/{chapter_id}/review/tts
 POST /books/{book_id}/chapters/{chapter_id}/review/images/generate
 ```
 
-**200** — 생성된 미디어와 배치
+**200**
+
+```json
+{
+  "media": { "id": "m_02", "url": "…", "source": "ai_generated" },
+  "placement": { "paragraph_index": 0, "sort_order": 0 },
+  "remaining_generations": 0
+}
+```
+
+앱은 이 응답만으로 화면을 갱신한다 — §9.1을 다시 부르지 않아도 사진이 어디 붙었는지
+안다. `remaining_generations: 0`이면 버튼을 비활성으로 바꾼다.
 
 무료 플랜도 쓸 수 있다. 챕터 본문을 바탕으로 1장을 만들어 **첫 이미지 슬롯에 우선**
 배치한다.
@@ -1863,7 +1897,54 @@ GET  /books/{book_id}/audiobook/chapters/{chapter_id}/stream 재생
 POST /books/{book_id}/audiobook/chapters/{chapter_id}/downloads 다운로드
 ```
 
-생성 요청 본문:
+**`GET /books/{book_id}/audiobook`** — 화면 진입에 필요한 값을 한 번에 준다.
+
+```json
+{
+  "book_title": "나의 이야기",
+  "allowed": true,
+  "plan_code": "T1",
+  "total_char_count": 12840,
+  "estimated_duration_ms": 5136000,
+  "chapters": [
+    {
+      "chapter_id": "c_01", "order": 1, "title": "탄생과 유아기 시절",
+      "state": "completed",
+      "char_count": 1420,
+      "estimated_duration_ms": 568000,
+      "remaining_generations": 1,
+      "latest_job": { "id": "aj_01", "status": "completed", "progress": 100, "stale": false }
+    },
+    {
+      "chapter_id": "c_02", "order": 2, "title": "가족환경과 성장환경",
+      "state": "not_ready",
+      "char_count": 0, "estimated_duration_ms": null,
+      "remaining_generations": 2, "latest_job": null
+    }
+  ]
+}
+```
+
+| `state` | 화면 |
+|---------|------|
+| `not_ready` | "리뷰를 먼저 저장해 주세요" + 리뷰 CTA. `chapter_review`가 `reviewed`가 아니다 |
+| `ready` | `생성하기` 활성 |
+| `processing` | 진행률 표시. 중복 생성 버튼 차단 |
+| `completed` | 재생·다운로드 |
+| `failed` | 오류 문구 + 재시도 |
+
+`latest_job.stale`은 **생성 이후 원고가 개정됐다**는 뜻이다. 파일은 살아 있지만
+지금 원고와 다르므로 앱이 "이전 원고로 만든 파일이에요"를 띄운다.
+
+**무료 플랜에는 목차 정보 자체를 주지 않는다.**
+
+```json
+{ "book_title": "나의 이야기", "allowed": false, "reason": "PLAN_REQUIRED", "chapters": [] }
+```
+
+이전 생성 파일의 메타데이터가 잠금 화면에 섞여 나가면 잠금이 아니다.
+
+**생성 요청 본문**
 
 ```json
 {
