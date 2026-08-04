@@ -52,3 +52,6 @@ lifelegacy-web/
 
 # 로컬 전용 설정
 .claude/settings.local.json
+
+# Nest 로컬 전자책 PDF 등
+server/storage/

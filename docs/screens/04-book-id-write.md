@@ -31,7 +31,7 @@
 | 네이버 Voice TTS/STT | 인증된 서버 API를 통해 네이버 Voice(Clova 계열)를 사용 | 신규 전환 |
 | 질문 TTS+타이핑 | 새 소질문 최초 표시에서만 음성·한글 타이핑 애니메이션 동기화 | 신규 |
 | 비채팅 질문 화면 | 질문판, 녹음, 타이핑 전환, 확인 화면 중심으로 재구성 | 부분 |
-| 최초 튜토리얼 | 사용자 단위 완료 상태를 저장하는 단계형 안내 | 신규 |
+| 최초 튜토리얼 | 사용자 단위 완료 상태를 저장하는 단계형 안내 | 부분 — 기기 로컬 `Storage.writeTutorialDone` |
 | 1차→꼬리질문→윤문 | 현 구현은 1회 꼬리질문 후 확정 저장 | 기존, 반복 규칙 확장 필요 |
 | 다시 답하기/기존 답 추가 | 후속 질문에서 원문 삭제 또는 불러와 이어 입력 | 신규 |
 | 다른 질문 | 다른 형태의 재질문 선택 | TODO |
@@ -76,8 +76,8 @@
 | `POST` | `/v1/questions/:id/followup/:fid/answer` | 꼬리답변, 윤문, 확정 저장 | 기존 |
 | `POST` | `/v1/questions/:id/skip` | draft 삭제, `skipped` 상태 저장, 다음 질문 반환 | 기존 |
 | `GET` | `/v1/chapters` | 장 목록·진행 상태 조회 | 기존 |
-| `POST` | `/v1/books/:bookId/write/session` | 책 권한, 현재 질문, 튜토리얼/음성 점검에 필요한 세션 정보 | 신규 제안 |
-| `POST` | `/v1/books/:bookId/voice/check` | 서버 보관 네이버 Voice로 보이스/마이크 점검 지원 | 신규 제안 |
+| `POST` | `/v1/books/:bookId/write/session` | 책 권한, 현재 질문, 튜토리얼/음성 점검에 필요한 세션 정보 | api-spec에서 거부: 별도 엔드포인트를 만들지 않음. 권한(§6.2)·질문(§4.2)·음성(§5.8)으로 분할 호출 |
+| `POST` | `/v1/books/:bookId/voice/check` | 서버 보관 네이버 Voice로 보이스/마이크 점검 지원. api-spec §5.8 주석: 책 범위 불필요 | 신규 제안 |
 | `POST` | `/v1/books/:bookId/questions/:id/drafts` | 전사 원문·입력 방식·녹음 메타데이터를 draft로 autosave | 신규 제안 |
 | `POST` | `/v1/books/:bookId/questions/:id/recordings` | 녹음 파일 업로드 및 서버 STT 전사 | 신규 제안 |
 | `POST` | `/v1/books/:bookId/questions/:id/followups` | 리액션+후속 질문 생성 및 라운드 상태 갱신 | 신규/기존 API 대체 후보 |

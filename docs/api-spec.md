@@ -123,21 +123,22 @@ Authorization: Bearer {access_token}
 
 ### 0.6 책 범위 경로
 
-다권 전환 이후 책에 딸린 리소스는 `/books/{book_id}/…` 아래로 들어간다.
+책에 딸린 리소스는 **`/books/{book_id}/…`만** 쓴다. (`erd/new-erd.dbml` 다권 계약)
 
 ```
 /v1/books/{book_id}/chapters
 /v1/books/{book_id}/questions/current
+/v1/books/{book_id}/pages
 /v1/books/{book_id}/chapters/{chapter_id}/review
 ```
 
 **`book_id`를 신뢰하지 않는다.** `AccessTokenGuard`가 심은 사용자 ID로 소유 관계를
 서버에서 매번 확인한다. URL의 값, 클라이언트가 들고 있는 플랜, 비활성화된 버튼은
-권한 근거가 될 수 없다.
+권한 근거가 될 수 없다. 소유자가 아니면 `404 NOT_FOUND`(존재 여부 노출 방지).
 
-기존 단일 책 경로(`/chapters`, `/questions/current`, `/book`)는 **바로 지우지 않는다.**
-전환 기간에는 "사용자의 첫 책"으로 해석해 그대로 동작시키고, 앱이 `book_id`를
-넘기기 시작하면 그때 정리한다.
+> [2026-08-04] v1 단일 경로(`/book`, `/chapters`, `/questions/current`, `/book/pages`)는
+> **제거한다.** "첫 책으로 해석"하는 전환 호환을 두지 않는다. 첫 책은
+> `POST /intro/answers`가 만들고 반환한 `book_id`로만 접근한다.
 
 ---
 
@@ -827,16 +828,17 @@ GET /intro/profile
 
 ## 3. 홈
 
-### 3.1 홈 요약 `[기존]`
+### 3.1 홈 요약 `[변경]`
 
 ```
-GET /home
+GET /books/{book_id}/home
 ```
 
 **200**
 
 ```json
 {
+  "book_id": "b_001",
   "today_question": "첫 월급을 받던 날, 기분이 어떠셨나요?",
   "today_question_id": "q_012",
   "progress": 0.42,
@@ -848,10 +850,13 @@ GET /home
 
 | 필드 | 설명 |
 |------|------|
+| `book_id` | 이 요약이 속한 책 |
 | `today_question` | 지금 답해야 할 질문. `null`이면 앱이 빈 상태 화면을 그린다 |
-| `progress` | 0.0~1.0. 전체 질문 중 답변 완료 비율 |
+| `progress` | 0.0~1.0. 해당 책의 전체 질문 중 답변 완료 비율 |
 
 화면 하나가 필요한 값을 한 번에 준다. 서버가 여러 도메인에서 모아야 하더라도 이 모양으로 합쳐서 준다.
+
+> [2026-08-04] v1 `GET /home`은 제거한다. 홈도 책 범위다.
 
 ---
 
@@ -861,7 +866,6 @@ GET /home
 
 ```
 GET /books/{book_id}/chapters
-GET /chapters                      # 전환 기간: 첫 책으로 해석
 ```
 
 **200**
@@ -903,7 +907,6 @@ GET /chapters                      # 전환 기간: 첫 책으로 해석
 
 ```
 GET /books/{book_id}/questions/current
-GET /questions/current             # 전환 기간: 첫 책으로 해석
 ```
 
 **200**
@@ -1441,42 +1444,24 @@ GET /books/{book_id}
 > 별도 뷰의 정보 구조는 Figma 시안이 확인되지 않아 무엇을 더 줘야 할지 모른다.
 > 시안이 나오고 이 응답으로 부족하면 그때 추가한다.
 
-### 6.3 책 요약 `[기존]`
+### 6.3 책 요약 `[변경]`
 
 ```
-GET /book                          # 전환 기간: 첫 책으로 해석
+GET /books/{book_id}
 ```
 
-**200**
+상세 허브가 필요 없을 때 쓰는 **짧은 요약**은 §6.2 응답의 상위 필드
+(`id`, `title`, `status`, `progress`, `chapter_done`, `chapter_total`)로 충분하다.
+별도 `GET /book`(v1 단일 책) 경로는 **제거**한다.
 
-```json
-{
-  "title": "나의 이야기",
-  "author_name": "김영희",
-  "chapter_count": 5,
-  "question_count": 40,
-  "page_count": 34,
-  "photo_count": 0,
-  "is_complete": false
-}
-```
-
-| 필드 | 설명 |
-|------|------|
-| `question_count` | 책에 실린 질문 수(건너뛴 것 제외) |
-| `photo_count` | 사진이 붙기 전에는 0 |
-| `is_complete` | 모든 장이 `done`이면 `true`. 완성 화면(E3) 진입 조건 |
-
-> v1 단일 책 계약이다. §6.2가 같은 정보를 책 범위로 더 넓게 준다.
-> 앱이 `book_id`를 넘기기 시작하면 이 경로는 정리한다.
+완성 화면(E3)용 `is_complete`가 필요하면 §6.2의 `status === "completed"`
+(모든 장 `reviewed`)를 쓴다. v1의 `is_complete`(모든 장 `done`)와 의미가 다르다.
 
 ### 6.4 미리보기 쪽 `[변경]`
 
 ```
 GET /books/{book_id}/pages
-GET /book/pages                    # 전환 기간: 첫 책으로 해석
 ```
-
 **200**
 
 ```json
@@ -2146,14 +2131,14 @@ GET  /qna/published      공개 게시 문의 (인증 불필요)
 | `generateToc(answers)` | `POST /intro/answers` |
 | `confirmToc(chapters)` | `POST /intro/toc/confirm` |
 | `introProfile()` | `GET /intro/profile` |
-| `home()` | `GET /home` |
-| `chapters()` | `GET /chapters` |
-| `currentQuestion()` | `GET /questions/current` |
+| `home(bookId)` | `GET /books/{book_id}/home` |
+| `chapters(bookId)` | `GET /books/{book_id}/chapters` |
+| `currentQuestion(bookId)` | `GET /books/{book_id}/questions/current` |
 | `question(id)` | `GET /questions/{id}` |
 | `saveAnswer(questionId, text)` | **분해** → `POST /questions/{id}/answer` + `POST …/followup/{fid}/answer` |
 | `skipQuestion(id)` | `POST /questions/{id}/skip` |
-| `book()` | `GET /book` |
-| `bookPages()` | `GET /book/pages` |
+| `book(bookId)` / `bookDetail(bookId)` | `GET /books/{book_id}` |
+| `bookPages(bookId)` | `GET /books/{book_id}/pages` |
 | `notifications()` | `GET /notifications` |
 | `markAllNotificationsRead()` | `POST /notifications/read-all` |
 | `settings()` / `updateSettings()` | `GET` / `PATCH /settings` |
@@ -2337,6 +2322,7 @@ Figma는 그 결과를 손으로 적어 둔다.
 | 2026-08-03 | **전자책은 `reviewed`된 장을 전부 담는다** | 규칙이 하나면 챕터1이 자연히 최소 조건이 된다. 3장 리뷰하고 1장만 받는 상황을 없앤다 | 챕터1만 부분 전자책 / 모든 장 완료 시에만 |
 | 2026-08-03 | **`다시 답하기`·`기존 답에 추가`는 §5.1 재호출.** 새 계약 없음 | 답변이 바뀌면 꼬리질문도 다시 만들어야 한다. 앱이 입력칸을 비우냐 채우냐만 다르다 | 전용 엔드포인트 2개 / draft PUT만 |
 | 2026-08-03 | **사용자 정의 장의 질문은 AI가 제목으로 생성.** 실패 시 범용 3개 | 범용 질문을 심으면 모든 커스텀 장이 같은 질문을 받아 장을 나눈 의미가 없다 | 범용 질문 고정 / 사용자가 직접 작성 |
+| 2026-08-04 | **다권 `book.id` 확정. 레거시 단일 경로 제거.** `/books/{book_id}/…`만 사용. 홈도 `GET /books/{book_id}/home` | ERD·문서가 다권을 전제하는데 이중 경로를 두면 어긋난 채로 굳는다. 첫 책은 `POST /intro/answers`가 생성 | `/book`·`/chapters`를 첫 책으로 해석하는 전환 호환 / `book_id = user_id` |
 
 ### 15.4 절별 확정 대기 색인
 

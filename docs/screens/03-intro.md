@@ -61,12 +61,13 @@
 | GET | `/v1/intro/questions` | 현재 고정 5문항 조회 | 변경 필요 |
 | POST | `/v1/intro/answers` | 인트로 원본 답변 저장, 케이스 판정, 목차·질문 스냅샷 생성 | 변경 필요 |
 | POST | `/v1/intro/toc/confirm` | 재정렬한 목차 확정 | 기존 |
+| POST | `/v1/intro/writing-plan` | 작성 계획 저장·조회 | 신규 |
 | GET | `/v1/intro/profile` | 저장한 자기소개 표시용 조회 | 변경 필요 |
 | GET / PATCH | `/v1/settings` | `daily_question_alarm` 조회·변경 | 기존, 계획/스케줄 필드 확장 필요 |
 | GET | `/v1/notifications` | 인앱 알림 목록 조회 | 기존 |
 | POST | `/v1/notifications/read-all` | 인앱 알림 전체 읽음 | 기존 |
 
-작성 계획과 실제 알림 스케줄을 저장·조회할 별도 계약(예: `/v1/writing-plan`) 또는 `/v1/intro/answers`·`/v1/settings` 확장 방식은 설계가 필요하다. 기존 `ApiClient.generateToc(Map<String, String>)`은 단일 문자열 답변만 전달하므로 구조화된 값·건너뛰기·다중 선택을 전달하도록 모델과 구현체를 함께 변경해야 한다.
+작성 계획 저장·조회는 `POST /v1/intro/writing-plan`(신규)으로 한다. 기간 추천은 서버 공식에 맡기고, 알림 동의는 별도 필드로 저장한다. 기존 `ApiClient.generateToc(Map<String, String>)`은 단일 문자열 답변만 전달하므로 구조화된 값·건너뛰기·다중 선택을 전달하도록 모델과 구현체를 함께 변경해야 한다.
 
 ## 6. 데이터 모델
 

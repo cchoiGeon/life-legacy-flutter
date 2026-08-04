@@ -6,7 +6,7 @@
 
 - Flutter는 웹식 `[id]` 경로를 만들지 않는다. 정적 `AppRoutes.bookDetail`(신규)을 두고 `Get.toNamed(..., arguments: {'bookId': bookId})`로 진입하며, Question 이동에는 `questionId`도 전달한다.
 - 현재 Flutter/NestJS는 `/book`과 `/v1/book`이 사용자당 한 권인 단일 책 모델이며, 6-1 상세 허브·다권 식별자·리뷰 상태는 신규이다.
-- Figma에서 “목차 완주율 길 이정표”에 해당하는 노드/시안은 이번 조사에서 확인하지 못했다. 상세 진행 뷰로 연결하는 버튼형 이정표는 신규 제안이다.
+- Figma에서 “목차 완주율 길 이정표”에 해당하는 노드/시안은 이번 조사에서 확인하지 못했다. 상세 진행 뷰로 연결하는 버튼형 이정표는 신규 제안이다. api-spec §6.2 주석: 별도 진행 API를 만들지 않고 chapters[]로 충분.
 
 관련 화면: [6 내 책](./06-book.md), [4 작성](./04-book-id-write.md), [5 리뷰](./05-book-id-review.md).
 
@@ -34,7 +34,7 @@
 | 길 이정표 진행 뷰 | 버튼형 이정표에서 상세 진행 화면 이동 | 신규 제안 |
 | 전자책 미리보기 | 완료 장의 페이지 조립 | 기존, 다권·챕터 자격 전환 필요 |
 | 음성책 관리 | 현재 Flutter/NestJS 사용자 기능 없음 | 신규 |
-| AI 영상 그림책 관리 | 현재 Flutter/NestJS 사용자 기능 없음 | 신규 |
+| AI 영상 그림책 관리 | 현재 Flutter/NestJS 사용자 기능 없음. 앱 비범위 (웹 전용) | 신규 |
 | 플랜 잠금 | 기능별 서버 entitlement 판정 및 UI 잠금 | 신규 |
 | 팩트 체크 | 후보 추출→사용자 확인/수정/무시→Question 전환 | 향후 TODO |
 
@@ -94,7 +94,7 @@ X는 현재 알림 카드를 화면에서만 닫을 수 있다. 오늘의 질문
 |---|---|---|
 | `GET` | `/v1/books/:bookId/dashboard` | 책 권한, 현재 Question, 전체/목차 진행, review 상태, 기능 entitlement를 한 응답으로 반환 |
 | `GET` | `/v1/books/:bookId/questions/current` | 책 범위의 현재 소질문 조회 |
-| `GET` | `/v1/books/:bookId/progress` | 길 이정표/상세 진행 뷰용 목차·구간 진행도 |
+| `GET` | `/v1/books/:bookId/progress` | 길 이정표/상세 진행 뷰용 목차·구간 진행도. api-spec §6.2 주석: 별도 진행 API를 만들지 않음. chapters[] 응답으로 충분 |
 | `GET` | `/v1/books/:bookId/chapters/:chapterId/ebook-eligibility` | 챕터 완료·리뷰 완료와 미리보기 가능 범위 반환 |
 | `GET` | `/v1/books/:bookId/entitlements` | ebook/audio/storybook별 표시·사용 권한과 제한 반환 |
 | `POST` | `/v1/books/:bookId/fact-checks` | 리뷰 완료 원고에서 검토 후보 추출 작업 생성 |
@@ -152,7 +152,7 @@ X는 현재 알림 카드를 화면에서만 닫을 수 있다. 오늘의 질문
 3. `device_push_token`은 엔티티만 존재한다. 토큰 등록 API, provider(FCM/APNs 등), 키 관리, 발송 워커와 개인정보 고지가 필요하다.
 4. 길 이정표의 Figma 노드/디자인은 확인되지 않았다. 상세 진행 뷰의 정보 구조와 경로를 확정해야 한다.
 5. 무료는 ebook만, 오디오북/AI 영상 그림책은 잠금이라는 화면 정책은 주어졌지만, T1~T4별 정확한 entitlement는 랜딩 가격 스펙과 운영 로드맵 사이에 재정의 이력이 있다. 서버 권한표·프로모션 우선순위를 확정해야 한다.
-6. ebook이 전체 책인지 챕터별인지, 챕터 완료+review 완료가 “해당 챕터 포함 미리보기” 자격인지 확정해야 한다.
+6. **[결정 완료] ebook 범위**: reviewed된 장 전부가 ebook에 포함된다. 챕터1이 자연히 최소 조건이 된다. (06-1-1 참조)
 7. 오디오북은 현재 Next.js Admin 전용 생성 기능이고 Flutter/NestJS에는 사용자 관리 기능이 없다. 그림책은 Flutter/NestJS 구현이 없으며 웹에는 설계 문서만 확인됐다.
 8. 팩트 체크는 AI의 사실 판정이나 자동 외부 검색이 아니다. 이름·날짜·장소·숫자 같은 개인정보를 AI에 전송하기 전 고지·명시 동의, 제공자 학습 이용·보존·삭제 정책, 원고/후보 접근 통제와 보존 기간을 확정해야 한다.
 9. 후보 추출 모델은 환각·문맥 누락·동명이인·표기 차이를 만들 수 있다. 결과 문구는 “오류”가 아닌 “검토 필요”로 유지하고, 사용자 확인·수정·무시 기록과 원문 보존/되돌리기 정책을 둬야 한다.
