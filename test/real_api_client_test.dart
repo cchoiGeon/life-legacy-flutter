@@ -66,7 +66,7 @@ void main() {
     test('items 껍질을 벗겨서 돌려준다', () async {
       final (api, adapter) = build();
       adapter.on(
-        '/chapters',
+        '/books/b1/chapters',
         body: {
           'items': [
             {
@@ -82,7 +82,7 @@ void main() {
         },
       );
 
-      final chapters = await api.chapters();
+      final chapters = await api.chapters('b1');
 
       expect(chapters, hasLength(1));
       expect(chapters.first.title, '탄생과 유아기 시절');
@@ -119,17 +119,27 @@ void main() {
   group('본문 없는 응답', () {
     test('204면 "더 답할 질문이 없다"로 읽는다', () async {
       final (api, adapter) = build();
-      adapter.on('/questions/current', status: 204);
+      adapter.on('/books/b1/questions/current', status: 204);
 
       // 이걸 예외로 처리하면 앱이 완성 화면 대신 오류를 띄운다.
-      expect(await api.currentQuestion(), isNull);
+      expect(await api.currentQuestion('b1'), isNull);
     });
 
     test('204인 목차 확정은 성공으로 본다', () async {
       final (api, adapter) = build();
-      adapter.on('/intro/toc/confirm', status: 204);
+      adapter.on(
+        '/intro/toc/confirm',
+        body: {
+          'book_id': 'b1',
+          'first_question_id': null,
+          'chapters': [],
+        },
+      );
 
-      await expectLater(api.confirmToc(const []), completes);
+      await expectLater(
+        api.confirmToc(bookId: 'b1', chapters: const []),
+        completes,
+      );
     });
   });
 
@@ -155,10 +165,10 @@ void main() {
 
     test('본문이 없는 실패도 사용자에게 보여줄 문장을 만든다', () async {
       final (api, adapter) = build();
-      adapter.on('/home', status: 500);
+      adapter.on('/books/b1/home', status: 500);
 
       await expectLater(
-        api.home(),
+        api.home('b1'),
         throwsA(
           isA<ApiException>().having((e) => e.message, 'message', isNotEmpty),
         ),
@@ -205,14 +215,39 @@ void main() {
         },
       );
 
-      final next = await api.submitFollowupAnswer(
+      final advance = await api.submitFollowupAnswer(
         questionId: 'q1',
         followupId: 'f1',
         text: '성산일출봉이었습니다',
         inputMode: ComposeMode.keyboard,
       );
 
-      expect(next?.id, 'q2');
+      expect(advance.needsAnotherFollowup, isFalse);
+      expect(advance.nextQuestion?.id, 'q2');
+    });
+
+    test('중간 라운드면 followup이 온다', () async {
+      final (api, adapter) = build();
+      adapter.on(
+        '/questions/q1/followup/f1/answer',
+        body: {
+          'followup': {'id': 'f2', 'seq': 2, 'text': '조금 더 들려주세요'},
+          'next_question': null,
+          'chapter_completed': false,
+        },
+      );
+
+      final advance = await api.submitFollowupAnswer(
+        questionId: 'q1',
+        followupId: 'f1',
+        text: '첫 꼬리 답',
+        inputMode: ComposeMode.keyboard,
+      );
+
+      expect(advance.needsAnotherFollowup, isTrue);
+      expect(advance.followup?.id, 'f2');
+      expect(advance.followup?.seq, 2);
+      expect(advance.nextQuestion, isNull);
     });
 
     test('모든 장을 끝내면 다음 질문이 null이다', () async {
@@ -222,15 +257,17 @@ void main() {
         body: {'next_question': null, 'chapter_completed': true},
       );
 
-      final next = await api.submitFollowupAnswer(
+      final advance = await api.submitFollowupAnswer(
         questionId: 'q1',
         followupId: 'f1',
         text: '끝',
         inputMode: ComposeMode.keyboard,
       );
 
-      // 앱은 null을 "다 끝났다"로 읽고 자서전 화면으로 간다.
-      expect(next, isNull);
+      // 앱은 nextQuestion null을 "다 끝났다"로 읽고 자서전 화면으로 간다.
+      expect(advance.needsAnotherFollowup, isFalse);
+      expect(advance.nextQuestion, isNull);
+      expect(advance.chapterCompleted, isTrue);
     });
 
     test('키보드로 적으면 말한 시간을 아예 빼고 보낸다', () async {
@@ -255,11 +292,12 @@ void main() {
   });
 
   group('자기소개 제출', () {
-    test('질문 id·값 쌍으로 바꿔 보내고 목차만 돌려받는다', () async {
+    test('구조화 답변으로 보내고 book_id·목차를 받는다', () async {
       final (api, adapter) = build();
       adapter.on(
         '/intro/answers',
         body: {
+          'book_id': 'b1',
           'case_key': 'legacy_college_married_children',
           'chapters': [
             {
@@ -275,42 +313,82 @@ void main() {
         },
       );
 
-      final chapters = await api.generateToc({'i1': '김영희', 'i2': '여성'});
+      final result = await api.generateToc(const [
+        IntroAnswerSubmission(questionId: 'i2', value: '여'),
+        IntroAnswerSubmission(questionId: 'i6', value: '1955-03-12'),
+      ]);
 
-      expect(chapters, hasLength(1));
+      expect(result.bookId, 'b1');
+      expect(result.chapters, hasLength(1));
       final sent = adapter.lastRequest!.data as Map<String, dynamic>;
       expect(sent['answers'], [
-        {'question_id': 'i1', 'value': '김영희'},
-        {'question_id': 'i2', 'value': '여성'},
+        {'question_id': 'i2', 'value': '여'},
+        {'question_id': 'i6', 'value': '1955-03-12'},
       ]);
     });
 
     test('목차 확정은 앱이 재배열한 순서 그대로 보낸다', () async {
       final (api, adapter) = build();
-      adapter.on('/intro/toc/confirm', status: 204);
+      adapter.on(
+        '/intro/toc/confirm',
+        body: {
+          'book_id': 'b1',
+          'first_question_id': 'q1',
+          'chapters': [],
+        },
+      );
 
-      await api.confirmToc([
-        const Chapter(
-          id: 'c2',
-          order: 2,
-          title: '나중 장',
-          status: ChapterStatus.locked,
-          answeredCount: 0,
-          questionCount: 5,
-        ),
-        const Chapter(
-          id: 'c1',
-          order: 1,
-          title: '먼저 장',
-          status: ChapterStatus.writing,
-          answeredCount: 0,
-          questionCount: 5,
-        ),
-      ]);
+      await api.confirmToc(
+        bookId: 'b1',
+        chapters: [
+          const Chapter(
+            id: 'c2',
+            order: 2,
+            title: '나중 장',
+            status: ChapterStatus.locked,
+            answeredCount: 0,
+            questionCount: 5,
+          ),
+          const Chapter(
+            id: 'c1',
+            order: 1,
+            title: '먼저 장',
+            status: ChapterStatus.writing,
+            answeredCount: 0,
+            questionCount: 5,
+          ),
+        ],
+      );
 
       final sent = adapter.lastRequest!.data as Map<String, dynamic>;
-      // 서버가 이 순서대로 order를 다시 매긴다.
+      expect(sent['book_id'], 'b1');
       expect(sent['chapter_ids'], ['c2', 'c1']);
+    });
+  });
+
+  group('챕터 완료', () {
+    test('completion 응답을 모델로 읽는다', () async {
+      final (api, adapter) = build();
+      adapter.on(
+        '/books/b1/chapters/c2/completion',
+        body: {
+          'chapter_id': 'c2',
+          'chapter_order': 2,
+          'chapter_title': '가족',
+          'question_count': 6,
+          'answered_count': 5,
+          'skipped_count': 1,
+          'review_status': null,
+          'next_chapter': {'id': 'c3', 'order': 3, 'title': '청소년기'},
+          'actions': {'review': true, 'hub': true},
+        },
+      );
+
+      final c = await api.chapterCompletion('b1', 'c2');
+      expect(c.chapterOrder, 2);
+      expect(c.needsReview, isTrue);
+      expect(c.nextChapter?.title, '청소년기');
+      expect(c.canReview, isTrue);
     });
   });
 

@@ -8,6 +8,9 @@ abstract final class Storage {
   static const _keyAccessToken = 'll.access';
   static const _keyRefreshToken = 'll.refresh';
   static const _keyIntroDone = 'll.intro_done';
+  static const _keyPhone = 'll.phone';
+  static const _keyCurrentBookId = 'll.current_book_id';
+  static const _keyWriteTutorialDone = 'll.write_tutorial_done';
 
   static late final GetStorage _box;
 
@@ -29,6 +32,16 @@ abstract final class Storage {
   /// 스플래시가 로그인/자기소개/홈 중 어디로 보낼지 정하는 근거다.
   static bool get introDone => _box.read<bool>(_keyIntroDone) ?? false;
 
+  /// 작성 튜토리얼을 끝까지 보거나 건너뛰었는지 (기기 로컬).
+  static bool get writeTutorialDone =>
+      _box.read<bool>(_keyWriteTutorialDone) ?? false;
+
+  /// 마지막으로 인증에 사용한 전화번호.
+  static String? get phone => _box.read<String>(_keyPhone);
+
+  /// 현재 작업 중인 책. `/books/{id}/…` 호출에 쓴다.
+  static String? get currentBookId => _box.read<String>(_keyCurrentBookId);
+
   static bool get isLoggedIn => accessToken != null;
 
   static Future<void> saveTokens(String accessToken, String refreshToken) async {
@@ -36,11 +49,22 @@ abstract final class Storage {
     await _box.write(_keyRefreshToken, refreshToken);
   }
 
+  static Future<void> savePhone(String phone) =>
+      _box.write(_keyPhone, phone);
+
   static Future<void> markIntroDone() => _box.write(_keyIntroDone, true);
+
+  static Future<void> markWriteTutorialDone() =>
+      _box.write(_keyWriteTutorialDone, true);
+
+  static Future<void> saveCurrentBookId(String bookId) =>
+      _box.write(_keyCurrentBookId, bookId);
 
   static Future<void> clearSession() async {
     await _box.remove(_keyAccessToken);
     await _box.remove(_keyRefreshToken);
     await _box.remove(_keyIntroDone);
+    await _box.remove(_keyPhone);
+    await _box.remove(_keyCurrentBookId);
   }
 }

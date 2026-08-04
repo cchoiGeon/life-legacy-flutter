@@ -81,7 +81,10 @@ class ProfileView extends GetView<ProfileController> {
                       for (final e
                           in controller.introProfile.value?.entries ??
                               const <IntroProfileEntry>[])
-                        AppSettingRow(title: e.label, value: e.value),
+                        AppSettingRow(
+                          title: e.label,
+                          value: e.skipped ? '건너뜀' : (e.value ?? '-'),
+                        ),
                     ],
                   ),
                 ],

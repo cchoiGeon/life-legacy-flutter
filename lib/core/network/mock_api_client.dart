@@ -123,12 +123,20 @@ class MockApiClient implements ApiClient {
 
   /// 자기소개 답변 — F3(내 정보)의 "자기소개" 구획이 읽는다.
   /// 목차를 만들 때 [generateToc]가 통째로 받아 둔다.
-  Map<String, String> _introAnswers = const {
-    'i2': '여성',
-    'i3': '했어요',
-    'i4': '있어요',
-    'i5': '고등학교',
-  };
+  List<IntroAnswerSubmission> _introAnswers = const [
+    IntroAnswerSubmission(questionId: 'i2', value: '여'),
+    IntroAnswerSubmission(questionId: 'i6', value: '1955-03-12'),
+    IntroAnswerSubmission(questionId: 'i3', value: '예'),
+    IntroAnswerSubmission(questionId: 'i4', value: '예'),
+    IntroAnswerSubmission(
+      questionId: 'i5',
+      value: '대학교 이상',
+      detailValue: '학사',
+    ),
+  ];
+
+  WritingPlan? _writingPlan;
+  final Map<String, AnswerDraft> _answerDrafts = {};
 
   // ══════════════════════════════════════════════════════════
   // 인증
@@ -196,27 +204,177 @@ class MockApiClient implements ApiClient {
   /// 시안 343:713은 "2분 47초 남음"으로 그려져 있다 — 3분에서 13초 지난 모습이다.
 
   // ══════════════════════════════════════════════════════════
+  // OCTOMO 인증 (신규 목업)
+  // ══════════════════════════════════════════════════════════
+
+  /// 목업 전화번호 — 10자 이상이면 "기존 사용자", 10자 미만이면 "신규".
+  int _mockPhonePrefix(String phone) {
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length >= 10) return 1; // existing
+    return 0; // new
+  }
+
+  @override
+  Future<PhoneLookupResult> lookupPhone(String phone) =>
+      _delay(const PhoneLookupResult(nextStep: 'verify'));
+
+  @override
+  Future<OctomoChallenge> requestOctomoChallenge(String phone) => _delay(
+    const OctomoChallenge(
+      sessionId: 'avs_mock_01',
+      receiverNumber: '050312345678',
+      verifyText: '3538',
+      expiresIn: 300,
+      pollInterval: 3,
+    ),
+  );
+
+  @override
+  Future<OctomoVerifyResult> verifyOctomo(String sessionId) async {
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    // 첫 3초는 pending, 이후 verified
+    _verifyAttempts++;
+    if (_verifyAttempts < 3) {
+      return OctomoVerifyResult(
+        status: 'pending',
+        expiresIn: 300 - _verifyAttempts * 3,
+      );
+    }
+    // 기존 사용자 모의
+    if (_mockPhonePrefix(_mockPhone) == 1) {
+      return OctomoVerifyResult(
+        status: 'verified',
+        account: 'existing',
+        session: AuthSession(
+          tokens: _issueTokens(),
+          user: _user,
+          needsIntro: !Storage.introDone,
+        ),
+      );
+    }
+    // 신규 사용자 모의
+    return const OctomoVerifyResult(
+      status: 'verified',
+      account: 'new',
+      signupToken: 'st_mock_001',
+      requiredConsents: [
+        ConsentDocument(
+          key: 'terms_of_service',
+          version: '1.0',
+          title: '서비스 이용약관',
+          url: 'https://lifelegacy.app/terms',
+          required: true,
+        ),
+        ConsentDocument(
+          key: 'privacy_policy',
+          version: '1.0',
+          title: '개인정보 처리방침',
+          url: 'https://lifelegacy.app/privacy',
+          required: true,
+        ),
+        ConsentDocument(
+          key: 'age_14',
+          version: '1.0',
+          title: '만 14세 이상입니다',
+          url: null,
+          required: true,
+        ),
+        ConsentDocument(
+          key: 'marketing',
+          version: '1.0',
+          title: '마케팅 정보 수신',
+          url: 'https://lifelegacy.app/privacy',
+          required: false,
+        ),
+      ],
+    );
+  }
+
+  int _verifyAttempts = 0;
+  String _mockPhone = '01012345678';
+
+  @override
+  Future<AuthSession> signUp({
+    required String signupToken,
+    required String name,
+    required List<ConsentAgreement> consents,
+  }) async {
+    await Future<void>.delayed(_latency);
+    // 필수 3종 확인
+    final requiredKeys = {'terms_of_service', 'privacy_policy', 'age_14'};
+    for (final c in consents) {
+      if (requiredKeys.contains(c.key) && !c.agreed) {
+        throw const ApiException(
+          '필수 약관에 동의해 주세요',
+          code: 'CONSENT_REQUIRED',
+        );
+      }
+    }
+    _user = User(id: _user.id, name: name, phone: _user.phone);
+    _mockPhone = _user.phone;
+    _verifyAttempts = 0;
+    return AuthSession(
+      tokens: _issueTokens(),
+      user: _user,
+      needsIntro: true,
+    );
+  }
+
+  @override
+  Future<List<ConsentDocument>> consentDocuments() => _delay(const [
+    ConsentDocument(
+      key: 'terms_of_service',
+      version: '1.0',
+      title: '서비스 이용약관',
+      url: 'https://lifelegacy.app/terms',
+      required: true,
+    ),
+    ConsentDocument(
+      key: 'privacy_policy',
+      version: '1.0',
+      title: '개인정보 처리방침',
+      url: 'https://lifelegacy.app/privacy',
+      required: true,
+    ),
+    ConsentDocument(
+      key: 'age_14',
+      version: '1.0',
+      title: '만 14세 이상입니다',
+      url: null,
+      required: true,
+    ),
+    ConsentDocument(
+      key: 'marketing',
+      version: '1.0',
+      title: '마케팅 정보 수신',
+      url: 'https://lifelegacy.app/privacy',
+      required: false,
+    ),
+  ]);
+
+  // ══════════════════════════════════════════════════════════
   // 자기소개 → 목차
   // ══════════════════════════════════════════════════════════
 
-  /// 시안 B1~B5. 문항 순서를 바꾸거나 지우면 [generateToc]의 이름 저장과
-  /// [introProfile]의 라벨 대응도 같이 손봐야 한다.
+  /// 시드와 동일 — i2·i6·i3·i4·i5 (i1 성함은 가입 이름).
   @override
   Future<List<IntroQuestion>> introQuestions() => _delay(const [
     IntroQuestion(
-      id: 'i1',
-      order: 1,
-      text: '성함을\n알려주세요',
-      subtitle: '책 표지에 들어갈 이름이에요',
-      hint: '성함을 적어 주세요',
-    ),
-    IntroQuestion(
       id: 'i2',
-      order: 2,
+      order: 1,
       text: '성별을\n알려주세요',
       subtitle: '책에서 부르는 말을 정할 때 써요',
       type: IntroAnswerType.choice,
-      choices: ['여성', '남성'],
+      choices: [
+        IntroChoiceOption(id: 'ch_m', label: '남'),
+        IntroChoiceOption(id: 'ch_f', label: '여'),
+      ],
+    ),
+    IntroQuestion(
+      id: 'i6',
+      order: 2,
+      text: '생년월일을\n알려주세요',
+      type: IntroAnswerType.date,
     ),
     IntroQuestion(
       id: 'i3',
@@ -224,7 +382,11 @@ class MockApiClient implements ApiClient {
       text: '결혼은\n하셨나요?',
       subtitle: '가족 이야기를 여쭤볼 때 참고해요',
       type: IntroAnswerType.choice,
-      choices: ['했어요', '안 했어요'],
+      skippable: true,
+      choices: [
+        IntroChoiceOption(id: 'ch_mar_y', label: '예'),
+        IntroChoiceOption(id: 'ch_mar_n', label: '아니오'),
+      ],
     ),
     IntroQuestion(
       id: 'i4',
@@ -232,7 +394,11 @@ class MockApiClient implements ApiClient {
       text: '자녀가\n있으신가요?',
       subtitle: '자녀 이야기를 여쭤볼지 정해요',
       type: IntroAnswerType.choice,
-      choices: ['있어요', '없어요'],
+      skippable: true,
+      choices: [
+        IntroChoiceOption(id: 'ch_ch_y', label: '예'),
+        IntroChoiceOption(id: 'ch_ch_n', label: '아니오'),
+      ],
     ),
     IntroQuestion(
       id: 'i5',
@@ -240,39 +406,177 @@ class MockApiClient implements ApiClient {
       text: '학교는 어디까지\n다니셨나요?',
       subtitle: '학창 시절 질문을 고를 때 써요',
       type: IntroAnswerType.choice,
-      choices: ['초등학교', '중학교', '고등학교', '대학교 이상'],
+      choices: [
+        IntroChoiceOption(
+          id: 'ch_e',
+          label: '초등학교',
+          details: [
+            IntroChoiceOption(id: 'ch_e1', label: '초등학교'),
+            IntroChoiceOption(id: 'ch_e2', label: '국민학교'),
+          ],
+        ),
+        IntroChoiceOption(id: 'ch_m_edu', label: '중학교'),
+        IntroChoiceOption(id: 'ch_h', label: '고등학교'),
+        IntroChoiceOption(
+          id: 'ch_u',
+          label: '대학교 이상',
+          details: [
+            IntroChoiceOption(id: 'ch_u1', label: '학사'),
+            IntroChoiceOption(id: 'ch_u2', label: '석사'),
+            IntroChoiceOption(id: 'ch_u3', label: '박사'),
+          ],
+        ),
+      ],
+    ),
+  ]);
+
+  int _recommendWeeks(WritingPlan? plan) {
+    final minutes = plan?.dailyMinutes ?? 30;
+    final days = plan?.availableWeekdays.length ?? 3;
+    if (minutes >= 90 && days >= 4) return 1;
+    if (minutes >= 60) return 2;
+    if (minutes >= 30) return 4;
+    return 6;
+  }
+
+  @override
+  Future<WritingPlanResult> writingPlan() => _delay(
+    WritingPlanResult(
+      recommendedWeeks: _recommendWeeks(_writingPlan),
+      plan: _writingPlan,
+    ),
+  );
+
+  @override
+  Future<WritingPlanResult> updateWritingPlan(WritingPlan plan) async {
+    _writingPlan = plan;
+    await Future<void>.delayed(_latency);
+    return WritingPlanResult(
+      recommendedWeeks: _recommendWeeks(plan),
+      plan: plan,
+    );
+  }
+
+  @override
+  Future<TocGenerateResult> generateToc(
+    List<IntroAnswerSubmission> answers,
+  ) async {
+    _introAnswers = List.of(answers);
+    const bookId = 'b_mock_001';
+    await Future<void>.delayed(_slowLatency);
+    _chapters = _seedChapters();
+    return TocGenerateResult(
+      bookId: bookId,
+      caseKey: 'legacy_college_married_children',
+      chapters: _chapters,
+    );
+  }
+
+  @override
+  Future<List<CatalogChapter>> catalogChapters(String bookId) => _delay([
+    for (final c in _seedChapters())
+      CatalogChapter(
+        id: 'ct_${c.id}',
+        title: c.title,
+        questionCount: c.questionCount,
+        alreadyAdded: _chapters.any((x) => x.title == c.title),
+      ),
+    CatalogChapter(
+      id: 'ct_extra_현재',
+      title: '현재의 삶',
+      questionCount: 5,
+      alreadyAdded: _chapters.any((x) => x.title == '현재의 삶'),
     ),
   ]);
 
   @override
-  Future<List<Chapter>> generateToc(Map<String, String> answers) {
-    // 실제로는 답변을 보고 목차를 만들겠지만, 여기서는 고정 목차를 돌려준다.
-    // 대신 사용자가 이름을 말했으면 그걸 반영해서 "만들어진 느낌"을 준다.
-    final name = answers['i1']?.trim();
-    if (name != null && name.isNotEmpty) {
-      _user = User(id: _user.id, name: name, phone: _user.phone);
+  Future<List<Chapter>> saveTocDraft({
+    required String bookId,
+    required List<TocDraftChapter> chapters,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final out = <Chapter>[];
+    for (final (i, item) in chapters.indexed) {
+      if (item.id != null) {
+        final existing = _chapters.cast<Chapter?>().firstWhere(
+          (c) => c?.id == item.id,
+          orElse: () => null,
+        );
+        out.add(
+          Chapter(
+            id: item.id!,
+            order: i + 1,
+            title: item.title ?? existing?.title ?? '장',
+            status: i == 0 ? ChapterStatus.writing : ChapterStatus.locked,
+            answeredCount: existing?.answeredCount ?? 0,
+            questionCount: existing?.questionCount ?? 5,
+            sourceType: existing?.sourceType ?? ChapterSource.template,
+          ),
+        );
+      } else if (item.templateId != null) {
+        out.add(
+          Chapter(
+            id: 'c_new_$i',
+            order: i + 1,
+            title: catalogTitleFor(item.templateId!),
+            status: i == 0 ? ChapterStatus.writing : ChapterStatus.locked,
+            answeredCount: 0,
+            questionCount: 5,
+            sourceType: ChapterSource.template,
+            templateId: item.templateId,
+          ),
+        );
+      } else {
+        out.add(
+          Chapter(
+            id: 'c_custom_$i',
+            order: i + 1,
+            title: item.title ?? '새 목차',
+            status: i == 0 ? ChapterStatus.writing : ChapterStatus.locked,
+            answeredCount: 0,
+            questionCount: 0,
+            sourceType: ChapterSource.custom,
+          ),
+        );
+      }
     }
-    _introAnswers = Map.of(answers);
-    return _delay(_seedChapters(), _slowLatency);
+    _chapters = out;
+    return out;
+  }
+
+  String catalogTitleFor(String templateId) {
+    if (templateId == 'ct_extra_현재') return '현재의 삶';
+    for (final c in _seedChapters()) {
+      if ('ct_${c.id}' == templateId) return c.title;
+    }
+    return '추가한 장';
   }
 
   @override
-  Future<void> confirmToc(List<Chapter> chapters) async {
+  Future<TocConfirmResult> confirmToc({
+    required String bookId,
+    required List<Chapter> chapters,
+  }) async {
     await Future<void>.delayed(_latency);
-    // 순서를 바꿨을 수 있으니 order를 다시 매긴다 — 화면은 이 번호로
-    // "제2장 이어서 쓰기"를 그린다.
     _chapters = [
       for (final (i, c) in chapters.indexed)
         Chapter(
           id: c.id,
           order: i + 1,
           title: c.title,
-          status: c.status,
+          status: i == 0 ? ChapterStatus.writing : ChapterStatus.locked,
           answeredCount: c.answeredCount,
           questionCount: c.questionCount,
+          sourceType: c.sourceType,
+          templateId: c.templateId,
         ),
     ];
     _questions = _seedQuestions();
+    return TocConfirmResult(
+      bookId: bookId,
+      firstQuestionId: _questions.isEmpty ? null : _questions.first.id,
+      chapters: _chapters,
+    );
   }
 
   @override
@@ -280,8 +584,17 @@ class MockApiClient implements ApiClient {
     IntroProfile(
       entries: [
         for (final (id, label) in _profileLabels)
-          if (_introAnswers[id] case final v? when v.trim().isNotEmpty)
-            IntroProfileEntry(label: label, value: v),
+          if (_introAnswers.where((a) => a.questionId == id).firstOrNull
+              case final a?)
+            IntroProfileEntry(
+              label: label,
+              value: a.skipped
+                  ? null
+                  : (a.detailValue != null
+                        ? '${a.value} · ${a.detailValue}'
+                        : a.value),
+              skipped: a.skipped,
+            ),
       ],
     ),
   );
@@ -289,6 +602,7 @@ class MockApiClient implements ApiClient {
   /// 자기소개 문항 id → F3에 뜨는 라벨. 성함(i1)은 "기본 정보"에 따로 나가므로 뺀다.
   static const _profileLabels = [
     ('i2', '성별'),
+    ('i6', '생년월일'),
     ('i3', '결혼'),
     ('i4', '자녀'),
     ('i5', '학력'),
@@ -299,12 +613,13 @@ class MockApiClient implements ApiClient {
   // ══════════════════════════════════════════════════════════
 
   @override
-  Future<HomeSummary> home() {
+  Future<HomeSummary> home(String bookId) {
     final next = _findCurrentQuestion();
     final total = _questions.length;
     final answered = _questions.where((q) => q.isAnswered).length;
     return _delay(
       HomeSummary(
+        bookId: bookId,
         todayQuestion: next?.text,
         todayQuestionId: next?.id,
         progress: total == 0 ? 0 : answered / total,
@@ -322,10 +637,11 @@ class MockApiClient implements ApiClient {
   // ══════════════════════════════════════════════════════════
 
   @override
-  Future<List<Chapter>> chapters() => _delay(_syncChapters());
+  Future<List<Chapter>> chapters(String bookId) => _delay(_syncChapters());
 
   @override
-  Future<Question?> currentQuestion() => _delay(_findCurrentQuestion());
+  Future<Question?> currentQuestion(String bookId) =>
+      _delay(_findCurrentQuestion());
 
   @override
   Future<Question> question(String questionId) =>
@@ -355,11 +671,25 @@ class MockApiClient implements ApiClient {
 
     _drafts[questionId] = text;
     final q = _questions.firstWhere((e) => e.id == questionId);
-    return Followup(id: 'f_$questionId', text: _followupTextFor(q.text));
+    final followup = Followup(
+      id: 'f_$questionId',
+      seq: 1,
+      text: _followupTextFor(q.text),
+    );
+    _answerDrafts[questionId] = AnswerDraft(
+      questionId: questionId,
+      phase: 'followup',
+      text: text,
+      inputMode: inputMode,
+      spokenSeconds: spokenSeconds,
+      followupRound: 1,
+      pendingFollowup: followup,
+    );
+    return followup;
   }
 
   @override
-  Future<Question?> submitFollowupAnswer({
+  Future<FollowupAdvanceResult> submitFollowupAnswer({
     required String questionId,
     required String followupId,
     required String text,
@@ -372,15 +702,35 @@ class MockApiClient implements ApiClient {
       throw const ApiException('저장하지 못했어요', code: 'POLISH_FAILED');
     }
 
-    // 확정 저장되는 건 **사용자 원문 둘**이다. 목업에는 다듬는 AI가 없으니
-    // 이어 붙여 둔다 — 실제 서버는 여기서 작가체로 고쳐 따로 보관한다.
+    final draft = _answerDrafts[questionId];
+    final round = draft?.followupRound ?? 1;
+    // 최대 2회 꼬리 → round 1이면 한 번 더
+    if (round < 2) {
+      final next = Followup(
+        id: 'f_mock_${questionId}_$round',
+        seq: round + 1,
+        text: _followupTextFor(text),
+      );
+      _answerDrafts[questionId] = AnswerDraft(
+        questionId: questionId,
+        phase: 'followup',
+        text: draft?.text ?? '',
+        inputMode: inputMode,
+        spokenSeconds: spokenSeconds,
+        followupRound: round + 1,
+        pendingFollowup: next,
+      );
+      return FollowupAdvanceResult(followup: next);
+    }
+
     final first = _drafts.remove(questionId) ?? '';
+    _answerDrafts.remove(questionId);
     final joined = [first, text].where((e) => e.isNotEmpty).join('\n\n');
 
     final i = _questions.indexWhere((q) => q.id == questionId);
     if (i >= 0) _questions[i] = _questions[i].copyWith(answer: joined);
     _syncChapters();
-    return _findCurrentQuestion();
+    return FollowupAdvanceResult(nextQuestion: _findCurrentQuestion());
   }
 
   /// 1차 답변을 받고 되묻는 말. 실제로는 AI가 답변 내용을 읽고 만든다.
@@ -429,37 +779,275 @@ class MockApiClient implements ApiClient {
     return rest.isEmpty ? _findCurrentQuestion() : rest.first;
   }
 
+  @override
+  Future<AnswerDraft> saveAnswerDraft({
+    required String questionId,
+    required String text,
+    required ComposeMode inputMode,
+    int? spokenSeconds,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final existing = _answerDrafts[questionId];
+    if (existing?.isFollowupPhase == true) {
+      return existing!;
+    }
+    final draft = AnswerDraft(
+      questionId: questionId,
+      phase: 'first',
+      text: text,
+      inputMode: inputMode,
+      spokenSeconds: spokenSeconds,
+    );
+    _answerDrafts[questionId] = draft;
+    return draft;
+  }
+
+  @override
+  Future<AnswerDraft?> answerDraft(String questionId) =>
+      _delay(_answerDrafts[questionId]);
+
+  @override
+  Future<void> deleteAnswerDraft(String questionId) async {
+    await Future<void>.delayed(_latency);
+    _answerDrafts.remove(questionId);
+  }
+
+  final Map<String, ChapterReview> _reviews = {};
+
+  @override
+  Future<ChapterReview?> chapterReview(String bookId, String chapterId) =>
+      _delay(_reviews[chapterId]);
+
+  @override
+  Future<ChapterReview> synthesizeReview(
+    String bookId,
+    String chapterId,
+  ) async {
+    await Future<void>.delayed(_aiLatency);
+    final chapter = _chapters.firstWhere(
+      (c) => c.id == chapterId,
+      orElse: () => _chapters.first,
+    );
+    final answers = _questions
+        .where((q) => q.chapterId == chapter.id && q.isAnswered)
+        .map((q) => q.answer!)
+        .toList();
+    final review = ChapterReview(
+      chapterId: chapter.id,
+      chapterOrder: chapter.order,
+      chapterTitle: chapter.title,
+      status: 'draft',
+      version: 1,
+      paragraphs: answers.isEmpty
+          ? [
+              '이 장의 이야기를 정리하고 있어요.',
+              '질문에 답하시면 여기에 자서전 문체로 모입니다.',
+            ]
+          : answers,
+    );
+    _reviews[chapter.id] = review;
+    return review;
+  }
+
+  @override
+  Future<ChapterReview> saveReview({
+    required String bookId,
+    required String chapterId,
+    required int version,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final current = _reviews[chapterId] ??
+        await synthesizeReview(bookId, chapterId);
+    final next = current.copyWith(
+      status: 'reviewed',
+      version: version,
+      message: current.chapterOrder == 1 ? '챕터1 저장 완료' : '현재 챕터 저장 완료',
+    );
+    _reviews[chapterId] = next;
+    return next;
+  }
+
+  @override
+  Future<ChapterCompletion> chapterCompletion(
+    String bookId,
+    String chapterId,
+  ) async {
+    await Future<void>.delayed(_latency);
+    final chapter = _chapters.firstWhere(
+      (c) => c.id == chapterId,
+      orElse: () => throw const ApiException('장을 찾지 못했어요', code: 'NOT_FOUND'),
+    );
+    if (chapter.status == ChapterStatus.locked) {
+      throw const ApiException('아직 열리지 않은 장이에요', code: 'CHAPTER_LOCKED');
+    }
+    final qs = _questions.where((q) => q.chapterId == chapterId).toList();
+    final answered = qs.where((q) => q.isAnswered).length;
+    // mock은 skipped를 별도 필드로 두지 않아 0
+    final next = _chapters
+        .where((c) => c.order > chapter.order)
+        .fold<Chapter?>(null, (best, c) {
+          if (best == null || c.order < best.order) return c;
+          return best;
+        });
+    final review = _reviews[chapterId];
+    return ChapterCompletion(
+      chapterId: chapter.id,
+      chapterOrder: chapter.order,
+      chapterTitle: chapter.title,
+      questionCount: qs.length,
+      answeredCount: answered,
+      skippedCount: 0,
+      reviewStatus: review?.status == 'reviewed' ? 'reviewed' : null,
+      nextChapter: next == null
+          ? null
+          : ChapterCompletionNext(
+              id: next.id,
+              order: next.order,
+              title: next.title,
+            ),
+      canReview: chapter.status == ChapterStatus.done,
+      canHub: true,
+    );
+  }
+
+  @override
+  Future<VoiceAudio> synthesizeSpeech({
+    required String text,
+    String? voiceCode,
+  }) async {
+    await Future<void>.delayed(_latency);
+    // 목업: 실제 mp3 대신 빈 바이트 — 재생은 실패해도 흐름만 검증
+    return VoiceAudio(
+      bytes: const [0xff, 0xfb, 0x90, 0x00],
+      durationMs: 800,
+    );
+  }
+
+  @override
+  Future<SttResult> transcribeAudio({
+    required List<int> bytes,
+    required String filename,
+    String contentType = 'audio/mp4',
+    int? durationMs,
+  }) async {
+    await Future<void>.delayed(_aiLatency);
+    if (bytes.isEmpty) {
+      throw const ApiException('말씀을 알아듣지 못했어요', code: 'STT_FAILED');
+    }
+    return SttResult(
+      text: '목업 전사입니다. 그때의 이야기가 참 따뜻하게 들립니다.',
+      durationMs: durationMs,
+    );
+  }
+
+  @override
+  Future<VoiceAudio> voiceSample({String? voiceCode}) =>
+      synthesizeSpeech(text: '샘플');
+
+  @override
+  Future<VoiceAudio> reviewTts({
+    required String bookId,
+    required String chapterId,
+    int fromParagraph = 0,
+    int chunkSize = 2,
+    String? voiceCode,
+  }) async {
+    await Future<void>.delayed(_latency);
+    return VoiceAudio(
+      bytes: const [0xff, 0xfb, 0x90, 0x00],
+      durationMs: 1000,
+      nextParagraph: null,
+    );
+  }
+
   // ══════════════════════════════════════════════════════════
   // 나의 자서전
   // ══════════════════════════════════════════════════════════
 
   @override
-  Future<Book> book() {
-    _syncChapters();
-    final done = _chapters.every((c) => c.status == ChapterStatus.done);
+  Future<List<BookListItem>> books() => _delay([
+    BookListItem(
+      id: 'b_mock_001',
+      title: '나의 이야기',
+      authorName: _user.name,
+      status: 'writing',
+      chapterCount: _chapters.length,
+      chapterDone: _chapters
+          .where((c) => c.status == ChapterStatus.done)
+          .length,
+      progress: _questions.isEmpty
+          ? 0
+          : _questions.where((q) => q.isAnswered).length / _questions.length,
+      updatedAt: DateTime.now(),
+    ),
+  ]);
+
+  @override
+  Future<Book> book(String bookId) {
+    final chapters = _syncChapters();
+    final writing = chapters.where((c) => c.status == ChapterStatus.writing);
+    final currentChapter = writing.isEmpty ? null : writing.first;
+    Question? currentQ;
+    if (currentChapter != null) {
+      currentQ = _questions
+          .where((q) => q.chapterId == currentChapter.id && !q.isAnswered)
+          .fold<Question?>(null, (best, q) {
+            if (best == null || q.order < best.order) return q;
+            return best;
+          });
+    }
+    final reviewed = chapters
+        .where((c) => _reviews[c.id]?.status == 'reviewed')
+        .length;
+    final status = chapters.isEmpty
+        ? 'draft'
+        : reviewed == chapters.length
+            ? 'completed'
+            : 'writing';
     return _delay(
       Book(
-        // 시안 352:954의 표지 — 제목은 "나의 이야기", 아래에 이름이 들어간다.
+        id: bookId,
         title: '나의 이야기',
         authorName: _user.name,
-        chapterCount: _chapters.length,
+        status: status,
+        progress: _questions.isEmpty
+            ? 0
+            : _questions.where((q) => q.isAnswered).length / _questions.length,
+        chapterDone:
+            chapters.where((c) => c.status == ChapterStatus.done).length,
+        chapterTotal: chapters.length,
+        currentQuestion: currentQ == null || currentChapter == null
+            ? null
+            : BookCurrentQuestion(
+                id: currentQ.id,
+                chapterId: currentChapter.id,
+                chapterTitle: currentChapter.title,
+                order: currentQ.order,
+                text: currentQ.text,
+              ),
+        chapters: [
+          for (final c in chapters)
+            c.copyWith(
+              reviewStatus: _reviews[c.id]?.status,
+              ebookEligible: _reviews[c.id]?.status == 'reviewed',
+            ),
+        ],
+        entitlements: BookEntitlements.defaults,
         questionCount: _questions.length,
-        // 답변 하나당 대략 6쪽으로 잡은 눈속임 값이다.
         pageCount: _questions.where((q) => q.isAnswered).length * 6,
-        // 사진 첨부(시안 G)를 아직 만들지 않아 고정값이다.
         photoCount: 0,
-        isComplete: done,
       ),
     );
   }
 
   @override
-  Future<List<BookPage>> bookPages() {
+  Future<List<BookPage>> bookPages(String bookId) {
     // 쪽 번호는 책 전체를 통틀어 매긴다 — 미리보기 하단이 "12 / 34쪽"으로
     // 전체 대비 위치를 보여주기 때문이다. 앞의 10쪽은 표지·목차 몫이다.
     const frontMatter = 10;
     final chunks = <(Chapter, List<String>)>[];
     for (final c in _syncChapters()) {
+      if (_reviews[c.id]?.status != 'reviewed') continue;
       final answers = _questions
           .where((q) => q.chapterId == c.id && q.isAnswered)
           .map((q) => q.answer!)
@@ -482,6 +1070,217 @@ class MockApiClient implements ApiClient {
         ),
     ]);
   }
+
+  @override
+  Future<EbookEligibility> ebookEligibility(String bookId) async {
+    final detail = await book(bookId);
+    final included = detail.chapters
+        .where((c) => c.ebookEligible)
+        .map(
+          (c) => EbookIncludedChapter(
+            id: c.id,
+            order: c.order,
+            title: c.title,
+            version: 1,
+          ),
+        )
+        .toList();
+    final allowed = included.isNotEmpty;
+    return _delay(
+      EbookEligibility(
+        allowed: allowed,
+        reason: allowed ? null : 'CHAPTER_NOT_REVIEWED',
+        includedChapters: included,
+        pendingChapters: detail.chapterTotal - included.length,
+        coverKind: 'default',
+        downloadable: allowed,
+        titleSuggestAvailable: detail.progress >= 0.8,
+        progress: detail.progress,
+      ),
+    );
+  }
+
+  @override
+  Future<PlanEntitlements> entitlements(String bookId) async {
+    // 소유 확인
+    await book(bookId);
+    return _delay(
+      const PlanEntitlements(
+        planCode: 'free',
+        features: {
+          'ebook': PlanFeatureEntitlement(allowed: true),
+          'audiobook': PlanFeatureEntitlement(
+            allowed: false,
+            reason: 'PLAN_REQUIRED',
+            remainingGenerations: 0,
+          ),
+          'manual_photo': PlanFeatureEntitlement(
+            allowed: false,
+            reason: 'PLAN_REQUIRED',
+            remainingGenerations: 0,
+          ),
+          'ai_photo': PlanFeatureEntitlement(
+            allowed: true,
+            remainingGenerations: 1,
+          ),
+          'ai_rewrite': PlanFeatureEntitlement(
+            allowed: false,
+            reason: 'PLAN_REQUIRED',
+            remainingGenerations: 0,
+          ),
+        },
+      ),
+    );
+  }
+
+  @override
+  Future<EbookExportResult> generateEbook(String bookId) async {
+    final elig = await ebookEligibility(bookId);
+    if (!elig.allowed) {
+      throw const ApiException(
+        '챕터 리뷰를 저장하면 전자책을 확인할 수 있어요',
+        code: 'CHAPTER_NOT_REVIEWED',
+      );
+    }
+    return _delay(
+      EbookExportResult(
+        exportId: 'ex_mock_$bookId',
+        status: 'completed',
+        chapterSnapshot: [
+          for (final c in elig.includedChapters)
+            EbookSnapshotChapter(chapterId: c.id, version: c.version),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Future<List<int>> downloadEbookFile(String bookId) async {
+    await generateEbook(bookId);
+    // 목업: 최소 PDF 헤더만 (열기 실패할 수 있음 — Real이 진실)
+    const header = '%PDF-1.4 mock ebook\n';
+    return _delay(header.codeUnits);
+  }
+
+  @override
+  Future<List<String>> suggestEbookTitles(String bookId) async {
+    final book = await this.book(bookId);
+    if (book.progress < 0.8) {
+      throw const ApiException(
+        '전체 작성 진행률 80% 이상에서 제목 추천을 쓸 수 있어요',
+        code: 'TITLE_PROGRESS_REQUIRED',
+      );
+    }
+    return _delay([
+      '${book.authorName}의 ${book.title}',
+      '볕이 좋던 날의 기록',
+      '남겨 두고 싶은 이름',
+      '우리가 걸어온 시간',
+    ]);
+  }
+
+  @override
+  Future<void> updateEbookMetadata(
+    String bookId, {
+    required String title,
+  }) async {
+    await Future<void>.delayed(_latency);
+  }
+
+  @override
+  Future<AudiobookOverview> audiobook(String bookId) async {
+    final detail = await book(bookId);
+    return _delay(
+      AudiobookOverview(
+        bookTitle: detail.title,
+        allowed: false,
+        reason: 'PLAN_REQUIRED',
+        chapters: const [],
+      ),
+    );
+  }
+
+  @override
+  Future<List<AudiobookVoice>> audiobookVoices(String bookId) async {
+    await book(bookId);
+    return _delay(const [
+      AudiobookVoice(
+        voiceCode: 'vara',
+        name: '아라(Pro)',
+        gender: 'female',
+        isDefault: true,
+        pro: true,
+      ),
+      AudiobookVoice(
+        voiceCode: 'vdaeseong',
+        name: '대성(Pro)',
+        gender: 'male',
+        pro: true,
+      ),
+    ]);
+  }
+
+  @override
+  Future<List<int>> audiobookVoicePreview(
+    String bookId,
+    String voiceCode,
+  ) async {
+    await book(bookId);
+    return _delay(const <int>[1, 2, 3]);
+  }
+
+  @override
+  Future<List<AudiobookBgmTrack>> audiobookBgms(String bookId) async {
+    await book(bookId);
+    return _delay(const [
+      AudiobookBgmTrack(id: 'bgm_soft', title: 'a soothing song', mood: 'gentle'),
+    ]);
+  }
+
+  @override
+  Future<AudiobookJobCreated> createAudiobookJob({
+    required String bookId,
+    required String chapterId,
+    required String voiceCode,
+    required String idempotencyKey,
+    String? bgmTrackId,
+  }) async {
+    await book(bookId);
+    return _delay(
+      AudiobookJobCreated(
+        jobId: 'aj_mock_$chapterId',
+        status: 'pending',
+        remainingGenerations: 1,
+      ),
+    );
+  }
+
+  @override
+  Future<AudiobookJobStatus> audiobookJob(String bookId, String jobId) =>
+      _delay(
+        AudiobookJobStatus(
+          jobId: jobId,
+          status: 'completed',
+          progress: 100,
+        ),
+      );
+
+  @override
+  Future<AudiobookJobStatus> cancelAudiobookJob(
+    String bookId,
+    String jobId,
+  ) =>
+      _delay(
+        AudiobookJobStatus(jobId: jobId, status: 'cancelled', progress: 0),
+      );
+
+  @override
+  Future<List<int>> audiobookChapterAudio(
+    String bookId,
+    String chapterId, {
+    bool download = false,
+  }) =>
+      _delay(const <int>[]);
 
   // ══════════════════════════════════════════════════════════
   // 알림

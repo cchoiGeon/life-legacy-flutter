@@ -24,16 +24,42 @@ enum ChapterStatus {
       ChapterStatus.values.firstWhere((e) => e.wire == v, orElse: () => locked);
 }
 
+/// user_chapter.source_type
+enum ChapterSource {
+  template('template'),
+  custom('custom');
+
+  const ChapterSource(this.wire);
+
+  final String wire;
+
+  static ChapterSource fromWire(String? v) => ChapterSource.values
+      .firstWhere((e) => e.wire == v, orElse: () => template);
+}
+
 /// 자기소개 문항의 답변 방식.
 ///
 /// 서버 계약이 정해지면 wire 값이 붙을 자리다. 지금은 화면이 어떤 입력을
 /// 그릴지 정하는 데만 쓴다.
 enum IntroAnswerType {
-  /// 성함처럼 직접 적거나 말해서 받는 문항
-  text,
+  /// 자유 입력
+  text('text'),
 
-  /// 예/아니요처럼 버튼을 눌러 고르는 문항. 고르는 즉시 다음으로 넘어간다.
-  choice,
+  /// 단일 선택
+  choice('choice'),
+
+  /// 연·월·일 드롭다운
+  date('date'),
+
+  /// 복수 선택
+  multiChoice('multi_choice');
+
+  const IntroAnswerType(this.wire);
+
+  final String wire;
+
+  static IntroAnswerType fromWire(String? v) => IntroAnswerType.values
+      .firstWhere((e) => e.wire == v, orElse: () => text);
 }
 
 /// 작성 화면 입력 방식.

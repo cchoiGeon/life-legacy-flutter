@@ -10,6 +10,8 @@ import 'package:life_legacy/data/data_manager.dart';
 /// 것을 잠가 둔다. 이게 깨지면 답변을 저장해도 진행률이 안 오르고,
 /// 화면 흐름이 도는지 확인할 수 없게 된다.
 void main() {
+  const bookId = 'b_mock_001';
+
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -49,8 +51,8 @@ void main() {
   test('1차 답변만으로는 진행률이 오르지 않는다', () async {
     final api = MockApiClient();
 
-    final before = await api.home();
-    final q = await api.currentQuestion();
+    final before = await api.home(bookId);
+    final q = await api.currentQuestion(bookId);
     expect(q, isNotNull, reason: '시드 데이터에 미답변 질문이 있어야 한다');
 
     await api.submitAnswer(
@@ -58,40 +60,60 @@ void main() {
       text: '테스트 답변',
       inputMode: ComposeMode.keyboard,
     );
-    final after = await api.home();
+    final after = await api.home(bookId);
 
     expect(after.progress, before.progress, reason: '아직 초안이다');
-    expect(await api.currentQuestion(), isNotNull);
-    expect((await api.currentQuestion())?.id, q.id, reason: '같은 질문에 머문다');
+    expect(await api.currentQuestion(bookId), isNotNull);
+    expect(
+      (await api.currentQuestion(bookId))?.id,
+      q.id,
+      reason: '같은 질문에 머문다',
+    );
   });
 
   test('꼬리답변까지 받아야 진행률이 오르고 다음 질문이 나온다', () async {
     final api = MockApiClient();
 
-    final before = await api.home();
-    final q = await api.currentQuestion();
-    final followup = await api.submitAnswer(
+    final before = await api.home(bookId);
+    final q = await api.currentQuestion(bookId);
+    var followup = await api.submitAnswer(
       questionId: q!.id,
       text: '테스트 답변',
       inputMode: ComposeMode.keyboard,
     );
 
-    final next = await api.submitFollowupAnswer(
+    // 라운드 1 → 중간 followup
+    final mid = await api.submitFollowupAnswer(
       questionId: q.id,
       followupId: followup.id,
       text: '이어서 답한 내용',
       inputMode: ComposeMode.keyboard,
     );
-    final after = await api.home();
+    expect(mid.needsAnotherFollowup, isTrue);
+    expect(await api.home(bookId).then((h) => h.progress), before.progress);
 
+    followup = mid.followup!;
+    final advance = await api.submitFollowupAnswer(
+      questionId: q.id,
+      followupId: followup.id,
+      text: '마지막 꼬리 답변',
+      inputMode: ComposeMode.keyboard,
+    );
+    final after = await api.home(bookId);
+
+    expect(advance.needsAnotherFollowup, isFalse);
     expect(after.progress, greaterThan(before.progress));
     expect(after.remainingQuestions, before.remainingQuestions - 1);
-    expect(next?.id, isNot(q.id), reason: '같은 질문이 다시 나오면 안 된다');
+    expect(
+      advance.nextQuestion?.id,
+      isNot(q.id),
+      reason: '같은 질문이 다시 나오면 안 된다',
+    );
   });
 
   test('앞 장을 끝내야 다음 장이 열린다', () async {
     final api = MockApiClient();
-    final chapters = await api.chapters();
+    final chapters = await api.chapters(bookId);
 
     // 시드: 1장 완료 · 2장 작성 중 · 3장부터 잠김
     expect(chapters[0].status, ChapterStatus.done);
@@ -101,33 +123,48 @@ void main() {
 
   test('키보드로 적은 답변도 같은 경로로 저장된다', () async {
     final api = MockApiClient();
-    final q = await api.currentQuestion();
+    final q = await api.currentQuestion(bookId);
 
-    // 음성이든 키보드든 확정 저장은 submitFollowupAnswer 하나를 지난다.
-    final followup = await api.submitAnswer(
+    // 음성이든 키보드든 확정은 submitFollowupAnswer 루프를 지난다.
+    var followup = await api.submitAnswer(
       questionId: q!.id,
       text: '직접 적은 답변입니다',
       inputMode: ComposeMode.keyboard,
     );
-    await api.submitFollowupAnswer(
+    final mid = await api.submitFollowupAnswer(
       questionId: q.id,
       followupId: followup.id,
       text: '이어서 적은 답변입니다',
       inputMode: ComposeMode.keyboard,
     );
-    final pages = await api.bookPages();
+    followup = mid.followup!;
+    await api.submitFollowupAnswer(
+      questionId: q.id,
+      followupId: followup.id,
+      text: '마지막 꼬리 답변입니다',
+      inputMode: ComposeMode.keyboard,
+    );
+    // Pages = reviewed only — 방금 답한 장을 리뷰 확정해 책에 실는다
+    await api.saveReview(bookId: bookId, chapterId: q.chapterId, version: 1);
+    final pages = await api.bookPages(bookId);
 
     final text = pages.expand((p) => p.paragraphs).join('\n');
     expect(text, contains('직접 적은 답변입니다'));
-    expect(text, contains('이어서 적은 답변입니다'), reason: '꼬리답변도 책에 실린다');
+    expect(
+      text,
+      contains('마지막 꼬리 답변입니다'),
+      reason: '확정 시 꼬리답변도 책에 실린다',
+    );
   });
 
-  test('책 미리보기는 답변한 장만 싣는다', () async {
+  test('책 미리보기는 리뷰된 장만 싣는다', () async {
     final api = MockApiClient();
-    final pages = await api.bookPages();
+    // 시드 1장(완료·답변 있음)을 리뷰해야 미리보기에 실린다
+    await api.saveReview(bookId: bookId, chapterId: 'c1', version: 1);
+    final pages = await api.bookPages(bookId);
 
     expect(pages, isNotEmpty);
-    // 잠긴 3~5장은 답변이 없으므로 실리지 않는다.
     expect(pages.every((p) => p.chapterOrder <= 2), isTrue);
+    expect(pages.any((p) => p.chapterOrder == 1), isTrue);
   });
 }

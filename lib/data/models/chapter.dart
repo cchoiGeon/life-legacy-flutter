@@ -9,7 +9,11 @@ class Chapter {
     required this.status,
     required this.answeredCount,
     required this.questionCount,
+    this.sourceType = ChapterSource.template,
+    this.templateId,
     this.nextQuestionText,
+    this.reviewStatus,
+    this.ebookEligible = false,
   });
 
   final String id;
@@ -22,6 +26,11 @@ class Chapter {
 
   final ChapterStatus status;
 
+  final ChapterSource sourceType;
+
+  /// 카탈로그에서 온 경우 원본 템플릿 id. 초안에서 중복 추가 방지용.
+  final String? templateId;
+
   /// 답변을 마친 질문 수
   final int answeredCount;
 
@@ -32,16 +41,24 @@ class Chapter {
   /// 뜬다. 진행 중인 장에만 있다.
   final String? nextQuestionText;
 
+  /// null | draft | reviewed
+  final String? reviewStatus;
+
+  final bool ebookEligible;
+
+  /// 아직 서버에 없는 로컬 초안 행
+  bool get isLocalDraft => id.startsWith('tmp_') || id.startsWith('tpl_');
+
+  bool get isReviewed => reviewStatus == 'reviewed';
+
   /// 0.0 ~ 1.0
   double get progress => questionCount == 0 ? 0 : answeredCount / questionCount;
 
   /// 자서전 목록(E1 341:682)의 보조 문구.
-  ///
-  /// 진행 중인 장은 남은 개수가 아니라 **다음 질문 제목**을 보여준다 —
-  /// "3/8"은 이미 오른쪽에 있고, 여기서는 "무엇을 물어볼지" 알려줘야
-  /// 이어서 쓰고 싶어진다.
   String get subtitle => switch (status) {
-    ChapterStatus.done => '질문 $questionCount개 모두 답했어요',
+    ChapterStatus.done => isReviewed
+        ? '리뷰 완료 · 전자책 포함'
+        : '질문 $questionCount개 모두 답했어요',
     ChapterStatus.writing =>
       nextQuestionText == null ? '이어서 쓸 수 있어요' : '다음 질문 · $nextQuestionText',
     ChapterStatus.locked => '${order - 1}장을 마치면 열려요',
@@ -49,7 +66,7 @@ class Chapter {
 
   /// 목록 오른쪽 상태 글자. 잠긴 장은 아무것도 쓰지 않는다.
   String? get statusLabel => switch (status) {
-    ChapterStatus.done => '완료',
+    ChapterStatus.done => isReviewed ? '리뷰됨' : '완료',
     ChapterStatus.writing =>
       answeredCount == 0 ? '시작하기' : '$answeredCount/$questionCount',
     ChapterStatus.locked => null,
@@ -60,14 +77,24 @@ class Chapter {
     int? answeredCount,
     String? title,
     String? nextQuestionText,
+    ChapterSource? sourceType,
+    String? templateId,
+    int? order,
+    int? questionCount,
+    String? reviewStatus,
+    bool? ebookEligible,
   }) => Chapter(
     id: id,
-    order: order,
+    order: order ?? this.order,
     title: title ?? this.title,
     status: status ?? this.status,
     answeredCount: answeredCount ?? this.answeredCount,
-    questionCount: questionCount,
+    questionCount: questionCount ?? this.questionCount,
+    sourceType: sourceType ?? this.sourceType,
+    templateId: templateId ?? this.templateId,
     nextQuestionText: nextQuestionText ?? this.nextQuestionText,
+    reviewStatus: reviewStatus ?? this.reviewStatus,
+    ebookEligible: ebookEligible ?? this.ebookEligible,
   );
 
   factory Chapter.fromJson(Map<String, dynamic> json) => Chapter(
@@ -77,7 +104,11 @@ class Chapter {
     status: ChapterStatus.fromWire(json['status'] as String?),
     answeredCount: json['answered_count'] as int? ?? 0,
     questionCount: json['question_count'] as int? ?? 0,
+    sourceType: ChapterSource.fromWire(json['source_type'] as String?),
+    templateId: json['template_id'] as String?,
     nextQuestionText: json['next_question_text'] as String?,
+    reviewStatus: json['review_status'] as String?,
+    ebookEligible: json['ebook_eligible'] as bool? ?? false,
   );
 
   Map<String, dynamic> toJson() => {
@@ -85,10 +116,64 @@ class Chapter {
     'order': order,
     'title': title,
     'status': status.wire,
+    'source_type': sourceType.wire,
     'answered_count': answeredCount,
     'question_count': questionCount,
     'next_question_text': nextQuestionText,
+    'review_status': reviewStatus,
+    'ebook_eligible': ebookEligible,
   };
+}
+
+/// GET /catalog/chapters 항목.
+class CatalogChapter {
+  const CatalogChapter({
+    required this.id,
+    required this.title,
+    required this.questionCount,
+    required this.alreadyAdded,
+  });
+
+  final String id;
+  final String title;
+  final int questionCount;
+  final bool alreadyAdded;
+
+  factory CatalogChapter.fromJson(Map<String, dynamic> json) => CatalogChapter(
+    id: json['id'] as String,
+    title: json['title'] as String? ?? '',
+    questionCount: json['question_count'] as int? ?? 0,
+    alreadyAdded: json['already_added'] as bool? ?? false,
+  );
+}
+
+/// PATCH /intro/toc/draft 한 항목.
+class TocDraftChapter {
+  const TocDraftChapter.existing({required this.id, this.title})
+    : templateId = null;
+
+  const TocDraftChapter.fromTemplate({required this.templateId})
+    : id = null,
+      title = null;
+
+  const TocDraftChapter.custom({required this.title})
+    : id = null,
+      templateId = null;
+
+  final String? id;
+  final String? templateId;
+  final String? title;
+
+  Map<String, dynamic> toJson() {
+    if (id != null) {
+      return {
+        'id': id,
+        if (title != null) 'title': title,
+      };
+    }
+    if (templateId != null) return {'template_id': templateId};
+    return {'title': title};
+  }
 }
 
 /// 장 안의 질문 하나.
@@ -140,23 +225,195 @@ class Question {
   };
 }
 
-/// 1차 답변을 보고 AI가 되물어 오는 질문. 질문 하나당 **한 번**이다.
+/// 1차 답변을 보고 AI가 되물어 오는 질문.
 ///
 /// [text]는 요약 + 공감 + 질문이 한 덩어리로 온다 —
 /// "제주도 이야기를 꺼내시니 … 가장 오래 머문 곳은 어디였나요?"
 /// 그래서 원래 질문보다 서너 배 길고, 화면이 스크롤을 열어 둔다.
+///
+/// 앱은 횟수를 세지 않는다. 서버가 `followup`을 주면 한 번 더, `next_question`이면 확정.
 class Followup {
-  const Followup({required this.id, required this.text});
+  const Followup({
+    required this.id,
+    required this.text,
+    this.seq,
+  });
 
   /// 꼬리답변을 보낼 때 경로에 실린다.
   final String id;
 
   final String text;
 
+  /// 꼬리질문 회차 (1부터). 표시용 — 분기에는 쓰지 않는다.
+  final int? seq;
+
   factory Followup.fromJson(Map<String, dynamic> json) => Followup(
     id: json['id'] as String,
     text: json['text'] as String? ?? '',
+    seq: json['seq'] as int?,
   );
 
-  Map<String, dynamic> toJson() => {'id': id, 'text': text};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'text': text,
+    if (seq != null) 'seq': seq,
+  };
+}
+
+/// POST …/followup/{id}/answer 결과 — followup과 next_question은 동시에 오지 않는다.
+class FollowupAdvanceResult {
+  const FollowupAdvanceResult({
+    this.followup,
+    this.nextQuestion,
+    this.chapterCompleted = false,
+  });
+
+  final Followup? followup;
+  final Question? nextQuestion;
+  final bool chapterCompleted;
+
+  bool get needsAnotherFollowup => followup != null;
+
+  factory FollowupAdvanceResult.fromJson(Map<String, dynamic> json) {
+    final fu = json['followup'];
+    return FollowupAdvanceResult(
+      followup: fu is Map<String, dynamic> ? Followup.fromJson(fu) : null,
+      nextQuestion: json['next_question'] == null
+          ? null
+          : Question.fromJson(json['next_question'] as Map<String, dynamic>),
+      chapterCompleted: json['chapter_completed'] as bool? ?? false,
+    );
+  }
+}
+
+/// GET /books/{id}/chapters/{id}/review
+class ChapterReview {
+  const ChapterReview({
+    required this.chapterId,
+    required this.chapterOrder,
+    required this.chapterTitle,
+    required this.status,
+    required this.version,
+    required this.paragraphs,
+    this.editHint = '웹에서 수정할 수 있어요',
+    this.message,
+    this.nextChapterId,
+  });
+
+  final String chapterId;
+  final int chapterOrder;
+  final String chapterTitle;
+
+  /// draft | reviewed
+  final String status;
+  final int version;
+  final List<String> paragraphs;
+  final String editHint;
+
+  /// PATCH 저장 응답 메시지 (예: 챕터1 저장 완료)
+  final String? message;
+  final String? nextChapterId;
+
+  factory ChapterReview.fromJson(Map<String, dynamic> json) => ChapterReview(
+    chapterId: json['chapter_id'] as String,
+    chapterOrder: json['chapter_order'] as int? ?? 0,
+    chapterTitle: json['chapter_title'] as String? ?? '',
+    status: json['status'] as String? ?? 'draft',
+    version: json['version'] as int? ?? 1,
+    paragraphs: (json['paragraphs'] as List?)
+            ?.map((e) => e as String)
+            .toList() ??
+        const [],
+    editHint: json['edit_hint'] as String? ?? '웹에서 수정할 수 있어요',
+    message: json['message'] as String?,
+    nextChapterId: json['next_chapter_id'] as String?,
+  );
+
+  ChapterReview copyWith({
+    String? status,
+    int? version,
+    String? message,
+    String? nextChapterId,
+  }) =>
+      ChapterReview(
+        chapterId: chapterId,
+        chapterOrder: chapterOrder,
+        chapterTitle: chapterTitle,
+        status: status ?? this.status,
+        version: version ?? this.version,
+        paragraphs: paragraphs,
+        editHint: editHint,
+        message: message ?? this.message,
+        nextChapterId: nextChapterId ?? this.nextChapterId,
+      );
+}
+
+/// GET /books/{id}/chapters/{id}/completion — api-spec §5.9
+class ChapterCompletion {
+  const ChapterCompletion({
+    required this.chapterId,
+    required this.chapterOrder,
+    required this.chapterTitle,
+    required this.questionCount,
+    required this.answeredCount,
+    required this.skippedCount,
+    this.reviewStatus,
+    this.nextChapter,
+    this.canReview = false,
+    this.canHub = true,
+  });
+
+  final String chapterId;
+  final int chapterOrder;
+  final String chapterTitle;
+  final int questionCount;
+  final int answeredCount;
+  final int skippedCount;
+
+  /// null이면 아직 리뷰 전
+  final String? reviewStatus;
+  final ChapterCompletionNext? nextChapter;
+  final bool canReview;
+  final bool canHub;
+
+  bool get needsReview => reviewStatus == null && canReview;
+  bool get hasNextChapter => nextChapter != null;
+
+  factory ChapterCompletion.fromJson(Map<String, dynamic> json) {
+    final next = json['next_chapter'];
+    final actions = json['actions'] as Map<String, dynamic>? ?? const {};
+    return ChapterCompletion(
+      chapterId: json['chapter_id'] as String,
+      chapterOrder: json['chapter_order'] as int? ?? 0,
+      chapterTitle: json['chapter_title'] as String? ?? '',
+      questionCount: json['question_count'] as int? ?? 0,
+      answeredCount: json['answered_count'] as int? ?? 0,
+      skippedCount: json['skipped_count'] as int? ?? 0,
+      reviewStatus: json['review_status'] as String?,
+      nextChapter: next is Map<String, dynamic>
+          ? ChapterCompletionNext.fromJson(next)
+          : null,
+      canReview: actions['review'] as bool? ?? false,
+      canHub: actions['hub'] as bool? ?? true,
+    );
+  }
+}
+
+class ChapterCompletionNext {
+  const ChapterCompletionNext({
+    required this.id,
+    required this.order,
+    required this.title,
+  });
+
+  final String id;
+  final int order;
+  final String title;
+
+  factory ChapterCompletionNext.fromJson(Map<String, dynamic> json) =>
+      ChapterCompletionNext(
+        id: json['id'] as String,
+        order: json['order'] as int? ?? 0,
+        title: json['title'] as String? ?? '',
+      );
 }

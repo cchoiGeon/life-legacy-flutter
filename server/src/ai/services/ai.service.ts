@@ -70,4 +70,28 @@ export class AiService {
         .join('\n\n'),
     );
   }
+
+  /** 챕터 답변들을 자서전 원고로 종합 (§9.2) */
+  synthesizeChapter(input: {
+    chapterTitle: string;
+    answers: string[];
+  }): Promise<string> {
+    if (!this.isStub) {
+      throw new Error('AI 제공자가 아직 연결되지 않았습니다');
+    }
+
+    this.logger.log(`[stub] 종합 · ${input.chapterTitle}`);
+
+    const parts = input.answers
+      .map((a) => a.trim())
+      .filter((a) => a.length > 0);
+
+    if (parts.length === 0) {
+      return Promise.resolve(
+        `${input.chapterTitle}의 이야기를 모아 두고 있어요.\n\n아직 담긴 답이 없습니다.`,
+      );
+    }
+
+    return Promise.resolve(parts.join('\n\n'));
+  }
 }

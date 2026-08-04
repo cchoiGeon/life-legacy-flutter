@@ -3,10 +3,14 @@ import 'package:get/get.dart';
 // ── A · 온보딩 · 로그인 ────────────────────────────────────────
 import 'package:life_legacy/feature/splash/binding.dart';
 import 'package:life_legacy/feature/splash/splash_view.dart';
+import 'package:life_legacy/feature/index/binding.dart';
+import 'package:life_legacy/feature/index/index_view.dart';
 import 'package:life_legacy/feature/login/binding.dart';
 import 'package:life_legacy/feature/login/login_view.dart';
 import 'package:life_legacy/feature/login/phone_view.dart';
 import 'package:life_legacy/feature/login/code_view.dart';
+import 'package:life_legacy/feature/auth/binding.dart' as auth_binding;
+import 'package:life_legacy/feature/auth/auth_view.dart';
 
 // ── B · 자기소개 → 목차 ────────────────────────────────────────
 import 'package:life_legacy/feature/intro/binding.dart';
@@ -26,9 +30,16 @@ import 'package:life_legacy/feature/write/write_view.dart';
 // ── E · 나의 자서전 ────────────────────────────────────────────
 import 'package:life_legacy/feature/book/binding.dart';
 import 'package:life_legacy/feature/book/book_view.dart';
+import 'package:life_legacy/feature/book/book_detail_view.dart';
 import 'package:life_legacy/feature/book/preview_binding.dart';
 import 'package:life_legacy/feature/book/preview_view.dart';
 import 'package:life_legacy/feature/book/complete_view.dart';
+
+// ── 챕터 리뷰 ──────────────────────────────────────────────────
+import 'package:life_legacy/feature/review/binding.dart';
+import 'package:life_legacy/feature/review/review_view.dart';
+import 'package:life_legacy/feature/audiobook/binding.dart';
+import 'package:life_legacy/feature/audiobook/audiobook_view.dart';
 
 // ── 알림 센터 ──────────────────────────────────────────────────
 import 'package:life_legacy/feature/notifications/binding.dart';
@@ -57,6 +68,11 @@ abstract final class AppPages {
       binding: SplashBinding(),
     ),
     GetPage(
+      name: AppRoutes.index,
+      page: () => const IndexView(),
+      binding: IndexBinding(),
+    ),
+    GetPage(
       name: AppRoutes.login,
       page: () => const LoginView(),
       binding: LoginBinding(),
@@ -65,6 +81,11 @@ abstract final class AppPages {
       name: AppRoutes.phone,
       page: () => const PhoneView(),
       binding: LoginBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.auth,
+      page: () => const AuthView(),
+      binding: auth_binding.AuthBinding(),
     ),
     GetPage(
       name: AppRoutes.code,
@@ -126,6 +147,11 @@ abstract final class AppPages {
 
     // ── E 하위 ───────────────────────────────────────────────
     GetPage(
+      name: AppRoutes.bookDetail,
+      page: () => const BookDetailView(),
+      binding: BookDetailBinding(),
+    ),
+    GetPage(
       name: AppRoutes.bookPreview,
       page: () => const BookPreviewView(),
       binding: BookPreviewBinding(),
@@ -134,6 +160,16 @@ abstract final class AppPages {
       name: AppRoutes.bookComplete,
       page: () => const BookCompleteView(),
       binding: BookPreviewBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bookReview,
+      page: () => const ReviewView(),
+      binding: ReviewBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bookAudiobook,
+      page: () => const AudiobookView(),
+      binding: AudiobookBinding(),
     ),
 
     // ── F 하위 ───────────────────────────────────────────────

@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
+import 'package:life_legacy/data/data_manager.dart';
 
 /// 탭 4개가 공유하는 껍데기.
 ///
@@ -40,7 +41,11 @@ class TabScaffold extends StatelessWidget {
           if (next == tab) return;
           // `offNamed` — 탭끼리는 쌓이지 않게 한다. 뒤로가기를 눌렀을 때
           // 지나온 탭을 되짚는 건 이 앱의 흐름과 맞지 않는다.
-          Get.offNamed(_routes[next]!);
+          final bookId = Storage.currentBookId;
+          Get.offNamed(
+            _routes[next]!,
+            arguments: bookId == null ? null : {'bookId': bookId},
+          );
         },
       ),
     );

@@ -47,6 +47,29 @@ abstract interface class ApiClient {
 
   Future<void> logout();
 
+  // ── OCTOMO 인증 (신규) ──────────────────────────────────────
+
+  /// 전화번호로 기존 사용자 후보를 조회한다.
+  /// 가입 여부와 무관하게 항상 `"verify"`를 반환한다 — 응답만으로 가입 여부를
+  /// 알 수 없게 한다.
+  Future<PhoneLookupResult> lookupPhone(String phone);
+
+  /// OCTOMO 인증 문자 정보를 발급받는다 — 수신번호, 보낼 문자, 만료 시간.
+  Future<OctomoChallenge> requestOctomoChallenge(String phone);
+
+  /// OCTOMO 문자 수신 여부를 폴링한다.
+  /// `account`가 `new`면 signup_token과 required_consents가 함께 온다.
+  Future<OctomoVerifyResult> verifyOctomo(String sessionId);
+
+  /// 신규 사용자 가입 — 이름 + 약관 동의를 서버에 보내고 세션을 받는다.
+  Future<AuthSession> signUp({
+    required String signupToken,
+    required String name,
+    required List<ConsentAgreement> consents,
+  });
+
+  /// 현재 시행 중인 약관 문서 목록.
+  Future<List<ConsentDocument>> consentDocuments();
 
   // ══════════════════════════════════════════════════════════
   // 자기소개 → 목차 생성
@@ -55,15 +78,31 @@ abstract interface class ApiClient {
   /// 목차를 만들기 위한 사전 질문들(시안 07·08번).
   Future<List<IntroQuestion>> introQuestions();
 
+  /// 작성 계획(추천 기간 포함).
+  Future<WritingPlanResult> writingPlan();
+
+  /// 작성 계획 저장.
+  Future<WritingPlanResult> updateWritingPlan(WritingPlan plan);
+
   /// 자기소개 답변을 모두 제출하고 목차를 생성한다(시안 09번 로딩).
   /// 서버에서 오래 걸리는 작업이라 화면은 전용 로딩 화면을 띄운다.
-  Future<List<Chapter>> generateToc(Map<String, String> answers);
+  /// 이 시점에 `book_id`가 만들어진다.
+  Future<TocGenerateResult> generateToc(List<IntroAnswerSubmission> answers);
 
-  /// 제안된 목차를 확정한다(시안 B7 "이대로 시작하기").
-  ///
-  /// 사용자가 "순서 바꾸기"로 재배열했으면 바뀐 순서 그대로 넘어온다 —
-  /// 구현체가 `order`를 다시 매겨 저장해야 한다.
-  Future<void> confirmToc(List<Chapter> chapters);
+  /// 카탈로그 대목차(추가 후보).
+  Future<List<CatalogChapter>> catalogChapters(String bookId);
+
+  /// 목차 초안 저장(제목·추가·삭제·재배열).
+  Future<List<Chapter>> saveTocDraft({
+    required String bookId,
+    required List<TocDraftChapter> chapters,
+  });
+
+  /// 제안된 목차를 확정한다.
+  Future<TocConfirmResult> confirmToc({
+    required String bookId,
+    required List<Chapter> chapters,
+  });
 
   /// 자기소개 답변을 사람이 읽는 형태로 (시안 F3의 "자기소개" 구획).
   Future<IntroProfile> introProfile();
@@ -72,16 +111,16 @@ abstract interface class ApiClient {
   // 홈
   // ══════════════════════════════════════════════════════════
 
-  Future<HomeSummary> home();
+  Future<HomeSummary> home(String bookId);
 
   // ══════════════════════════════════════════════════════════
   // 작성
   // ══════════════════════════════════════════════════════════
 
-  Future<List<Chapter>> chapters();
+  Future<List<Chapter>> chapters(String bookId);
 
   /// 지금 답해야 할 질문. 없으면 null(모든 장 완료).
-  Future<Question?> currentQuestion();
+  Future<Question?> currentQuestion(String bookId);
 
   Future<Question> question(String questionId);
 
@@ -111,7 +150,8 @@ abstract interface class ApiClient {
   ///
   /// 저장에 실패하면 `POLISH_FAILED`로 던진다. 이때 서버는 초안을 **남기므로**
   /// 같은 파라미터로 다시 부르면 된다 — 두 번 답한 이야기를 날리지 않는다.
-  Future<Question?> submitFollowupAnswer({
+  /// 꼬리답변. 응답에 followup이 있으면 한 번 더, next_question이면 확정.
+  Future<FollowupAdvanceResult> submitFollowupAnswer({
     required String questionId,
     required String followupId,
     required String text,
@@ -137,14 +177,133 @@ abstract interface class ApiClient {
   /// 이 질문 건너뛰기.
   Future<Question?> skipQuestion(String questionId);
 
+  /// §5.6 초안 autosave.
+  Future<AnswerDraft> saveAnswerDraft({
+    required String questionId,
+    required String text,
+    required ComposeMode inputMode,
+    int? spokenSeconds,
+  });
+
+  /// 초안 조회. 없으면 null(204).
+  Future<AnswerDraft?> answerDraft(String questionId);
+
+  /// 초안 삭제.
+  Future<void> deleteAnswerDraft(String questionId);
+
+  // ══════════════════════════════════════════════════════════
+  // 챕터 리뷰
+  // ══════════════════════════════════════════════════════════
+
+  /// 종합 원고 조회. 없으면 null(204).
+  Future<ChapterReview?> chapterReview(String bookId, String chapterId);
+
+  /// 종합 원고 생성(또는 재생성).
+  Future<ChapterReview> synthesizeReview(String bookId, String chapterId);
+
+  /// 리뷰 저장(앱은 body 미전송 — status만 reviewed).
+  Future<ChapterReview> saveReview({
+    required String bookId,
+    required String chapterId,
+    required int version,
+  });
+
+  /// 챕터 완료 화면. 이탈 후 재진입 시에도 같은 화면을 그린다.
+  Future<ChapterCompletion> chapterCompletion(String bookId, String chapterId);
+
+  // ══════════════════════════════════════════════════════════
+  // 음성 (Clova — 서버 프록시)
+  // ══════════════════════════════════════════════════════════
+
+  /// POST /voice/tts → audio/mpeg 바이트.
+  Future<VoiceAudio> synthesizeSpeech({
+    required String text,
+    String? voiceCode,
+  });
+
+  /// POST /voice/stt (multipart audio).
+  Future<SttResult> transcribeAudio({
+    required List<int> bytes,
+    required String filename,
+    String contentType = 'audio/mp4',
+    int? durationMs,
+  });
+
+  /// GET /voice/sample — 보이스 체크용.
+  Future<VoiceAudio> voiceSample({String? voiceCode});
+
+  /// POST …/review/tts — 원고 청크.
+  Future<VoiceAudio> reviewTts({
+    required String bookId,
+    required String chapterId,
+    int fromParagraph = 0,
+    int chunkSize = 2,
+    String? voiceCode,
+  });
+
   // ══════════════════════════════════════════════════════════
   // 나의 자서전
   // ══════════════════════════════════════════════════════════
 
-  Future<Book> book();
+  Future<Book> book(String bookId);
 
   /// 책 미리보기 쪽들. 완성된 장만 포함한다.
-  Future<List<BookPage>> bookPages();
+  Future<List<BookPage>> bookPages(String bookId);
+
+  /// 소유 책 목록.
+  Future<List<BookListItem>> books();
+
+  /// 기능별 권한 안내 (잠금 UI용 — 접근 통제 아님).
+  Future<PlanEntitlements> entitlements(String bookId);
+
+  /// 전자책 자격 (reviewed 장 기준).
+  Future<EbookEligibility> ebookEligibility(String bookId);
+
+  /// 전자책 PDF 생성 (스냅샷 재사용 가능).
+  Future<EbookExportResult> generateEbook(String bookId);
+
+  /// 전자책 PDF 바이트 (인증 스트림).
+  Future<List<int>> downloadEbookFile(String bookId);
+
+  /// AI 제목 추천 (진행률 80%+).
+  Future<List<String>> suggestEbookTitles(String bookId);
+
+  /// 전자책 제목 저장.
+  Future<void> updateEbookMetadata(String bookId, {required String title});
+
+  /// 오디오북 현황.
+  Future<AudiobookOverview> audiobook(String bookId);
+
+  /// CLOVA 음성 목록.
+  Future<List<AudiobookVoice>> audiobookVoices(String bookId);
+
+  /// 음성 샘플 (CLOVA TTS).
+  Future<List<int>> audiobookVoicePreview(String bookId, String voiceCode);
+
+  /// BGM 카탈로그.
+  Future<List<AudiobookBgmTrack>> audiobookBgms(String bookId);
+
+  /// 챕터 오디오북 생성 (백엔드 CLOVA TTS).
+  Future<AudiobookJobCreated> createAudiobookJob({
+    required String bookId,
+    required String chapterId,
+    required String voiceCode,
+    required String idempotencyKey,
+    String? bgmTrackId,
+  });
+
+  /// 생성 job 상태.
+  Future<AudiobookJobStatus> audiobookJob(String bookId, String jobId);
+
+  /// 생성 job 취소.
+  Future<AudiobookJobStatus> cancelAudiobookJob(String bookId, String jobId);
+
+  /// 챕터 오디오 바이트 (재생/다운로드).
+  Future<List<int>> audiobookChapterAudio(
+    String bookId,
+    String chapterId, {
+    bool download = false,
+  });
 
   // ══════════════════════════════════════════════════════════
   // 알림
@@ -191,3 +350,305 @@ class ApiException implements Exception {
   @override
   String toString() => 'ApiException($code): $message';
 }
+
+// ── OCTOMO 인증 모델 ──────────────────────────────────────────
+
+/// 전화번호 조회 결과.
+class PhoneLookupResult {
+  const PhoneLookupResult({required this.nextStep});
+
+  /// 항상 `"verify"`.
+  final String nextStep;
+
+  factory PhoneLookupResult.fromJson(Map<String, dynamic> json) =>
+      PhoneLookupResult(nextStep: json['next_step'] as String? ?? 'verify');
+}
+
+/// OCTOMO 챌린지 — 사용자가 문자를 보낼 번호와 내용.
+class OctomoChallenge {
+  const OctomoChallenge({
+    required this.sessionId,
+    required this.receiverNumber,
+    required this.verifyText,
+    required this.expiresIn,
+    required this.pollInterval,
+  });
+
+  final String sessionId;
+  final String receiverNumber;
+  final String verifyText;
+  final int expiresIn;
+  final int pollInterval;
+
+  factory OctomoChallenge.fromJson(Map<String, dynamic> json) =>
+      OctomoChallenge(
+        sessionId: json['session_id'] as String,
+        receiverNumber: json['receiver_number'] as String,
+        verifyText: json['verify_text'] as String,
+        expiresIn: json['expires_in'] as int? ?? 300,
+        pollInterval: json['poll_interval'] as int? ?? 3,
+      );
+}
+
+/// OCTOMO 폴링 결과.
+class OctomoVerifyResult {
+  const OctomoVerifyResult({
+    required this.status,
+    this.account,
+    this.session,
+    this.signupToken,
+    this.requiredConsents = const [],
+    this.expiresIn,
+  });
+
+  /// `"pending"` 또는 `"verified"`.
+  final String status;
+
+  /// `"existing"` 또는 `"new"`. `status`가 `"verified"`일 때만 있다.
+  final String? account;
+
+  /// 기존 사용자 — 로그인 세션.
+  final AuthSession? session;
+
+  /// 신규 사용자 — 회원가입용 단기 토큰.
+  final String? signupToken;
+
+  /// 신규 사용자 — 필수·선택 약관 목록.
+  final List<ConsentDocument> requiredConsents;
+
+  /// 남은 유효 시간(초). `pending`일 때만 있다.
+  final int? expiresIn;
+
+  bool get isPending => status == 'pending';
+  bool get isVerified => status == 'verified';
+  bool get isExisting => account == 'existing';
+  bool get isNewUser => account == 'new';
+
+  factory OctomoVerifyResult.fromJson(Map<String, dynamic> json) {
+    final status = json['status'] as String;
+    if (status == 'pending') {
+      return OctomoVerifyResult(
+        status: status,
+        expiresIn: json['expires_in'] as int?,
+      );
+    }
+    // verified
+    final account = json['account'] as String?;
+    return OctomoVerifyResult(
+      status: status,
+      account: account,
+      session: json['session'] != null
+          ? AuthSession.fromJson(
+              json['session'] as Map<String, dynamic>,
+            )
+          : null,
+      signupToken: json['signup_token'] as String?,
+      requiredConsents: (json['required_consents'] as List?)
+              ?.map(
+                (e) => ConsentDocument.fromJson(e as Map<String, dynamic>),
+              )
+              .toList() ??
+          const [],
+    );
+  }
+}
+
+/// 약관 문서 정보.
+class ConsentDocument {
+  const ConsentDocument({
+    required this.key,
+    required this.version,
+    required this.title,
+    this.url,
+    required this.required,
+  });
+
+  final String key;
+  final String version;
+  final String title;
+  final String? url;
+  final bool required;
+
+  factory ConsentDocument.fromJson(Map<String, dynamic> json) =>
+      ConsentDocument(
+        key: json['key'] as String,
+        version: json['version'] as String? ?? '1.0',
+        title: json['title'] as String,
+        url: json['url'] as String?,
+        required: json['required'] as bool? ?? true,
+      );
+}
+
+/// 회원가입 시 보낼 약관 동의 항목.
+class ConsentAgreement {
+  const ConsentAgreement({
+    required this.key,
+    required this.version,
+    required this.agreed,
+  });
+
+  final String key;
+  final String version;
+  final bool agreed;
+
+  Map<String, dynamic> toJson() => {
+    'key': key,
+    'version': version,
+    'agreed': agreed,
+  };
+}
+
+/// POST /intro/answers 응답.
+class TocGenerateResult {
+  const TocGenerateResult({
+    required this.bookId,
+    required this.caseKey,
+    required this.chapters,
+  });
+
+  final String bookId;
+  final String caseKey;
+  final List<Chapter> chapters;
+
+  factory TocGenerateResult.fromJson(Map<String, dynamic> json) =>
+      TocGenerateResult(
+        bookId: json['book_id'] as String,
+        caseKey: json['case_key'] as String? ?? '',
+        chapters: (json['chapters'] as List)
+            .map((e) => Chapter.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+/// POST /intro/toc/confirm 응답.
+class TocConfirmResult {
+  const TocConfirmResult({
+    required this.bookId,
+    this.firstQuestionId,
+    required this.chapters,
+  });
+
+  final String bookId;
+  final String? firstQuestionId;
+  final List<Chapter> chapters;
+
+  factory TocConfirmResult.fromJson(Map<String, dynamic> json) =>
+      TocConfirmResult(
+        bookId: json['book_id'] as String,
+        firstQuestionId: json['first_question_id'] as String?,
+        chapters: (json['chapters'] as List? ?? const [])
+            .map((e) => Chapter.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+/// GET /books 목록 항목.
+class BookListItem {
+  const BookListItem({
+    required this.id,
+    required this.title,
+    required this.authorName,
+    required this.status,
+    required this.chapterCount,
+    required this.chapterDone,
+    required this.progress,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String title;
+  final String authorName;
+
+  /// draft | writing | completed
+  final String status;
+  final int chapterCount;
+  final int chapterDone;
+  final double progress;
+  final DateTime updatedAt;
+
+  factory BookListItem.fromJson(Map<String, dynamic> json) => BookListItem(
+    id: json['id'] as String,
+    title: json['title'] as String? ?? '',
+    authorName: json['author_name'] as String? ?? '',
+    status: json['status'] as String? ?? 'draft',
+    chapterCount: json['chapter_count'] as int? ?? 0,
+    chapterDone: json['chapter_done'] as int? ?? 0,
+    progress: (json['progress'] as num?)?.toDouble() ?? 0,
+    updatedAt:
+        DateTime.tryParse(json['updated_at'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+  );
+}
+
+/// GET/PUT /questions/{id}/draft
+class AnswerDraft {
+  const AnswerDraft({
+    required this.questionId,
+    required this.phase,
+    required this.text,
+    required this.inputMode,
+    this.spokenSeconds,
+    this.followupRound = 0,
+    this.pendingFollowup,
+  });
+
+  final String questionId;
+
+  /// first | followup
+  final String phase;
+  final String text;
+  final ComposeMode inputMode;
+  final int? spokenSeconds;
+  final int followupRound;
+  final Followup? pendingFollowup;
+
+  bool get isFollowupPhase => phase == 'followup';
+
+  factory AnswerDraft.fromJson(Map<String, dynamic> json) {
+    final pending = json['pending_followup'];
+    return AnswerDraft(
+      questionId: json['question_id'] as String? ?? '',
+      phase: json['phase'] as String? ?? 'first',
+      text: json['text'] as String? ?? '',
+      inputMode: ComposeMode.values.firstWhere(
+        (e) => e.wire == json['input_mode'],
+        orElse: () => ComposeMode.keyboard,
+      ),
+      spokenSeconds: json['spoken_seconds'] as int?,
+      followupRound: json['followup_round'] as int? ?? 0,
+      pendingFollowup: pending is Map<String, dynamic>
+          ? Followup.fromJson(pending)
+          : null,
+    );
+  }
+}
+
+/// TTS / sample 응답 (mpeg 바이트 + 선택 헤더).
+class VoiceAudio {
+  const VoiceAudio({
+    required this.bytes,
+    this.durationMs,
+    this.nextParagraph,
+  });
+
+  final List<int> bytes;
+  final int? durationMs;
+
+  /// 리뷰 TTS 청크: null이면 마지막. -1도 마지막으로 취급.
+  final int? nextParagraph;
+
+  bool get hasMore => nextParagraph != null && nextParagraph! >= 0;
+}
+
+class SttResult {
+  const SttResult({required this.text, this.durationMs});
+
+  final String text;
+  final int? durationMs;
+
+  factory SttResult.fromJson(Map<String, dynamic> json) => SttResult(
+    text: json['text'] as String? ?? '',
+    durationMs: json['duration_ms'] as int?,
+  );
+}
+

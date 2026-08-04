@@ -13,7 +13,10 @@ import { IntroModule } from './intro/intro.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SettingsModule } from './settings/settings.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { ReviewModule } from './review/review.module';
+import { AudiobookModule } from './audiobook/audiobook.module';
 import { UsersModule } from './users/users.module';
+import { VoiceModule } from './voice/voice.module';
 
 @Module({
   imports: [
@@ -62,6 +65,9 @@ import { UsersModule } from './users/users.module';
     AnswersModule,
     HomeModule,
     BookModule,
+    ReviewModule,
+    AudiobookModule,
+    VoiceModule,
     NotificationsModule,
     SettingsModule,
   ],

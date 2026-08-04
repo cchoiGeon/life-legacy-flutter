@@ -28,6 +28,8 @@ dependencies:
   showcaseview: ^5.1.0
   path_provider: ^2.1.6
   open_filex: ^4.7.0
+  just_audio: ^0.10.6
+  record: ^7.1.1
 
   # dio는 파일 다운로드와 향후 실제 API 클라이언트에 사용한다.
   #    현재 화면 API는 MockApiClient가 ApiClient 인터페이스를 구현한다.

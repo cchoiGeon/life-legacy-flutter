@@ -7,6 +7,7 @@ import 'package:life_legacy/data/enums/enums.dart';
 /// 맞춰주면 된다 — 화면은 그대로 둔다.
 class HomeSummary {
   const HomeSummary({
+    this.bookId,
     required this.todayQuestion,
     required this.todayQuestionId,
     required this.progress,
@@ -14,6 +15,8 @@ class HomeSummary {
     required this.chapterTotal,
     required this.remainingQuestions,
   });
+
+  final String? bookId;
 
   /// "첫 월급을 받던 날, 기분이 어떠셨나요?"
   /// 아직 시작한 이야기가 없으면 null → 빈 상태 화면(시안 12번).
@@ -36,6 +39,7 @@ class HomeSummary {
       '$chapterTotal장 중 $chapterDone장 완성 · 남은 질문 $remainingQuestions개';
 
   factory HomeSummary.fromJson(Map<String, dynamic> json) => HomeSummary(
+    bookId: json['book_id'] as String?,
     todayQuestion: json['today_question'] as String?,
     todayQuestionId: json['today_question_id'] as String?,
     progress: (json['progress'] as num?)?.toDouble() ?? 0,
@@ -45,6 +49,7 @@ class HomeSummary {
   );
 
   Map<String, dynamic> toJson() => {
+    'book_id': bookId,
     'today_question': todayQuestion,
     'today_question_id': todayQuestionId,
     'progress': progress,
@@ -54,7 +59,7 @@ class HomeSummary {
   };
 }
 
-/// 자기소개 단계의 질문(시안 07·08번). 목차를 만들기 위한 사전 질문 5개.
+/// 자기소개 단계의 질문.
 class IntroQuestion {
   const IntroQuestion({
     required this.id,
@@ -63,70 +68,164 @@ class IntroQuestion {
     this.subtitle,
     this.hint,
     this.type = IntroAnswerType.text,
+    this.skippable = false,
     this.choices = const [],
   });
 
   final String id;
-
-  /// 1부터. "1 / 5"의 앞 숫자.
   final int order;
-
-  /// "성함을 알려주세요"
   final String text;
-
-  /// 제목 아래 한 줄 — "책 표지에 들어갈 이름이에요".
-  ///
-  /// **왜 여기까지 묻는지**를 알려주는 자리다. 시니어 사용자가 개인정보를
-  /// 왜 주는지 모른 채 넘어가지 않게 시안이 문항마다 붙여 놓았다.
   final String? subtitle;
-
-  /// 입력창 placeholder. [type]이 text일 때만 쓴다.
   final String? hint;
-
   final IntroAnswerType type;
-
-  /// 고르기 문항의 선택지. 화면은 **세로로 쌓아** 그린다.
-  ///
-  /// 개수 제한이 없다 — 둘이면 높이 96, 셋 이상이면 74로 줄어든다
-  /// (`AppChoiceTile.heightFor`). 예전에는 두 개를 가로로 놓는다고 가정했지만
-  /// 학력 문항이 4지선다가 되면서 그 가정을 버렸다.
-  final List<String> choices;
+  final bool skippable;
+  final List<IntroChoiceOption> choices;
 
   factory IntroQuestion.fromJson(Map<String, dynamic> json) {
-    final choices =
-        (json['choices'] as List?)?.map((e) => e as String).toList() ??
-        const <String>[];
+    final rawChoices = json['choices'] as List? ?? const [];
+    final choices = rawChoices.map((e) {
+      if (e is String) {
+        return IntroChoiceOption(id: e, label: e);
+      }
+      return IntroChoiceOption.fromJson(e as Map<String, dynamic>);
+    }).toList();
+
+    final typeWire = json['answer_type'] as String?;
     return IntroQuestion(
       id: json['id'] as String,
       order: json['order'] as int? ?? 0,
       text: json['text'] as String? ?? '',
       subtitle: json['subtitle'] as String?,
       hint: json['hint'] as String?,
-      // 서버가 type을 안 주면 선택지 유무로 판단한다.
-      type: choices.isEmpty ? IntroAnswerType.text : IntroAnswerType.choice,
+      type: typeWire != null
+          ? IntroAnswerType.fromWire(typeWire)
+          : (choices.isEmpty ? IntroAnswerType.text : IntroAnswerType.choice),
+      skippable: json['skippable'] as bool? ?? false,
       choices: choices,
     );
   }
+}
+
+class IntroChoiceOption {
+  const IntroChoiceOption({
+    required this.id,
+    required this.label,
+    this.details = const [],
+  });
+
+  final String id;
+  final String label;
+  final List<IntroChoiceOption> details;
+
+  bool get hasDetails => details.isNotEmpty;
+
+  factory IntroChoiceOption.fromJson(Map<String, dynamic> json) =>
+      IntroChoiceOption(
+        id: json['id'] as String? ?? json['label'] as String? ?? '',
+        label: json['label'] as String? ?? '',
+        details: (json['details'] as List?)
+                ?.map(
+                  (e) => IntroChoiceOption.fromJson(e as Map<String, dynamic>),
+                )
+                .toList() ??
+            const [],
+      );
+}
+
+/// 자기소개 제출 한 문항.
+class IntroAnswerSubmission {
+  const IntroAnswerSubmission({
+    required this.questionId,
+    this.value,
+    this.choiceId,
+    this.detailChoiceId,
+    this.detailValue,
+    this.skipped = false,
+  });
+
+  final String questionId;
+  final String? value;
+  final String? choiceId;
+  final String? detailChoiceId;
+  final String? detailValue;
+  final bool skipped;
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'order': order,
-    'text': text,
-    'subtitle': subtitle,
-    'hint': hint,
-    'choices': choices,
+    'question_id': questionId,
+    if (skipped) 'skipped': true,
+    if (!skipped && value != null) 'value': value,
+    if (choiceId != null) 'choice_id': choiceId,
+    if (detailChoiceId != null) 'detail_choice_id': detailChoiceId,
+    if (detailValue != null) 'detail_value': detailValue,
   };
+}
+
+/// 작성 계획.
+class WritingPlan {
+  const WritingPlan({
+    required this.dailyMinutes,
+    required this.availableWeekdays,
+    required this.availablePeriods,
+    required this.durationWeeks,
+    required this.durationSource,
+    required this.alarmEnabled,
+  });
+
+  final int dailyMinutes;
+  final List<int> availableWeekdays;
+  final List<String> availablePeriods;
+  final int durationWeeks;
+  final String durationSource;
+  final bool alarmEnabled;
+
+  Map<String, dynamic> toJson() => {
+    'daily_minutes': dailyMinutes,
+    'available_weekdays': availableWeekdays,
+    'available_periods': availablePeriods,
+    'duration_weeks': durationWeeks,
+    'duration_source': durationSource,
+    'alarm_enabled': alarmEnabled,
+  };
+
+  factory WritingPlan.fromJson(Map<String, dynamic> json) => WritingPlan(
+    dailyMinutes: json['daily_minutes'] as int? ?? 30,
+    availableWeekdays: (json['available_weekdays'] as List?)
+            ?.map((e) => e as int)
+            .toList() ??
+        const [],
+    availablePeriods: (json['available_periods'] as List?)
+            ?.map((e) => e as String)
+            .toList() ??
+        const [],
+    durationWeeks: json['duration_weeks'] as int? ?? 2,
+    durationSource: json['duration_source'] as String? ?? 'recommended',
+    alarmEnabled: json['alarm_enabled'] as bool? ?? true,
+  );
+}
+
+class WritingPlanResult {
+  const WritingPlanResult({
+    required this.recommendedWeeks,
+    this.plan,
+  });
+
+  final int recommendedWeeks;
+  final WritingPlan? plan;
+
+  factory WritingPlanResult.fromJson(Map<String, dynamic> json) =>
+      WritingPlanResult(
+        recommendedWeeks: json['recommended_weeks'] as int? ?? 2,
+        plan: json['plan'] != null
+            ? WritingPlan.fromJson(json['plan'] as Map<String, dynamic>)
+            : null,
+      );
 }
 
 /// 자기소개 답변을 사람이 읽는 형태로 정리한 것 — 시안 F3(내 정보)의
 /// "자기소개" 구획.
-///
-/// 답변 원본(`Map<질문 id, 답>`)을 그대로 보여주면 화면이 서버의 질문 id를
-/// 알아야 한다. 그래서 서버가 라벨과 값을 짝지어 내려주는 모양으로 잡았다.
 class IntroProfile {
   const IntroProfile({required this.entries});
 
-  /// 순서가 곧 화면 순서다 — 성별 · 결혼 · 자녀 · 학력.
   final List<IntroProfileEntry> entries;
 
   factory IntroProfile.fromJson(Map<String, dynamic> json) => IntroProfile(
@@ -143,21 +242,28 @@ class IntroProfile {
 }
 
 class IntroProfileEntry {
-  const IntroProfileEntry({required this.label, required this.value});
+  const IntroProfileEntry({
+    required this.label,
+    this.value,
+    this.skipped = false,
+  });
 
-  /// "성별"
   final String label;
-
-  /// "여성"
-  final String value;
+  final String? value;
+  final bool skipped;
 
   factory IntroProfileEntry.fromJson(Map<String, dynamic> json) =>
       IntroProfileEntry(
         label: json['label'] as String? ?? '',
-        value: json['value'] as String? ?? '',
+        value: json['value'] as String?,
+        skipped: json['skipped'] as bool? ?? false,
       );
 
-  Map<String, dynamic> toJson() => {'label': label, 'value': value};
+  Map<String, dynamic> toJson() => {
+    'label': label,
+    'value': value,
+    'skipped': skipped,
+  };
 }
 
 /// 인쇄본 배송지 — 시안 F3(보기) · F4(수정).

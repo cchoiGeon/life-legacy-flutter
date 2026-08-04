@@ -83,10 +83,9 @@ void _registerGlobals() {
 
   Get.put(AuthService(api), permanent: true);
   Get.put(ToastService(), permanent: true);
+  Get.put(VoicePlayerService(), permanent: true);
 
-  // 음성 인식은 서버가 아니라 **단말 기능**이라 ApiClient 바깥에 둔다.
-  // init()은 권한 요청을 포함하고, 실패해도 예외를 던지지 않는다 —
-  // 음성이 안 되는 기기에서도 키보드 입력으로 앱을 쓸 수 있어야 한다.
+  // 마이크 권한·녹음. 전사는 서버 Clova STT.
   Get.put(SpeechService(), permanent: true).init();
 }
 

@@ -67,6 +67,48 @@ class RealApiClient implements ApiClient {
   Future<void> logout() => _post('/auth/logout', null);
 
   // ══════════════════════════════════════════════════════════
+  // OCTOMO 인증 (신규)
+  // ══════════════════════════════════════════════════════════
+
+  @override
+  Future<PhoneLookupResult> lookupPhone(String phone) async {
+    final body = await _post('/auth/phone/lookup', {'phone': phone});
+    return PhoneLookupResult.fromJson(body!);
+  }
+
+  @override
+  Future<OctomoChallenge> requestOctomoChallenge(String phone) async {
+    final body = await _post('/auth/octomo/challenge', {'phone': phone});
+    return OctomoChallenge.fromJson(body!);
+  }
+
+  @override
+  Future<OctomoVerifyResult> verifyOctomo(String sessionId) async {
+    final body = await _post('/auth/octomo/verify', {'session_id': sessionId});
+    return OctomoVerifyResult.fromJson(body!);
+  }
+
+  @override
+  Future<AuthSession> signUp({
+    required String signupToken,
+    required String name,
+    required List<ConsentAgreement> consents,
+  }) async {
+    final body = await _post('/auth/signup', {
+      'signup_token': signupToken,
+      'name': name,
+      'consents': consents.map((c) => c.toJson()).toList(),
+    });
+    return AuthSession.fromJson(body!);
+  }
+
+  @override
+  Future<List<ConsentDocument>> consentDocuments() async {
+    final items = await _getItems('/consents/documents');
+    return items.map(ConsentDocument.fromJson).toList();
+  }
+
+  // ══════════════════════════════════════════════════════════
   // 자기소개 → 목차
   // ══════════════════════════════════════════════════════════
 
@@ -78,27 +120,60 @@ class RealApiClient implements ApiClient {
   }
 
   @override
-  Future<List<Chapter>> generateToc(Map<String, String> answers) async {
+  Future<WritingPlanResult> writingPlan() async {
+    final body = await _get('/intro/writing-plan');
+    return WritingPlanResult.fromJson(body!);
+  }
+
+  @override
+  Future<WritingPlanResult> updateWritingPlan(WritingPlan plan) async {
+    final body = await _put('/intro/writing-plan', plan.toJson());
+    return WritingPlanResult.fromJson(body!);
+  }
+
+  @override
+  Future<TocGenerateResult> generateToc(
+    List<IntroAnswerSubmission> answers,
+  ) async {
     final body = await _post('/intro/answers', {
-      'answers': [
-        for (final entry in answers.entries)
-          {'question_id': entry.key, 'value': entry.value},
-      ],
+      'answers': [for (final a in answers) a.toJson()],
     });
 
-    // 응답에 case_key도 오지만 화면이 쓰지 않는다 — 목차만 꺼낸다.
-    return (body!['chapters'] as List)
+    return TocGenerateResult.fromJson(body!);
+  }
+
+  @override
+  Future<List<CatalogChapter>> catalogChapters(String bookId) async {
+    final items = await _getItems('/catalog/chapters?book_id=$bookId');
+    return items.map(CatalogChapter.fromJson).toList();
+  }
+
+  @override
+  Future<List<Chapter>> saveTocDraft({
+    required String bookId,
+    required List<TocDraftChapter> chapters,
+  }) async {
+    final body = await _patch('/intro/toc/draft', {
+      'book_id': bookId,
+      'chapters': [for (final c in chapters) c.toJson()],
+    });
+    final list = body?['chapters'] as List? ?? const [];
+    return list
         .map((e) => Chapter.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   @override
-  Future<void> confirmToc(List<Chapter> chapters) => _post(
-    '/intro/toc/confirm',
-    // 사용자가 "순서 바꾸기"로 재배열한 그대로 보낸다. 서버가 이 순서대로
-    // order를 다시 매긴다.
-    {'chapter_ids': [for (final c in chapters) c.id]},
-  );
+  Future<TocConfirmResult> confirmToc({
+    required String bookId,
+    required List<Chapter> chapters,
+  }) async {
+    final body = await _post('/intro/toc/confirm', {
+      'book_id': bookId,
+      'chapter_ids': [for (final c in chapters) c.id],
+    });
+    return TocConfirmResult.fromJson(body!);
+  }
 
   @override
   Future<IntroProfile> introProfile() async {
@@ -112,8 +187,8 @@ class RealApiClient implements ApiClient {
   // ══════════════════════════════════════════════════════════
 
   @override
-  Future<HomeSummary> home() async {
-    final body = await _get('/home');
+  Future<HomeSummary> home(String bookId) async {
+    final body = await _get('/books/$bookId/home');
 
     return HomeSummary.fromJson(body!);
   }
@@ -123,19 +198,17 @@ class RealApiClient implements ApiClient {
   // ══════════════════════════════════════════════════════════
 
   @override
-  Future<List<Chapter>> chapters() async {
-    final items = await _getItems('/chapters');
+  Future<List<Chapter>> chapters(String bookId) async {
+    final items = await _getItems('/books/$bookId/chapters');
 
     return items.map(Chapter.fromJson).toList();
   }
 
   @override
-  Future<Question?> currentQuestion() async {
-    final body = await _get('/questions/current');
-
-    // ⚠️ 204 No Content = 모든 장을 끝냈다는 뜻이다. 예외로 다루면 앱이
-    //    완성 화면 대신 오류를 띄운다.
-    return body == null ? null : Question.fromJson(body);
+  Future<Question?> currentQuestion(String bookId) async {
+    final body = await _get('/books/$bookId/questions/current');
+    if (body == null) return null;
+    return Question.fromJson(body);
   }
 
   @override
@@ -171,7 +244,7 @@ class RealApiClient implements ApiClient {
   }
 
   @override
-  Future<Question?> submitFollowupAnswer({
+  Future<FollowupAdvanceResult> submitFollowupAnswer({
     required String questionId,
     required String followupId,
     required String text,
@@ -183,7 +256,7 @@ class RealApiClient implements ApiClient {
       _answerBody(text, inputMode, spokenSeconds),
     );
 
-    return _nextQuestion(body!);
+    return FollowupAdvanceResult.fromJson(body!);
   }
 
   @override
@@ -193,22 +266,341 @@ class RealApiClient implements ApiClient {
     return _nextQuestion(body!);
   }
 
+  @override
+  Future<AnswerDraft> saveAnswerDraft({
+    required String questionId,
+    required String text,
+    required ComposeMode inputMode,
+    int? spokenSeconds,
+  }) async {
+    final body = await _put('/questions/$questionId/draft', {
+      'text': text,
+      'input_mode': inputMode.wire,
+      if (spokenSeconds != null) 'spoken_seconds': spokenSeconds,
+    });
+    return AnswerDraft.fromJson(body!);
+  }
+
+  @override
+  Future<AnswerDraft?> answerDraft(String questionId) async {
+    final body = await _get('/questions/$questionId/draft');
+    if (body == null) return null;
+    return AnswerDraft.fromJson(body);
+  }
+
+  @override
+  Future<void> deleteAnswerDraft(String questionId) async {
+    await _send(() => _dio.delete<dynamic>('/questions/$questionId/draft'));
+  }
+
+  @override
+  Future<ChapterReview?> chapterReview(String bookId, String chapterId) async {
+    final body = await _get('/books/$bookId/chapters/$chapterId/review');
+    if (body == null) return null;
+    return ChapterReview.fromJson(body);
+  }
+
+  @override
+  Future<ChapterReview> synthesizeReview(String bookId, String chapterId) async {
+    final body = await _post(
+      '/books/$bookId/chapters/$chapterId/review/synthesize',
+      null,
+    );
+    return ChapterReview.fromJson(body!);
+  }
+
+  @override
+  Future<ChapterReview> saveReview({
+    required String bookId,
+    required String chapterId,
+    required int version,
+  }) async {
+    final body = await _patch('/books/$bookId/chapters/$chapterId/review', {
+      'version': version,
+      'status': 'reviewed',
+    });
+    return ChapterReview.fromJson(body!);
+  }
+
+  @override
+  Future<ChapterCompletion> chapterCompletion(
+    String bookId,
+    String chapterId,
+  ) async {
+    final body = await _get('/books/$bookId/chapters/$chapterId/completion');
+    return ChapterCompletion.fromJson(body!);
+  }
+
+  @override
+  Future<VoiceAudio> synthesizeSpeech({
+    required String text,
+    String? voiceCode,
+  }) async {
+    try {
+      final response = await _dio.post<List<int>>(
+        '/voice/tts',
+        data: {
+          'text': text,
+          if (voiceCode != null) 'voice_code': voiceCode,
+        },
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return VoiceAudio(
+        bytes: response.data ?? const [],
+        durationMs: _headerInt(response.headers, 'x-voice-duration-ms'),
+      );
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  @override
+  Future<SttResult> transcribeAudio({
+    required List<int> bytes,
+    required String filename,
+    String contentType = 'audio/mp4',
+    int? durationMs,
+  }) async {
+    try {
+      final form = FormData.fromMap({
+        'audio': MultipartFile.fromBytes(bytes, filename: filename),
+        if (durationMs != null) 'duration_ms': durationMs,
+      });
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/voice/stt',
+        data: form,
+      );
+      return SttResult.fromJson(response.data ?? const {});
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  @override
+  Future<VoiceAudio> voiceSample({String? voiceCode}) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        '/voice/sample',
+        queryParameters: {
+          if (voiceCode != null) 'voice_code': voiceCode,
+        },
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return VoiceAudio(bytes: response.data ?? const []);
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  @override
+  Future<VoiceAudio> reviewTts({
+    required String bookId,
+    required String chapterId,
+    int fromParagraph = 0,
+    int chunkSize = 2,
+    String? voiceCode,
+  }) async {
+    try {
+      final response = await _dio.post<List<int>>(
+        '/books/$bookId/chapters/$chapterId/review/tts',
+        data: {
+          'from_paragraph': fromParagraph,
+          'chunk_size': chunkSize,
+          if (voiceCode != null) 'voice_code': voiceCode,
+        },
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final next = _headerInt(response.headers, 'x-next-paragraph');
+      return VoiceAudio(
+        bytes: response.data ?? const [],
+        durationMs: _headerInt(response.headers, 'x-voice-duration-ms'),
+        nextParagraph: next == -1 ? null : next,
+      );
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  int? _headerInt(Headers headers, String name) {
+    final raw = headers.value(name);
+    if (raw == null) return null;
+    return int.tryParse(raw);
+  }
+
   // ══════════════════════════════════════════════════════════
   // 나의 자서전
   // ══════════════════════════════════════════════════════════
 
   @override
-  Future<Book> book() async {
-    final body = await _get('/book');
+  Future<List<BookListItem>> books() async {
+    final items = await _getItems('/books');
+    return items.map(BookListItem.fromJson).toList();
+  }
+
+  @override
+  Future<Book> book(String bookId) async {
+    final body = await _get('/books/$bookId');
 
     return Book.fromJson(body!);
   }
 
   @override
-  Future<List<BookPage>> bookPages() async {
-    final items = await _getItems('/book/pages');
+  Future<List<BookPage>> bookPages(String bookId) async {
+    final items = await _getItems('/books/$bookId/pages');
 
     return items.map(BookPage.fromJson).toList();
+  }
+
+  @override
+  Future<EbookEligibility> ebookEligibility(String bookId) async {
+    final body = await _get('/books/$bookId/ebook/eligibility');
+    return EbookEligibility.fromJson(body!);
+  }
+
+  @override
+  Future<PlanEntitlements> entitlements(String bookId) async {
+    final body = await _get('/books/$bookId/entitlements');
+    return PlanEntitlements.fromJson(body!);
+  }
+
+  @override
+  Future<EbookExportResult> generateEbook(String bookId) async {
+    final body = await _post('/books/$bookId/ebook/generate', null);
+    return EbookExportResult.fromJson(body!);
+  }
+
+  @override
+  Future<List<int>> downloadEbookFile(String bookId) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        '/books/$bookId/ebook/file',
+        options: Options(
+          responseType: ResponseType.bytes,
+        ),
+      );
+      return response.data ?? const [];
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  @override
+  Future<List<String>> suggestEbookTitles(String bookId) async {
+    final body = await _post('/books/$bookId/ebook/titles/suggest', null);
+    return ((body?['titles'] as List?) ?? const [])
+        .map((e) => e as String)
+        .toList();
+  }
+
+  @override
+  Future<void> updateEbookMetadata(
+    String bookId, {
+    required String title,
+  }) async {
+    await _patch('/books/$bookId/ebook/metadata', {'title': title});
+  }
+
+  @override
+  Future<AudiobookOverview> audiobook(String bookId) async {
+    final body = await _get('/books/$bookId/audiobook');
+    return AudiobookOverview.fromJson(body!);
+  }
+
+  @override
+  Future<List<AudiobookVoice>> audiobookVoices(String bookId) async {
+    final body = await _get('/books/$bookId/audiobook/voices');
+    final items = (body?['items'] as List?) ?? const [];
+    return items
+        .map((e) => AudiobookVoice.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<List<int>> audiobookVoicePreview(
+    String bookId,
+    String voiceCode,
+  ) async {
+    try {
+      final response = await _dio.post<List<int>>(
+        '/books/$bookId/audiobook/voice-preview',
+        data: {'voice_code': voiceCode},
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return response.data ?? const [];
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  @override
+  Future<List<AudiobookBgmTrack>> audiobookBgms(String bookId) async {
+    final body = await _get('/books/$bookId/audiobook/bgms');
+    final items = (body?['items'] as List?) ?? const [];
+    return items
+        .map((e) => AudiobookBgmTrack.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<AudiobookJobCreated> createAudiobookJob({
+    required String bookId,
+    required String chapterId,
+    required String voiceCode,
+    required String idempotencyKey,
+    String? bgmTrackId,
+  }) async {
+    final body = await _post(
+      '/books/$bookId/audiobook/chapters/$chapterId/jobs',
+      {
+        'voice_code': voiceCode,
+        'idempotency_key': idempotencyKey,
+        if (bgmTrackId != null) 'bgm_track_id': bgmTrackId,
+      },
+    );
+    return AudiobookJobCreated.fromJson(body!);
+  }
+
+  @override
+  Future<AudiobookJobStatus> audiobookJob(String bookId, String jobId) async {
+    final body = await _get('/books/$bookId/audiobook/jobs/$jobId');
+    return AudiobookJobStatus.fromJson(body!);
+  }
+
+  @override
+  Future<AudiobookJobStatus> cancelAudiobookJob(
+    String bookId,
+    String jobId,
+  ) async {
+    final body = await _post(
+      '/books/$bookId/audiobook/jobs/$jobId/cancel',
+      null,
+    );
+    return AudiobookJobStatus.fromJson(body!);
+  }
+
+  @override
+  Future<List<int>> audiobookChapterAudio(
+    String bookId,
+    String chapterId, {
+    bool download = false,
+  }) async {
+    try {
+      final path = download
+          ? '/books/$bookId/audiobook/chapters/$chapterId/downloads'
+          : '/books/$bookId/audiobook/chapters/$chapterId/stream';
+      final response = download
+          ? await _dio.post<List<int>>(
+              path,
+              options: Options(responseType: ResponseType.bytes),
+            )
+          : await _dio.get<List<int>>(
+              path,
+              options: Options(responseType: ResponseType.bytes),
+            );
+      return response.data ?? const [];
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
   }
 
   // ══════════════════════════════════════════════════════════

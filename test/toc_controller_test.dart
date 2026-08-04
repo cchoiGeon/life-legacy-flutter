@@ -69,33 +69,34 @@ void main() {
     expect(controller.chapters, isEmpty);
   });
 
-  test('Map 인자를 받으면 이름을 뽑고 목차를 생성한다', () async {
+  test('List 인자를 받으면 목차를 생성한다', () async {
     final (controller, _) = build();
-    controller.applyArguments({'i1': '김영희'});
+    controller.applyArguments(const [
+      IntroAnswerSubmission(questionId: 'i2', value: '여'),
+    ]);
 
-    expect(controller.name.value, '김영희');
-    // 생성은 비동기 — MockApiClient의 느린 지연(2.6초)보다 넉넉히 기다린다.
     await Future<void>.delayed(const Duration(seconds: 4));
     expect(controller.chapters, isNotEmpty);
+    expect(controller.bookId.value, isNotNull);
   }, timeout: const Timeout(Duration(seconds: 15)));
 
   test('generateToc는 비어 있지 않은 목차를 돌려준다', () async {
-    final chapters = await MockApiClient().generateToc({'i1': '김영희'});
+    final result = await MockApiClient().generateToc(const [
+      IntroAnswerSubmission(questionId: 'i2', value: '여'),
+    ]);
 
-    expect(chapters, isNotEmpty);
-    expect(chapters.first.order, 1);
-    // 시안 B7·C1·E1의 장 제목. 예전에는 "안동에서의 어린 시절"이었다.
-    expect(chapters.map((c) => c.title), contains('어린 시절'));
+    expect(result.chapters, isNotEmpty);
+    expect(result.chapters.first.order, 1);
+    expect(result.chapters.map((c) => c.title), contains('어린 시절'));
   }, timeout: const Timeout(Duration(seconds: 15)));
 
   test('목차를 확정하면 사용자 정보를 다시 읽는다', () async {
     final (c, auth) = build();
+    c.bookId.value = 'b_mock_001';
     c.chapters.value = List.of(sample);
 
     await c.confirm();
 
-    // 성함은 자기소개(i1)에서 서버에 저장된다. 다시 읽지 않으면 홈 인사말이
-    // "님, 오늘의 질문"으로 뜬다 — 로그인 시점의 이름은 아직 비어 있다.
     expect(auth.user.value, isNotNull);
     expect(auth.displayName, isNotEmpty);
   });
@@ -103,12 +104,11 @@ void main() {
   test('목차를 확정하면 자기소개를 마쳤다고 표시한다', () async {
     await Storage.clearSession();
     final (c, _) = build();
+    c.bookId.value = 'b_mock_001';
     c.chapters.value = List.of(sample);
 
     await c.confirm();
 
-    // ⚠️ 이 표시는 **앱이** 세운다. 예전에는 목업 구현 안에서 세우고 있어서,
-    //    실제 서버에 붙이면 앱을 다시 열 때마다 자기소개로 되돌아갔다.
     expect(Storage.introDone, isTrue);
   });
 }
