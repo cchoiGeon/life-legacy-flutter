@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:life_legacy/core/network/mock_api_client.dart';
+import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/feature/write/write_controller.dart';
 import 'package:life_legacy/service/services.dart';
 
@@ -17,8 +18,14 @@ void main() {
   setUpAll(() => initTestEnv('write'));
 
   Future<(WriteController, MockApiClient)> build() async {
+    await Storage.saveCurrentBookId('b_mock_001');
     final api = MockApiClient();
-    final c = WriteController(api, SpeechService(), ToastService());
+    final c = WriteController(
+      api,
+      SpeechService(),
+      ToastService(),
+      VoicePlayerService(),
+    );
     c.onInit();
     await Future<void>.delayed(const Duration(milliseconds: 900));
     return (c, api);
@@ -31,12 +38,11 @@ void main() {
     c.submitTyped();
   }
 
-  /// 저장이 일어나는 지점, 즉 **꼬리답변 확인 화면**까지 밀어 넣는다.
-  ///
-  /// 저장(윤문)은 꼬리답변을 보낼 때 일어난다. 1차 답변을 보내는 호출은
-  /// 꼬리질문을 받아 오는 것이라 실패해도 D5가 아니라 D8로 간다.
+  /// 저장(윤문) 직전 — 1차 + 꼬리 2회까지 답하고 마지막 확인 화면.
   Future<void> reachSaveStep(WriteController c, String text) async {
     typeAnswer(c, '제주도에 갔던 게 기억납니다');
+    await c.confirmTranscript();
+    typeAnswer(c, '이어서 더 이야기합니다');
     await c.confirmTranscript();
     typeAnswer(c, text);
   }

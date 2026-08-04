@@ -64,11 +64,16 @@ const commitInput = () => ({
     firstText: '원문',
     firstInputMode: InputMode.VOICE,
     firstSpokenSeconds: 30,
-    followupQuestionText: '꼬리질문',
   } as never,
-  followupAnswerText: '꼬리답변',
-  followupInputMode: InputMode.KEYBOARD,
-  followupSpokenSeconds: null,
+  followups: [
+    {
+      seq: 1,
+      questionText: '꼬리질문',
+      answerText: '꼬리답변',
+      inputMode: InputMode.KEYBOARD,
+      spokenSeconds: null,
+    },
+  ],
   polishedText: '다듬은 글',
 });
 

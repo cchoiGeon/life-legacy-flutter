@@ -28,7 +28,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     Get.put<WriteController>(
-      WriteController(MockApiClient(), SpeechService(), ToastService()),
+      WriteController(MockApiClient(), SpeechService(), ToastService(), VoicePlayerService()),
     );
     await tester.pumpWidget(
       MaterialApp(

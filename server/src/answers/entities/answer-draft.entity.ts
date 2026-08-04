@@ -33,6 +33,23 @@ export class AnswerDraftModel extends BaseModel {
   @Column({ name: 'first_spoken_seconds', type: 'smallint', nullable: true })
   firstSpokenSeconds: number | null;
 
+  /** 지금까지 주고받은 꼬리질문 회차 (1…MAX) */
+  @Column({ name: 'followup_round', type: 'smallint', default: 0 })
+  followupRound: number;
+
+  /**
+   * 이미 답한 꼬리 Q-A. 확정 시 answer_followup으로 옮긴다.
+   * [{ seq, question, answer, input_mode, spoken_seconds }]
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  followups: Array<{
+    seq: number;
+    question: string;
+    answer: string;
+    input_mode: string;
+    spoken_seconds: number | null;
+  }> | null;
+
   /** AI가 만든 꼬리질문. phase=followup부터 채워진다 */
   @Column({ name: 'followup_question_text', type: 'text', nullable: true })
   followupQuestionText: string | null;

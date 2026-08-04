@@ -16,8 +16,9 @@ void main() {
   setUpAll(() => initTestEnv('question_edit'));
 
   Future<(WriteController, MockApiClient)> build() async {
+    await Storage.saveCurrentBookId('b_mock_001');
     final api = MockApiClient();
-    final c = WriteController(api, SpeechService(), ToastService());
+    final c = WriteController(api, SpeechService(), ToastService(), VoicePlayerService());
     c.onInit();
     await Future<void>.delayed(const Duration(milliseconds: 900));
     return (c, api);
@@ -80,17 +81,25 @@ void main() {
   });
 
   test('이미 답한 질문은 서버가 거절한다', () async {
+    const bookId = 'b_mock_001';
     final api = MockApiClient();
-    final q = await api.currentQuestion();
-    final followup = await api.submitAnswer(
+    final q = await api.currentQuestion(bookId);
+    var followup = await api.submitAnswer(
       questionId: q!.id,
       text: '답했습니다',
       inputMode: ComposeMode.keyboard,
     );
-    await api.submitFollowupAnswer(
+    final mid = await api.submitFollowupAnswer(
       questionId: q.id,
       followupId: followup.id,
       text: '이어서 답했습니다',
+      inputMode: ComposeMode.keyboard,
+    );
+    followup = mid.followup!;
+    await api.submitFollowupAnswer(
+      questionId: q.id,
+      followupId: followup.id,
+      text: '마지막 꼬리 답했습니다',
       inputMode: ComposeMode.keyboard,
     );
 

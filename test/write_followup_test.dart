@@ -17,8 +17,14 @@ void main() {
   setUpAll(() => initTestEnv('write_followup'));
 
   Future<(WriteController, MockApiClient)> build() async {
+    await Storage.saveCurrentBookId('b_mock_001');
     final api = MockApiClient();
-    final c = WriteController(api, SpeechService(), ToastService());
+    final c = WriteController(
+      api,
+      SpeechService(),
+      ToastService(),
+      VoicePlayerService(),
+    );
     c.onInit();
     await Future<void>.delayed(const Duration(milliseconds: 900));
     return (c, api);
@@ -35,6 +41,17 @@ void main() {
   Future<void> reachFollowup(WriteController c, String text) async {
     typeAnswer(c, text);
     await c.confirmTranscript();
+  }
+
+  /// 마지막 꼬리답 확인 직전 (윤문·저장 직전).
+  Future<void> reachFinalFollowupAnswer(
+    WriteController c,
+    String lastText,
+  ) async {
+    await reachFollowup(c, '제주도에 갔습니다');
+    typeAnswer(c, '조금 더 이야기합니다');
+    await c.confirmTranscript();
+    typeAnswer(c, lastText);
   }
 
   group('1차 답변 → 꼬리질문', () {
@@ -81,7 +98,7 @@ void main() {
       await reachFollowup(c, '제주도에 갔습니다');
       typeAnswer(c, '성산일출봉에 있었습니다');
 
-      expect(c.saveLabel, '저장하고 다음 질문');
+      expect(c.saveLabel, '답 보내기');
     });
 
     test('꼬리질문을 만드는 동안 전용 안내를 보여준다', () async {
@@ -101,9 +118,7 @@ void main() {
     test('꼬리질문에 답해야 다음 질문으로 넘어간다', () async {
       final (c, _) = await build();
       final first = c.question.value!.id;
-      await reachFollowup(c, '제주도에 갔습니다');
-
-      typeAnswer(c, '성산일출봉에 오래 있었습니다');
+      await reachFinalFollowupAnswer(c, '성산일출봉에 오래 있었습니다');
       await c.confirmTranscript();
 
       expect(c.question.value?.id, isNot(first), reason: '이제야 다음 질문이다');
@@ -114,8 +129,7 @@ void main() {
 
     test('정리하는 동안 꼬리질문 때와 다른 안내를 보여준다', () async {
       final (c, _) = await build();
-      await reachFollowup(c, '제주도에 갔습니다');
-      typeAnswer(c, '성산일출봉에 있었습니다');
+      await reachFinalFollowupAnswer(c, '성산일출봉에 있었습니다');
 
       final saving = c.confirmTranscript();
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -127,9 +141,7 @@ void main() {
 
     test('저장이 끝나도 윤문 결과를 화면에 보여주지 않는다', () async {
       final (c, _) = await build();
-      await reachFollowup(c, '제주도에 갔습니다');
-      typeAnswer(c, '성산일출봉에 있었습니다');
-
+      await reachFinalFollowupAnswer(c, '성산일출봉에 있었습니다');
       await c.confirmTranscript();
 
       expect(c.transcript.value, isEmpty, reason: '다음 질문 화면은 비어 있어야 한다');
@@ -168,8 +180,7 @@ void main() {
   group('윤문 실패 — 글을 남긴 채 저장만 재시도', () {
     test('실패해도 확인 화면에 머물고 적은 글이 남는다', () async {
       final (c, api) = await build();
-      await reachFollowup(c, '제주도에 갔습니다');
-      typeAnswer(c, '성산일출봉에 오래 있었습니다');
+      await reachFinalFollowupAnswer(c, '성산일출봉에 오래 있었습니다');
       api.failNextSave = true;
 
       await c.confirmTranscript();
@@ -183,8 +194,7 @@ void main() {
     test('다시 저장하면 성공하고 다음 질문으로 넘어간다', () async {
       final (c, api) = await build();
       final first = c.question.value!.id;
-      await reachFollowup(c, '제주도에 갔습니다');
-      typeAnswer(c, '성산일출봉에 있었습니다');
+      await reachFinalFollowupAnswer(c, '성산일출봉에 있었습니다');
       api.failNextSave = true;
       await c.confirmTranscript();
 
@@ -197,8 +207,7 @@ void main() {
 
     test('실패 후 "다시 쓰기"는 꼬리질문 답변만 다시 받는다', () async {
       final (c, api) = await build();
-      await reachFollowup(c, '제주도에 갔습니다');
-      typeAnswer(c, '성산일출봉에 있었습니다');
+      await reachFinalFollowupAnswer(c, '성산일출봉에 있었습니다');
       api.failNextSave = true;
       await c.confirmTranscript();
 

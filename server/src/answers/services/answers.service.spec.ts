@@ -13,7 +13,7 @@ function buildService() {
   const answersRepository = {
     findAnswerByQuestion: jest.fn(),
     findDraftByQuestion: jest.fn(),
-    saveDraft: jest.fn(),
+    saveDraft: jest.fn().mockImplementation((d: unknown) => Promise.resolve(d)),
     deleteDraft: jest.fn(),
   };
   const answersTransactionService = {
@@ -28,12 +28,16 @@ function buildService() {
     generateFollowup: jest.fn().mockResolvedValue('요약\n\n질문?'),
     polish: jest.fn().mockResolvedValue('다듬은 글'),
   };
+  const config = {
+    get: jest.fn().mockImplementation((_k: string, def?: string) => def ?? '2'),
+  };
 
   const service = new AnswersService(
     answersRepository as never,
     answersTransactionService as never,
     chaptersService as never,
     aiService as never,
+    config as never,
   );
 
   return {
@@ -49,7 +53,11 @@ const question = (status = QuestionStatus.PENDING) => ({
   id: 'q1',
   text: '어릴 적 동네는 어땠나요?',
   status,
-  userChapter: { id: 'c1', title: '탄생과 유아기 시절' },
+  userChapter: {
+    id: 'c1',
+    title: '탄생과 유아기 시절',
+    bookId: 'b1',
+  },
 });
 
 const input = {
@@ -71,8 +79,8 @@ describe('AnswersService · 1차 답변 → 꼬리질문', () => {
     const result = await service.submitFirstAnswer('u1', 'q1', input);
 
     expect(result.followup.text).toContain('질문?');
+    expect(result.followup.seq).toBe(1);
     expect(answersRepository.saveDraft).toHaveBeenCalledTimes(1);
-    // 아직 확정이 아니다. 꼬리답변까지 받아야 저장한다.
     expect(answersTransactionService.commitAnswer).not.toHaveBeenCalled();
   });
 
@@ -86,7 +94,6 @@ describe('AnswersService · 1차 답변 → 꼬리질문', () => {
       service.submitFirstAnswer('u1', 'q1', input),
     ).rejects.toMatchObject({ code: 'FOLLOWUP_FAILED' });
 
-    // 화면에 없는 글을 서버가 들고 있으면 다시 답한 내용과 어긋난다.
     expect(answersRepository.deleteDraft).toHaveBeenCalledWith('q1');
     expect(answersRepository.saveDraft).not.toHaveBeenCalled();
   });
@@ -116,16 +123,61 @@ describe('AnswersService · 1차 답변 → 꼬리질문', () => {
   });
 });
 
-describe('AnswersService · 꼬리답변 → 확정 저장', () => {
-  const draft = {
+describe('AnswersService · 꼬리답변 3라운드', () => {
+  const draftRound1 = {
     firstText: '해남에서 태어났습니다',
     firstInputMode: InputMode.VOICE,
     firstSpokenSeconds: 42,
+    followupRound: 1,
+    followups: [],
     followupQuestionText: '누가 함께 계셨나요?',
     followupId: 'f1',
   };
 
-  it('윤문한 글과 원문 둘을 함께 저장한다', async () => {
+  const draftRound2 = {
+    ...draftRound1,
+    followupRound: 2,
+    followups: [
+      {
+        seq: 1,
+        question: '누가 함께 계셨나요?',
+        answer: '어머니가 계셨습니다',
+        input_mode: InputMode.KEYBOARD,
+        spoken_seconds: null,
+      },
+    ],
+    followupQuestionText: '그때 어디에 계셨나요?',
+    followupId: 'f2',
+  };
+
+  it('1회차 꼬리답변 후 아직 남으면 followup을 돌려주고 확정하지 않는다', async () => {
+    const {
+      service,
+      chaptersService,
+      answersRepository,
+      answersTransactionService,
+      aiService,
+    } = buildService();
+    chaptersService.getOwnedQuestion.mockResolvedValue(question());
+    answersRepository.findDraftByQuestion.mockResolvedValue({
+      ...draftRound1,
+    });
+    aiService.generateFollowup.mockResolvedValue('요약\n\n두 번째 질문?');
+
+    const result = await service.submitFollowupAnswer('u1', 'q1', 'f1', {
+      text: '어머니가 계셨습니다',
+      inputMode: InputMode.KEYBOARD,
+      spokenSeconds: null,
+    });
+
+    expect(result.followup?.seq).toBe(2);
+    expect(result.followup?.text).toContain('두 번째');
+    expect(result.next_question).toBeNull();
+    expect(answersTransactionService.commitAnswer).not.toHaveBeenCalled();
+    expect(answersRepository.saveDraft).toHaveBeenCalled();
+  });
+
+  it('마지막 회차에서 윤문한 글과 원문을 함께 저장한다', async () => {
     const {
       service,
       chaptersService,
@@ -133,10 +185,12 @@ describe('AnswersService · 꼬리답변 → 확정 저장', () => {
       answersTransactionService,
     } = buildService();
     chaptersService.getOwnedQuestion.mockResolvedValue(question());
-    answersRepository.findDraftByQuestion.mockResolvedValue(draft);
+    answersRepository.findDraftByQuestion.mockResolvedValue({
+      ...draftRound2,
+    });
 
-    await service.submitFollowupAnswer('u1', 'q1', 'f1', {
-      text: '어머니가 계셨습니다',
+    await service.submitFollowupAnswer('u1', 'q1', 'f2', {
+      text: '마당에 있었습니다',
       inputMode: InputMode.KEYBOARD,
       spokenSeconds: null,
     });
@@ -144,7 +198,10 @@ describe('AnswersService · 꼬리답변 → 확정 저장', () => {
     expect(answersTransactionService.commitAnswer).toHaveBeenCalledWith(
       expect.objectContaining({
         polishedText: '다듬은 글',
-        followupAnswerText: '어머니가 계셨습니다',
+        followups: expect.arrayContaining([
+          expect.objectContaining({ seq: 1 }),
+          expect.objectContaining({ seq: 2, answerText: '마당에 있었습니다' }),
+        ]),
       }),
     );
   });
@@ -153,26 +210,27 @@ describe('AnswersService · 꼬리답변 → 확정 저장', () => {
     const { service, chaptersService, answersRepository, aiService } =
       buildService();
     chaptersService.getOwnedQuestion.mockResolvedValue(question());
-    answersRepository.findDraftByQuestion.mockResolvedValue(draft);
+    answersRepository.findDraftByQuestion.mockResolvedValue({
+      ...draftRound2,
+    });
     aiService.polish.mockRejectedValue(new Error('모델 오류'));
 
     await expect(
-      service.submitFollowupAnswer('u1', 'q1', 'f1', {
-        text: '어머니가 계셨습니다',
+      service.submitFollowupAnswer('u1', 'q1', 'f2', {
+        text: '마당에 있었습니다',
         inputMode: InputMode.KEYBOARD,
         spokenSeconds: null,
       }),
     ).rejects.toMatchObject({ code: 'POLISH_FAILED' });
 
-    // ⚠️ 꼬리질문 실패와 **반대**다. 두 번 답한 이야기를 날리지 않는다.
-    //    앱이 같은 요청을 다시 보내면 그대로 이어서 저장된다.
     expect(answersRepository.deleteDraft).not.toHaveBeenCalled();
+    expect(answersRepository.saveDraft).toHaveBeenCalled();
   });
 
   it('다른 꼬리질문 id로는 저장할 수 없다', async () => {
     const { service, chaptersService, answersRepository } = buildService();
     chaptersService.getOwnedQuestion.mockResolvedValue(question());
-    answersRepository.findDraftByQuestion.mockResolvedValue(draft);
+    answersRepository.findDraftByQuestion.mockResolvedValue(draftRound2);
 
     await expect(
       service.submitFollowupAnswer('u1', 'q1', '다른-id', {
@@ -183,34 +241,22 @@ describe('AnswersService · 꼬리답변 → 확정 저장', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('초안이 없으면 저장할 수 없다', async () => {
-    const { service, chaptersService, answersRepository } = buildService();
-    chaptersService.getOwnedQuestion.mockResolvedValue(question());
-    answersRepository.findDraftByQuestion.mockResolvedValue(null);
-
-    await expect(
-      service.submitFollowupAnswer('u1', 'q1', 'f1', {
-        text: '어머니가 계셨습니다',
-        inputMode: InputMode.KEYBOARD,
-        spokenSeconds: null,
-      }),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
-  });
-
   it('모든 장을 끝내면 next_question이 null이다', async () => {
     const { service, chaptersService, answersRepository } = buildService();
     chaptersService.getOwnedQuestion.mockResolvedValue(question());
-    answersRepository.findDraftByQuestion.mockResolvedValue(draft);
+    answersRepository.findDraftByQuestion.mockResolvedValue({
+      ...draftRound2,
+    });
     chaptersService.getCurrentQuestion.mockResolvedValue(null);
 
-    const result = await service.submitFollowupAnswer('u1', 'q1', 'f1', {
-      text: '어머니가 계셨습니다',
+    const result = await service.submitFollowupAnswer('u1', 'q1', 'f2', {
+      text: '마당에 있었습니다',
       inputMode: InputMode.KEYBOARD,
       spokenSeconds: null,
     });
 
-    // 앱은 이걸 "다 끝났다"로 읽고 자서전 화면으로 간다.
     expect(result.next_question).toBeNull();
+    expect(result.followup).toBeNull();
   });
 });
 
@@ -243,7 +289,6 @@ describe('AnswersService · 건너뛰기와 조회', () => {
       polishedText: 'AI가 다듬은 글',
     });
 
-    // 다듬은 글이 처음 보이는 곳은 자서전 미리보기다. 작성 화면이 아니다.
     expect(await service.findSavedAnswerText('q1')).toBe(
       '사용자가 말한 그대로',
     );

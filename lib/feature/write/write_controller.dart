@@ -1,8 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
@@ -39,11 +40,12 @@ enum WriteStage {
 
 /// D1~D8 작성 — 앱의 핵심 흐름.
 ///
-/// 질문 하나에 **두 번 답하고 한 번 저장한다**:
+/// 질문 하나에 **1차 + 꼬리(최대 2회) 답하고 한 번 저장한다**:
 ///
-///   질문 → 1차 답변 → (AI) 꼬리질문 → 꼬리답변 → (AI) 윤문 → 저장 → 다음 질문
+///   질문 → 1차 → followup → … → (마지막 꼬리) → 윤문·저장 → 다음 질문
 ///
-/// 두 번 다 같은 화면을 쓴다([isFollowup]로 갈린다) — 시니어 사용자가 배워야
+/// 앱은 횟수를 세지 않는다. 서버가 `followup`을 주면 한 번 더, `next_question`이면 확정.
+/// 같은 화면을 쓴다([isFollowup]로 갈린다) — 시니어 사용자가 배워야
 /// 할 화면을 늘리지 않으려는 것이다. 꼬리질문일 때는 질문판에 AI가 만든
 /// 긴 글이 들어가고, 글자와 판 높이가 그에 맞게 바뀐다.
 ///
@@ -51,11 +53,12 @@ enum WriteStage {
 ///   · 음성   : ask → recording → confirm → …
 ///   · 키보드 : ask → keyboard  → confirm → …
 class WriteController extends GetxController {
-  WriteController(this._api, this._speech, this._toast);
+  WriteController(this._api, this._speech, this._toast, this._voice);
 
   final ApiClient _api;
   final SpeechService _speech;
   final ToastService _toast;
+  final VoicePlayerService _voice;
 
   /// 키보드 입력칸
   final answerController = TextEditingController();
@@ -97,10 +100,37 @@ class WriteController extends GetxController {
   /// 저장에 실패했다 — 확인 화면이 D5(저장 실패) 모양으로 바뀐다.
   final RxBool saveFailed = false.obs;
 
+  /// 서버 STT 대기 중 — saving 스테이지이지만 문구만 다르게.
+  final RxBool isTranscribing = false.obs;
+
   /// 모든 장을 끝냈을 때 true — 더 답할 질문이 없다.
   final RxBool isAllDone = false.obs;
 
+  /// 방금 한 장을 끝냈을 때. [_pendingNext]를 이어서 불러온다.
+  final RxBool isChapterComplete = false.obs;
+  final Rxn<Chapter> completedChapter = Rxn<Chapter>();
+  final Rxn<ChapterCompletion> chapterCompletion = Rxn<ChapterCompletion>();
+
+  /// 작성 튜토리얼 오버레이.
+  final RxBool showTutorial = false.obs;
+  final RxInt tutorialStep = 0.obs;
+
+  static const tutorialSteps = [
+    ('질문을 읽어요', '화면의 질문을 소리로도 들을 수 있어요'),
+    ('말씀으로 답해요', '가운데 마이크를 누르고 편하게 이야기하세요'),
+    ('글로도 적을 수 있어요', '아래 “타이핑으로 변경하기”를 눌러 보세요'),
+    ('건너뛸 수도 있어요', '꼭 지금 답하지 않아도 됩니다'),
+  ];
+
+  String? _bookId;
+
+  /// 1차 답 원문 — 꼬리질문 화면의 "다시 답하기/추가하기"에 쓴다.
+  String? _firstAnswerText;
+
+  Question? _pendingNext;
   Timer? _tick;
+
+  bool get hasPendingNext => _pendingNext != null;
 
   @override
   void onInit() {
@@ -144,18 +174,186 @@ class WriteController extends GetxController {
   Future<void> load() async {
     isLoading.value = true;
     try {
-      final q = await _api.currentQuestion();
+      final bookId = await _resolveBookId();
+      final args = Get.arguments;
+      Question? q;
+      if (args is Map && args['questionId'] is String) {
+        q = await _api.question(args['questionId'] as String);
+      } else {
+        q = await _api.currentQuestion(bookId);
+      }
       question.value = q;
       isAllDone.value = q == null;
       if (q != null) {
-        final chapters = await _api.chapters();
-        chapter.value = chapters.firstWhereOrNull((c) => c.id == q.chapterId);
+        final chapters = await _api.chapters(bookId);
+        chapter.value = chapters.firstWhereOrNull((c) => c.id == q!.chapterId);
+        await _restoreDraft(q.id);
+      }
+      if (!Storage.writeTutorialDone &&
+          q != null &&
+          !isFollowup.value &&
+          stage.value == WriteStage.ask) {
+        showTutorial.value = true;
+        tutorialStep.value = 0;
       }
     } on ApiException catch (e) {
       _toast.showError(e);
     } finally {
       isLoading.value = false;
     }
+  }
+
+  Future<void> _restoreDraft(String questionId) async {
+    try {
+      final draft = await _api.answerDraft(questionId);
+      if (draft == null) return;
+      _firstAnswerText = draft.text;
+      if (draft.isFollowupPhase && draft.pendingFollowup != null) {
+        followup.value = draft.pendingFollowup;
+        isFollowup.value = true;
+        stage.value = WriteStage.ask;
+        return;
+      }
+      // 1차 초안 — 확인 화면으로 복원
+      transcript.value = draft.text;
+      spokenSeconds.value = draft.spokenSeconds ?? 0;
+      answerSource.value = draft.inputMode == ComposeMode.keyboard
+          ? WriteStage.keyboard
+          : WriteStage.recording;
+      stage.value = WriteStage.confirm;
+    } on ApiException {
+      // 복원 실패해도 작성은 이어간다
+    }
+  }
+
+  Future<void> _autosaveDraft(String text) async {
+    final q = question.value;
+    if (q == null || text.trim().isEmpty || isFollowup.value) return;
+    try {
+      await _api.saveAnswerDraft(
+        questionId: q.id,
+        text: text,
+        inputMode: _inputMode,
+        spokenSeconds: _spokenSecondsOrNull,
+      );
+    } on ApiException {
+      // autosave 실패는 조용히 — 확정 저장이 본 경로다
+    }
+  }
+
+  /// 꼬리질문 단계에서 1차를 처음부터 다시.
+  Future<void> redoFirstAnswer() async {
+    final q = question.value;
+    if (q == null || !isFollowup.value) return;
+    try {
+      await _api.deleteAnswerDraft(q.id);
+    } on ApiException {
+      // 없어도 진행
+    }
+    _firstAnswerText = null;
+    followup.value = null;
+    isFollowup.value = false;
+    _clearInput();
+    stage.value = WriteStage.ask;
+  }
+
+  /// 꼬리질문 단계에서 1차 원문을 이어 쓰기.
+  Future<void> appendToFirstAnswer() async {
+    if (!isFollowup.value) return;
+    final prior = _firstAnswerText ?? '';
+    try {
+      final q = question.value;
+      if (q != null) await _api.deleteAnswerDraft(q.id);
+    } on ApiException {
+      // ignore
+    }
+    followup.value = null;
+    isFollowup.value = false;
+    answerController.text = prior.isEmpty ? '' : '$prior\n';
+    draft.value = answerController.text;
+    answerSource.value = WriteStage.keyboard;
+    stage.value = WriteStage.keyboard;
+  }
+
+  Future<String> _resolveBookId() async {
+    final fromArgs = Get.arguments;
+    if (fromArgs is Map && fromArgs['bookId'] is String) {
+      final id = fromArgs['bookId'] as String;
+      await Storage.saveCurrentBookId(id);
+      _bookId = id;
+      return id;
+    }
+    final stored = Storage.currentBookId;
+    if (stored != null) {
+      _bookId = stored;
+      return stored;
+    }
+    throw const ApiException('책을 선택해 주세요');
+  }
+
+  String _requireBookId() {
+    final id = _bookId ?? Storage.currentBookId;
+    if (id != null) return id;
+    throw const ApiException('책을 선택해 주세요');
+  }
+
+  /// 미확정 입력이 있으면 true — 이탈 경고 대상.
+  bool get hasUnsavedInput {
+    if (isBusy.value) return true;
+    return switch (stage.value) {
+      WriteStage.recording => true,
+      WriteStage.keyboard => draft.value.trim().isNotEmpty,
+      WriteStage.confirm => transcript.value.trim().isNotEmpty,
+      WriteStage.generatingFollowup || WriteStage.saving => true,
+      _ => false,
+    };
+  }
+
+  Future<void> requestLeave() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!hasUnsavedInput) {
+      _leaveToHome();
+      return;
+    }
+    final ctx = Get.context;
+    if (ctx == null) {
+      _leaveToHome();
+      return;
+    }
+    // 스펙: 왼쪽 `나가기`, 오른쪽 강조 `취소`(계속 작성).
+    // AppDialog는 왼쪽=cancel·오른쪽=confirm 이므로 취소를 confirm으로 둔다.
+    final stay = await AppDialog.confirm(
+      ctx,
+      title: '작성을 나갈까요?',
+      message: '입력된 내용이 지워질 수 있습니다',
+      cancelLabel: '나가기',
+      confirmLabel: '취소',
+    );
+    if (!stay) _leaveToHome();
+  }
+
+  void _leaveToHome() {
+    Get.offNamed(
+      AppRoutes.home,
+      arguments: {'bookId': _requireBookId()},
+    );
+  }
+
+  void nextTutorial() {
+    if (tutorialStep.value + 1 >= tutorialSteps.length) {
+      finishTutorial();
+      return;
+    }
+    tutorialStep.value++;
+  }
+
+  void prevTutorial() {
+    if (tutorialStep.value > 0) tutorialStep.value--;
+  }
+
+  Future<void> finishTutorial() async {
+    showTutorial.value = false;
+    await Storage.markWriteTutorialDone();
   }
 
   /// 질문판에 들어갈 글. 1차면 원래 질문, 꼬리질문이면 AI가 만든 글이다.
@@ -168,14 +366,20 @@ class WriteController extends GetxController {
   /// 두 대기가 성격이 다르다 — 앞은 되물을 말을 고르는 중이고, 뒤는 이미
   /// 받은 이야기를 글로 옮기는 중이다. 같은 문구를 쓰면 사용자는 방금과
   /// 똑같은 화면이 다시 떴다고 읽는다.
-  String get loadingTitle => stage.value == WriteStage.saving
-      ? '이야기를 정리하고 있어요'
-      : '말씀을 듣고 있어요';
+  String get loadingTitle {
+    if (isTranscribing.value) return '말씀을 글로 옮기고 있어요';
+    return stage.value == WriteStage.saving
+        ? '이야기를 정리하고 있어요'
+        : '말씀을 듣고 있어요';
+  }
 
   /// 줄바꿈은 시안(398:16 · 398:40)이 끊어 놓은 자리다.
-  String get loadingSubtitle => stage.value == WriteStage.saving
-      ? '잠시만\n기다려 주세요'
-      : '조금만 더\n여쭤볼게요';
+  String get loadingSubtitle {
+    if (isTranscribing.value) return '잠시만\n기다려 주세요';
+    return stage.value == WriteStage.saving
+        ? '잠시만\n기다려 주세요'
+        : '조금만 더\n여쭤볼게요';
+  }
 
   /// "제1장 · 어린 시절"
   String get headerTitle {
@@ -209,19 +413,14 @@ class WriteController extends GetxController {
 
   // ── 13 · 14 음성 ──────────────────────────────────────────
 
-  /// 실제 음성 인식을 시작한다.
-  ///
-  /// 인식된 글자는 [SpeechService.partial]로 흘러들어와 녹음 화면에 그대로
-  /// 보인다. 말이 끝나면(침묵 6초 또는 "멈춤") 확인 화면으로 넘어간다.
+  /// 실제 음성 녹음을 시작한다. 전사는 멈춘 뒤 서버 Clova STT.
   Future<void> startRecording() async {
     stage.value = WriteStage.recording;
     elapsed.value = 0;
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => elapsed.value++);
 
-    final started = await _speech.start(onFinal: _onTranscribed);
+    final started = await _speech.start();
     if (!started) {
-      // 권한 거부·인식기 없음 — 음성으로는 진행할 수 없으니 되돌리고
-      // 키보드로 안내한다. 버튼만 눌리고 아무 일도 없는 상태를 만들지 않는다.
       _tick?.cancel();
       stage.value = WriteStage.ask;
       _toast.show(
@@ -240,36 +439,60 @@ class WriteController extends GetxController {
     spokenSeconds.value = elapsed.value;
     saveFailed.value = false;
     stage.value = WriteStage.confirm;
+    _autosaveDraft(text);
   }
 
-  /// "멈춤" — 지금까지 인식된 내용으로 마무리한다.
+  /// "멈춤" — 녹음을 서버에 올려 Clova STT한다.
   Future<void> stopRecording() async {
     if (stage.value != WriteStage.recording) return;
     _tick?.cancel();
-    await _speech.stop();
 
-    // stop() 뒤에도 최종 결과가 곧 도착하는 게 정상이다. 다만 한 마디도
-    // 못 알아들은 경우엔 콜백이 오지 않으므로 여기서 되돌린다.
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    if (stage.value != WriteStage.recording) return;
-
-    final heard = _speech.partial.value.trim();
-    if (heard.isEmpty) {
+    final captured = await _speech.stopToAudio();
+    if (captured == null) {
       stage.value = WriteStage.ask;
       _toast.show('말씀을 알아듣지 못했어요', description: '다시 한 번 말씀해 주세요');
       return;
     }
-    _onTranscribed(heard);
+
+    stage.value = WriteStage.saving;
+    isTranscribing.value = true;
+    try {
+      final result = await _api.transcribeAudio(
+        bytes: captured.bytes,
+        filename: captured.filename,
+        durationMs: captured.durationMs,
+      );
+      if (result.text.trim().isEmpty) {
+        stage.value = WriteStage.ask;
+        _toast.show('말씀을 알아듣지 못했어요', description: '다시 한 번 말씀해 주세요');
+        return;
+      }
+      elapsed.value = (captured.durationMs / 1000).round();
+      _onTranscribed(result.text.trim());
+    } on ApiException catch (e) {
+      stage.value = WriteStage.ask;
+      _toast.showError(e);
+    } finally {
+      isTranscribing.value = false;
+    }
   }
 
-  /// 녹음 화면에 실시간으로 뜨는 인식 결과.
+  /// 녹음 화면에 뜨는 안내/부분 결과.
   String get liveTranscript => _speech.partial.value;
 
-  /// "🔊 다시 들려줘" — 질문을 소리로 읽어준다.
-  ///
-  /// TTS 패키지를 아직 넣지 않았다. 붙는 자리를 남겨두고 지금은 안내만 띄운다.
-  void replayQuestion() =>
-      _toast.show('음성 안내는 준비 중이에요', description: '질문은 화면에서 읽으실 수 있어요');
+  /// "🔊 다시 들려줘" — 서버 Clova TTS로 질문을 읽어 준다.
+  Future<void> replayQuestion() async {
+    final text = displayQuestion.trim();
+    if (text.isEmpty) return;
+    try {
+      final audio = await _api.synthesizeSpeech(text: text);
+      await _voice.playMpeg(audio.bytes);
+    } on ApiException catch (e) {
+      _toast.showError(e);
+    } on Exception {
+      _toast.show('음성을 재생하지 못했어요', description: '질문은 화면에서 읽으실 수 있어요');
+    }
+  }
 
   // ── 키보드 입력 ───────────────────────────────────────────
 
@@ -301,6 +524,7 @@ class WriteController extends GetxController {
     spokenSeconds.value = 0;
     saveFailed.value = false;
     stage.value = WriteStage.confirm;
+    _autosaveDraft(text);
   }
 
   // ── D4 답변 확인 · D5 저장 실패 ────────────────────────────
@@ -315,7 +539,8 @@ class WriteController extends GetxController {
   ///    실제로 저장이 일어나는 건 꼬리답변을 보낼 때뿐이다.
   String get saveLabel {
     if (saveFailed.value) return '다시 저장하기';
-    return isFollowup.value ? '저장하고 다음 질문' : '이어서 답하기';
+    // 중간 라운드인지 마지막인지 앱은 모른다 — "다음 질문"을 약속하지 않는다.
+    return isFollowup.value ? '답 보내기' : '이어서 답하기';
   }
 
   /// 화면 제목 — 실패했으면 "정리는 마쳤어요 / 저장만 남았어요"로 바뀐다.
@@ -377,13 +602,14 @@ class WriteController extends GetxController {
           inputMode: _inputMode,
           spokenSeconds: _spokenSecondsOrNull,
         );
+        _firstAnswerText = text;
         isFollowup.value = true;
         _clearInput();
         stage.value = WriteStage.ask;
         return;
       }
 
-      final next = await _api.submitFollowupAnswer(
+      final advance = await _api.submitFollowupAnswer(
         questionId: q.id,
         followupId: pending!.id,
         text: text,
@@ -391,23 +617,33 @@ class WriteController extends GetxController {
         spokenSeconds: _spokenSecondsOrNull,
       );
       saveFailed.value = false;
+
+      // 서버가 followup을 주면 한 번 더 — 횟수는 세지 않는다.
+      if (advance.needsAnotherFollowup) {
+        followup.value = advance.followup;
+        isFollowup.value = true;
+        _clearInput();
+        stage.value = WriteStage.ask;
+        return;
+      }
+
       _toast.show(
         '저장되었습니다.',
-        description: next == null ? null : '다음 질문으로 이동합니다.',
+        description:
+            advance.nextQuestion == null ? null : '다음 질문으로 이동합니다.',
       );
-      await _moveTo(next);
+      await _moveTo(advance.nextQuestion);
     } on ApiException {
       if (wasFollowup) {
-        // ⚠️ 토스트로 알리지 않는다. 몇 초 뒤 사라지는 안내로는 "내 이야기가
-        //    날아갔나"라는 걱정을 지울 수 없다. 확인 화면에 그대로 머물면서
-        //    D5(저장 실패) 안내 박스를 띄우고, 글은 화면에 남겨 둔다.
-        //    서버도 초안을 들고 있으니 같은 버튼을 다시 누르면 된다.
+        // ⚠️ FOLLOWUP_FAILED(중간 라운드)도 여기에 온다 — 초안은 서버에 남고
+        //    같은 버튼을 다시 누르면 된다. 윤문 실패와 동일 UX.
         saveFailed.value = true;
         stage.value = WriteStage.confirm;
         return;
       }
       // 꼬리질문을 못 만들었다 — 서버가 1차 답변을 버렸으므로 화면에 남겨
       // 두면 거짓말이 된다. 지우고 처음부터 다시 받는다(D8).
+      _firstAnswerText = null;
       followup.value = null;
       isFollowup.value = false;
       _clearInput();
@@ -478,19 +714,72 @@ class WriteController extends GetxController {
   /// 다음 질문으로 상태를 갈아 끼운다. null이면 전부 끝났다는 뜻이다.
   Future<void> _moveTo(Question? next) async {
     _clearInput();
-    // 새 질문은 언제나 1차 답변부터다.
     followup.value = null;
     isFollowup.value = false;
     stage.value = WriteStage.ask;
 
-    question.value = next;
-    isAllDone.value = next == null;
-    if (next == null) {
-      Get.offNamed(AppRoutes.book);
+    final previous = chapter.value;
+    final bookId = _requireBookId();
+
+    // 장을 막 끝냈으면 완료 화면을 한 번 보여 준다.
+    if (previous != null &&
+        (next == null || next.chapterId != previous.id)) {
+      completedChapter.value = previous;
+      _pendingNext = next;
+      isChapterComplete.value = true;
+      try {
+        chapterCompletion.value = await _api.chapterCompletion(
+          bookId,
+          previous.id,
+        );
+      } on ApiException {
+        // 조회 실패해도 로컬 장 정보로 화면은 연다.
+        chapterCompletion.value = null;
+      }
       return;
     }
-    // 장이 바뀌었을 수 있으니 다시 읽는다.
-    final chapters = await _api.chapters();
+
+    await _applyNextQuestion(next, bookId);
+  }
+
+  Future<void> proceedAfterChapterComplete() async {
+    isChapterComplete.value = false;
+    final next = _pendingNext;
+    _pendingNext = null;
+    completedChapter.value = null;
+    chapterCompletion.value = null;
+    await _applyNextQuestion(next, _requireBookId());
+  }
+
+  Future<void> _applyNextQuestion(Question? next, String bookId) async {
+    question.value = next;
+    isAllDone.value = next == null;
+    _firstAnswerText = null;
+    if (next == null) return;
+    final chapters = await _api.chapters(bookId);
     chapter.value = chapters.firstWhereOrNull((c) => c.id == next.chapterId);
+  }
+
+  void goBookHub() {
+    Get.offNamed(
+      AppRoutes.bookDetail,
+      arguments: {'bookId': _requireBookId()},
+    );
+  }
+
+  /// 리뷰 화면으로 이동.
+  void goReview() {
+    final c = completedChapter.value ?? chapter.value;
+    if (c == null) {
+      _toast.show('장 정보가 없어요');
+      return;
+    }
+    Get.toNamed(
+      AppRoutes.bookReview,
+      arguments: {
+        'bookId': _requireBookId(),
+        'chapterId': c.id,
+      },
+    );
   }
 }

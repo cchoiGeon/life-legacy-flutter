@@ -32,6 +32,13 @@ class WriteView extends GetView<WriteController> {
         );
       }
 
+      if (controller.isChapterComplete.value) {
+        return const Scaffold(
+          backgroundColor: AppColors.background,
+          body: _ChapterComplete(),
+        );
+      }
+
       if (controller.isAllDone.value) {
         return const Scaffold(
           backgroundColor: AppColors.background,
@@ -39,29 +46,111 @@ class WriteView extends GetView<WriteController> {
         );
       }
 
-      return Scaffold(
-        backgroundColor: AppColors.background,
-        // 글자 입력 단계에서만 키보드가 올라온다.
-        resizeToAvoidBottomInset:
-            controller.stage.value == WriteStage.keyboard,
-        body: switch (controller.stage.value) {
-          WriteStage.ask => const AskStage(),
-          WriteStage.recording => const RecordingStage(),
-          WriteStage.keyboard => const KeyboardStage(),
-          WriteStage.confirm => const ConfirmStage(),
-          // D6·D7은 같은 화면이고 문구만 바뀐다 — 사용자가 보기엔 둘 다
-          // "기다리는 중"이라 서로 다른 그림을 만들 이유가 없다.
-          WriteStage.generatingFollowup ||
-          WriteStage.saving => const AiLoadingStage(),
-          WriteStage.followupFailed => const FollowupFailedStage(),
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) controller.requestLeave();
         },
+        child: Scaffold(
+          backgroundColor: AppColors.background,
+          resizeToAvoidBottomInset:
+              controller.stage.value == WriteStage.keyboard,
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: switch (controller.stage.value) {
+                  WriteStage.ask => const AskStage(),
+                  WriteStage.recording => const RecordingStage(),
+                  WriteStage.keyboard => const KeyboardStage(),
+                  WriteStage.confirm => const ConfirmStage(),
+                  WriteStage.generatingFollowup ||
+                  WriteStage.saving => const AiLoadingStage(),
+                  WriteStage.followupFailed => const FollowupFailedStage(),
+                },
+              ),
+              if (controller.showTutorial.value) const _TutorialOverlay(),
+            ],
+          ),
+        ),
       );
     });
   }
 }
 
-/// 모든 장을 끝냈을 때. 시안에 대응 프레임이 없어 최소한으로 만들었다.
-class _AllDone extends StatelessWidget {
+class _ChapterComplete extends GetView<WriteController> {
+  const _ChapterComplete();
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final completion = controller.chapterCompletion.value;
+      final chapter = controller.completedChapter.value;
+      final order = completion?.chapterOrder ?? chapter?.order;
+      final title = order == null ? '이 장을 마쳤어요' : '제$order장을 마쳤어요';
+      final subtitle = completion == null
+          ? '원하신다면 리뷰로 가도 되고, 책 목록으로 돌아갈 수도 있어요'
+          : '${completion.chapterTitle} · 답 ${completion.answeredCount}'
+              '${completion.skippedCount > 0 ? ' · 건너뜀 ${completion.skippedCount}' : ''}'
+              ' / ${completion.questionCount}';
+      final showReview = completion?.canReview ?? true;
+      final showNext = completion?.hasNextChapter ?? controller.hasPendingNext;
+
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppDimens.gutter,
+            40,
+            AppDimens.gutter,
+            32,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AppScreenHeading(title: title, subtitle: subtitle),
+              const Spacer(),
+              if (showReview) ...[
+                AppButton(
+                  label: completion?.needsReview == false
+                      ? '리뷰 다시 보기'
+                      : '리뷰하러 가기',
+                  size: AppButtonSize.lg,
+                  block: true,
+                  onPressed: controller.goReview,
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (completion?.canHub ?? true)
+                AppButton(
+                  label: showNext ? '홈으로 이동' : '책 보러 가기',
+                  size: AppButtonSize.lg,
+                  block: true,
+                  variant: AppButtonVariant.outline,
+                  onPressed: controller.goBookHub,
+                ),
+              if (showNext) ...[
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: controller.proceedAfterChapterComplete,
+                  child: Text(
+                    completion?.nextChapter == null
+                        ? '다음 장 이어서 쓰기'
+                        : '다음 장 · ${completion!.nextChapter!.title}',
+                    style: AppTypography.bodyBase.copyWith(
+                      color: AppColors.brand,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    });
+  }
+}
+
+/// 모든 장을 끝냈을 때.
+class _AllDone extends GetView<WriteController> {
   const _AllDone();
 
   @override
@@ -69,7 +158,7 @@ class _AllDone extends StatelessWidget {
     return SafeArea(
       child: Column(
         children: [
-          const AppTopBar(),
+          AppTopBar(onBack: controller.goBookHub),
           Expanded(
             child: Center(
               child: Padding(
@@ -94,6 +183,13 @@ class _AllDone extends StatelessWidget {
                       '이제 완성된 책을 확인해 보세요',
                       style: AppTypography.subtitle,
                     ),
+                    const SizedBox(height: AppDimens.space8),
+                    AppButton(
+                      label: '책 보러 가기',
+                      size: AppButtonSize.lg,
+                      block: true,
+                      onPressed: controller.goBookHub,
+                    ),
                   ],
                 ),
               ),
@@ -102,5 +198,88 @@ class _AllDone extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _TutorialOverlay extends GetView<WriteController> {
+  const _TutorialOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final step = controller.tutorialStep.value;
+      final (title, body) = WriteController.tutorialSteps[step];
+      final isLast = step + 1 >= WriteController.tutorialSteps.length;
+
+      return Material(
+        color: Colors.black.withValues(alpha: 0.55),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppDimens.gutter),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(
+                  alignment: Alignment.topRight,
+                  child: TextButton(
+                    onPressed: controller.finishTutorial,
+                    child: const Text(
+                      '건너뛰기',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '${step + 1} / ${WriteController.tutorialSteps.length}',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        title,
+                        style: AppTypography.weight(
+                          AppTypography.bodyBase,
+                          AppTypography.bold,
+                        ).copyWith(fontSize: 20),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(body, style: AppTypography.subtitle),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          if (step > 0)
+                            TextButton(
+                              onPressed: controller.prevTutorial,
+                              child: const Text('이전'),
+                            ),
+                          const Spacer(),
+                          AppButton(
+                            label: isLast ? '시작하기' : '다음',
+                            size: AppButtonSize.md,
+                            onPressed: controller.nextTutorial,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 40),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
   }
 }

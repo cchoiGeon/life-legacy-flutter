@@ -22,7 +22,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     Get.put<WriteController>(
-      WriteController(MockApiClient(), SpeechService(), ToastService()),
+      WriteController(MockApiClient(), SpeechService(), ToastService(), VoicePlayerService()),
     );
     addTearDown(Get.reset);
 

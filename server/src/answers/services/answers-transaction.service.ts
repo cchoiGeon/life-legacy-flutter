@@ -10,20 +10,23 @@ import { AnswerFollowupModel } from '../entities/answer-followup.entity';
 import { AnswerModel } from '../entities/answer.entity';
 import { InputMode, PolishStatus } from '../const/answer.enum';
 
+export type CommitFollowup = {
+  seq: number;
+  questionText: string;
+  answerText: string;
+  inputMode: InputMode;
+  spokenSeconds: number | null;
+};
+
 export type CommitInput = {
   question: UserQuestionModel;
   draft: AnswerDraftModel;
-  followupAnswerText: string;
-  followupInputMode: InputMode;
-  followupSpokenSeconds: number | null;
+  followups: CommitFollowup[];
   polishedText: string;
 };
 
 /**
- * 확정 저장 — 원문 둘과 윤문 결과를 함께 남기고 진행 상태를 옮긴다.
- *
- * 한 트랜잭션이어야 하는 이유: 답변만 저장되고 장 진행이 안 옮겨지면
- * 같은 질문이 계속 "지금 답할 질문"으로 나온다.
+ * 확정 저장 — 원문·꼬리 N쌍·윤문 결과를 함께 남기고 진행 상태를 옮긴다.
  */
 @Injectable()
 export class AnswersTransactionService {
@@ -48,16 +51,18 @@ export class AnswersTransactionService {
         }),
       );
 
-      await manager.save(
-        manager.create(AnswerFollowupModel, {
-          answer,
-          seq: 1,
-          questionText: draft.followupQuestionText ?? '',
-          answerText: input.followupAnswerText,
-          inputMode: input.followupInputMode,
-          spokenSeconds: input.followupSpokenSeconds,
-        }),
-      );
+      for (const fu of input.followups) {
+        await manager.save(
+          manager.create(AnswerFollowupModel, {
+            answer,
+            seq: fu.seq,
+            questionText: fu.questionText,
+            answerText: fu.answerText,
+            inputMode: fu.inputMode,
+            spokenSeconds: fu.spokenSeconds,
+          }),
+        );
+      }
 
       await manager.delete(AnswerDraftModel, {
         userQuestion: { id: question.id },
@@ -73,7 +78,6 @@ export class AnswersTransactionService {
     });
   }
 
-  /** 건너뛰기 — 답변 없이 완료 처리한다. 장이 끝나야 하므로 개수에는 넣는다 */
   async skipQuestion(
     question: UserQuestionModel,
   ): Promise<{ chapterCompleted: boolean }> {
@@ -91,16 +95,12 @@ export class AnswersTransactionService {
     });
   }
 
-  /**
-   * 장의 진행을 한 칸 옮긴다. 다 찼으면 done으로 닫고 **다음 장 하나만** 연다.
-   */
   private async advanceChapter(
     manager: EntityManager,
     chapterId: string,
   ): Promise<{ chapterCompleted: boolean }> {
     const chapter = await manager.findOne(UserChapterModel, {
       where: { id: chapterId },
-      relations: { user: true },
     });
     if (!chapter) {
       return { chapterCompleted: false };
@@ -135,7 +135,7 @@ export class AnswersTransactionService {
 
     const next = await manager
       .createQueryBuilder(UserChapterModel, 'c')
-      .where('c.user_id = :userId', { userId: chapter.user.id })
+      .where('c.book_id = :bookId', { bookId: chapter.bookId })
       .andWhere('c.sort_order > :order', { order: chapter.sortOrder })
       .orderBy('c.sort_order', 'ASC')
       .getOne();

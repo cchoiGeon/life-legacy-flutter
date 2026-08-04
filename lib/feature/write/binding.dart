@@ -13,6 +13,7 @@ class WriteBinding extends Bindings {
         Get.find<ApiClient>(),
         Get.find<SpeechService>(),
         Get.find<ToastService>(),
+        Get.find<VoicePlayerService>(),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 
 import { AiService } from 'src/ai/services/ai.service';
@@ -16,6 +17,14 @@ import { AnswersTransactionService } from './answers-transaction.service';
 /** AI 호출은 서버 안에서 이만큼 다시 시도한 뒤 실패로 판정한다 */
 const AI_MAX_ATTEMPTS = 2;
 
+type DraftFollowup = {
+  seq: number;
+  question: string;
+  answer: string;
+  input_mode: string;
+  spoken_seconds: number | null;
+};
+
 @Injectable()
 export class AnswersService {
   private readonly logger = new Logger('Answers');
@@ -25,21 +34,22 @@ export class AnswersService {
     private readonly answersTransactionService: AnswersTransactionService,
     private readonly chaptersService: ChaptersService,
     private readonly aiService: AiService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** 꼬리질문 최대 회차 (기본 2 → 총 답변 3회) */
+  private get maxFollowupRounds(): number {
+    const raw = this.config.get<string>('FOLLOWUP_MAX_ROUNDS', '2');
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 2;
+  }
 
   async findSavedAnswerText(questionId: string): Promise<string | null> {
     const answer =
       await this.answersRepository.findAnswerByQuestion(questionId);
-
-    // 사용자에게 보이는 건 **자기가 답한 원문**이다. 윤문 결과가 아니다.
     return answer?.firstText ?? null;
   }
 
-  /**
-   * 1차 답변 → 꼬리질문 (api-spec §5.1).
-   *
-   * 아직 확정이 아니다. 초안으로만 들고 있다가 꼬리답변까지 받아야 저장한다.
-   */
   async submitFirstAnswer(
     userId: string,
     questionId: string,
@@ -65,13 +75,10 @@ export class AnswersService {
       );
     } catch {
       this.logger.warn(`꼬리질문 생성 실패 · question=${questionId}`);
-      // ⚠️ 초안을 남기지 않는다. 화면에 없는 글을 서버가 들고 있으면
-      //    사용자가 다시 답한 내용과 어긋난다(api-spec §5.3).
       await this.answersRepository.deleteDraft(questionId);
       throw new ApiException(ERROR_CODE.WRITE.FOLLOWUP_FAILED);
     }
 
-    // 다시 답할 수도 있으므로 초안은 질문당 하나로 덮어쓴다.
     await this.answersRepository.deleteDraft(questionId);
     await this.answersRepository.saveDraft({
       userQuestion: question,
@@ -79,18 +86,18 @@ export class AnswersService {
       firstText: input.text,
       firstInputMode: input.inputMode,
       firstSpokenSeconds: input.spokenSeconds,
+      followupRound: 1,
+      followups: [],
       followupQuestionText: followupText,
       followupId,
     });
 
-    return { followup: { id: followupId, text: followupText } };
+    return { followup: { id: followupId, seq: 1, text: followupText } };
   }
 
   /**
-   * 꼬리답변 → 확정 저장 (api-spec §5.2).
-   *
-   * 윤문에 실패하면 **초안을 남긴 채** 던진다. 앱이 같은 요청을 다시 보내면
-   * 그대로 이어서 저장된다 — 두 번 답한 이야기를 날리지 않는다.
+   * 꼬리답변 — 아직 회차가 남으면 followup, 마지막이면 윤문·확정.
+   * 앱은 followup 유무만으로 분기한다 (api-spec §5.2).
    */
   async submitFollowupAnswer(
     userId: string,
@@ -108,18 +115,68 @@ export class AnswersService {
       throw new ApiException(ERROR_CODE.COMMON.NOT_FOUND);
     }
 
+    const currentSeq = draft.followupRound || 1;
+    const completed: DraftFollowup[] = [...(draft.followups ?? [])];
+    completed.push({
+      seq: currentSeq,
+      question: draft.followupQuestionText ?? '',
+      answer: input.text,
+      input_mode: input.inputMode,
+      spoken_seconds: input.spokenSeconds,
+    });
+
+    const maxRounds = this.maxFollowupRounds;
+    if (currentSeq < maxRounds) {
+      const nextId = randomUUID();
+      const nextSeq = currentSeq + 1;
+      let nextText: string;
+      try {
+        nextText = await this.callWithRetry(() =>
+          this.aiService.generateFollowup({
+            chapterTitle: question.userChapter.title,
+            question: draft.followupQuestionText ?? question.text,
+            answer: input.text,
+          }),
+        );
+      } catch {
+        this.logger.warn(
+          `중간 꼬리질문 생성 실패 · question=${questionId} seq=${nextSeq}`,
+        );
+        throw new ApiException(ERROR_CODE.WRITE.FOLLOWUP_FAILED);
+      }
+
+      draft.followups = completed;
+      draft.followupRound = nextSeq;
+      draft.followupId = nextId;
+      draft.followupQuestionText = nextText;
+      draft.phase = DraftPhase.FOLLOWUP;
+      await this.answersRepository.saveDraft(draft);
+
+      return {
+        followup: { id: nextId, seq: nextSeq, text: nextText },
+        next_question: null,
+        chapter_completed: false,
+      };
+    }
+
+    const followupQuestions = completed.map((f) => f.question).join('\n\n');
+    const followupAnswers = completed.map((f) => f.answer).join('\n\n');
+
     let polished: string;
     try {
       polished = await this.callWithRetry(() =>
         this.aiService.polish({
           question: question.text,
           answer: draft.firstText,
-          followupQuestion: draft.followupQuestionText ?? '',
-          followupAnswer: input.text,
+          followupQuestion: followupQuestions,
+          followupAnswer: followupAnswers,
         }),
       );
     } catch {
       this.logger.warn(`윤문 실패 · question=${questionId}`);
+      // 마지막 답을 draft에 반영해 두면 재시도 시 같은 페이로드로 확정 가능
+      draft.followups = completed;
+      await this.answersRepository.saveDraft(draft);
       throw new ApiException(ERROR_CODE.WRITE.POLISH_FAILED);
     }
 
@@ -127,13 +184,21 @@ export class AnswersService {
       await this.answersTransactionService.commitAnswer({
         question,
         draft,
-        followupAnswerText: input.text,
-        followupInputMode: input.inputMode,
-        followupSpokenSeconds: input.spokenSeconds,
+        followups: completed.map((f) => ({
+          seq: f.seq,
+          questionText: f.question,
+          answerText: f.answer,
+          inputMode: f.input_mode as InputMode,
+          spokenSeconds: f.spoken_seconds,
+        })),
         polishedText: polished,
       });
 
-    return await this.buildAdvance(userId, chapterCompleted);
+    return await this.buildAdvance(
+      userId,
+      question.userChapter.bookId,
+      chapterCompleted,
+    );
   }
 
   async skipQuestion(
@@ -151,22 +216,111 @@ export class AnswersService {
     const { chapterCompleted } =
       await this.answersTransactionService.skipQuestion(question);
 
-    return await this.buildAdvance(userId, chapterCompleted);
+    return await this.buildAdvance(
+      userId,
+      question.userChapter.bookId,
+      chapterCompleted,
+    );
+  }
+
+  async putDraft(
+    userId: string,
+    questionId: string,
+    input: {
+      text: string;
+      inputMode: InputMode;
+      spokenSeconds: number | null;
+    },
+  ) {
+    const question = await this.chaptersService.getOwnedQuestion(
+      userId,
+      questionId,
+    );
+    if (question.status !== QuestionStatus.PENDING) {
+      throw new ApiException(ERROR_CODE.WRITE.ALREADY_ANSWERED);
+    }
+
+    const existing =
+      await this.answersRepository.findDraftByQuestion(questionId);
+    if (existing?.phase === DraftPhase.FOLLOWUP) {
+      return this.toDraftResponse(questionId, existing);
+    }
+
+    const draft = await this.answersRepository.upsertFirstPhaseDraft(
+      questionId,
+      {
+        userQuestion: question,
+        firstText: input.text,
+        firstInputMode: input.inputMode,
+        firstSpokenSeconds: input.spokenSeconds,
+      },
+    );
+    return this.toDraftResponse(questionId, draft);
+  }
+
+  async getDraft(userId: string, questionId: string) {
+    await this.chaptersService.getOwnedQuestion(userId, questionId);
+    const draft =
+      await this.answersRepository.findDraftByQuestion(questionId);
+    if (!draft) return null;
+    return this.toDraftResponse(questionId, draft);
+  }
+
+  async clearDraft(userId: string, questionId: string): Promise<void> {
+    await this.chaptersService.getOwnedQuestion(userId, questionId);
+    await this.answersRepository.deleteDraft(questionId);
+  }
+
+  private toDraftResponse(
+    questionId: string,
+    draft: {
+      phase: DraftPhase;
+      firstText: string;
+      firstInputMode: InputMode;
+      firstSpokenSeconds: number | null;
+      followupRound?: number;
+      followupId: string | null;
+      followupQuestionText: string | null;
+      updatedAt?: Date;
+    },
+  ) {
+    const round =
+      draft.phase === DraftPhase.FOLLOWUP ? (draft.followupRound ?? 1) : 0;
+    return {
+      question_id: questionId,
+      phase: draft.phase,
+      text: draft.firstText,
+      input_mode: draft.firstInputMode,
+      spoken_seconds: draft.firstSpokenSeconds,
+      followup_round: round,
+      pending_followup:
+        draft.phase === DraftPhase.FOLLOWUP &&
+        draft.followupId &&
+        draft.followupQuestionText
+          ? {
+              id: draft.followupId,
+              seq: round,
+              text: draft.followupQuestionText,
+            }
+          : null,
+      updated_at: (draft.updatedAt ?? new Date()).toISOString(),
+    };
   }
 
   private async buildAdvance(
     userId: string,
+    bookId: string,
     chapterCompleted: boolean,
   ): Promise<AdvanceResponseDto> {
-    const next = await this.chaptersService.getCurrentQuestion(userId);
+    const next = await this.chaptersService.getCurrentQuestion(userId, bookId);
 
     return {
+      followup: null,
       next_question: next ? QuestionResponseDto.from(next) : null,
       chapter_completed: chapterCompleted,
     };
   }
 
-  /** 한 번 실패했다고 바로 포기하지 않는다. 모델 호출은 산발적으로 흔들린다 */
   private async callWithRetry<T>(call: () => Promise<T>): Promise<T> {
     let lastError: unknown;
 

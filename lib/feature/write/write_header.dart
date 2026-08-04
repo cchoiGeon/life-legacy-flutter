@@ -7,7 +7,6 @@ import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/network/mock_api_client.dart';
-import 'package:life_legacy/core/route/app_pages.dart';
 
 import 'question_edit_sheet.dart';
 import 'write_controller.dart';
@@ -36,8 +35,7 @@ class WriteHeader extends GetView<WriteController> {
           onBack: () {
             // 키보드를 먼저 내린다 — 올라온 채로 넘어가면 다음 화면이
             // 짧은 본문으로 그려진다(홈 뼈대가 46px 넘쳤던 원인).
-            FocusManager.instance.primaryFocus?.unfocus();
-            Get.offNamed(AppRoutes.home);
+            controller.requestLeave();
           },
           trailing: _MoreButton(),
         ),

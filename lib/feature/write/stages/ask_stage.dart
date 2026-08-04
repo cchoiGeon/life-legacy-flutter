@@ -54,12 +54,40 @@ class AskStage extends GetView<WriteController> {
           ).copyWith(color: AppColors.textSecondary, letterSpacing: -0.1),
         ),
         const SizedBox(height: 28),
-        AppButton(
-          label: '글로 답하기',
-          variant: AppButtonVariant.neutral,
-          size: AppButtonSize.assist,
-          onPressed: controller.useKeyboard,
-        ),
+        Obx(() {
+          if (!controller.isFollowup.value) {
+            return AppButton(
+              label: '글로 답하기',
+              variant: AppButtonVariant.neutral,
+              size: AppButtonSize.assist,
+              onPressed: controller.useKeyboard,
+            );
+          }
+          return Column(
+            children: [
+              AppButton(
+                label: '다시 답하기',
+                variant: AppButtonVariant.outline,
+                size: AppButtonSize.assist,
+                onPressed: controller.redoFirstAnswer,
+              ),
+              const SizedBox(height: 10),
+              AppButton(
+                label: '기존 답에 추가하기',
+                variant: AppButtonVariant.neutral,
+                size: AppButtonSize.assist,
+                onPressed: controller.appendToFirstAnswer,
+              ),
+              const SizedBox(height: 10),
+              AppButton(
+                label: '글로 답하기',
+                variant: AppButtonVariant.neutral,
+                size: AppButtonSize.assist,
+                onPressed: controller.useKeyboard,
+              ),
+            ],
+          );
+        }),
         SizedBox(height: AppInsets.bottom(context, 62)),
       ],
     );
