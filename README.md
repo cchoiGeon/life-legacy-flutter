@@ -9,17 +9,24 @@
   예전 UI [`134:2`](https://www.figma.com/design/apsdRjQLt8xVVMbxzU60HC/PickDam?node-id=134-2) 는 **더 이상 따르지 않는다.**
   파일명 `PickDam`은 회사 계정 파일이라 바꿀 수 없다 — 프로젝트명은 **LifeLegacy**다. 문서에 남은 `PickDam`은 전부 이 Figma 파일을 가리킨다.
 - **스택**: Flutter + GetX (Pickle · IAM_flutter와 동일 구조)
-- **API**: 아직 **전부 목업**이다. 아래 "API 갈아 끼우기" 참고.
+- **API**: NestJS `/v1` — `RealApiClient`(dio). 빈 데이터는 서버 응답대로 비어 보이거나 생성 플로우로 이어진다(목업 시드 없음).
 
 ## 실행
 
+로컬 Nest가 `http://localhost:3000` 에서 떠 있어야 한다. 안드로이드 에뮬레이터 기본 baseUrl은 `http://10.0.2.2:3000/v1` 이다.
+
 ```bash
+# 서버
+cd server && npm run start:local
+
+# 앱
 flutter pub get
 flutter run
+# 기기/실기기 PC IP 등
+flutter run --dart-define=API_BASE_URL=http://192.168.0.10:3000/v1
 ```
 
-인증번호는 문자가 오지 않으므로 **`482915`** 를 쓴다(화면에도 안내가 뜬다).
-`MockApiClient.demoCode` 를 바꾸면 같이 바뀐다.
+인증은 OCTOMO SMS(앱) · 웹 ID/PW 등은 서버·화면 MD를 따른다. 목업 고정 코드(`482915`)는 없다.
 
 ## 구조
 
@@ -32,8 +39,9 @@ lib/
 │   └── widgets/ds/         디자인 시스템 위젯 (ds.dart 하나만 import)
 ├── core/
 │   ├── network/
-│   │   ├── api_client.dart       ← 추상 인터페이스 (교체 지점)
-│   │   └── mock_api_client.dart  ← 지금의 유일한 구현
+│   │   ├── api_client.dart       ← 추상 인터페이스
+│   │   ├── real_api_client.dart  ← Nest `/v1` 구현
+│   │   └── api_env.dart          ← API_BASE_URL · 타임아웃
 │   └── route/              app_pages.dart + app_routes.dart
 ├── data/
 │   ├── models/ · enums/    plain Dart. fromJson/toJson 수동 작성
@@ -94,7 +102,7 @@ lib/
 (`AppChoiceTile.heightFor`). 예전의 "두 개 가로 배치" 가정은 없앴다.
 
 ⚠️ 1번 답변은 사용자 이름으로 저장돼 홈 카드 라벨과 책 표지에 쓰인다.
-순서를 바꾸거나 지우면 그 연결(`MockApiClient.generateToc` · `introProfile`)도
+순서를 바꾸거나 지우면 그 연결(intro answers · `introProfile`)도
 손봐야 한다.
 
 ### 뺀 화면
@@ -132,44 +140,27 @@ lib/
 **모양이 다르다.** 드롭다운은 좁은 카드 안이라 구분선으로만 나누고, 센터는
 줄마다 카드가 된다. 안 읽음 표시(굵기·점) 규칙만 둘이 같다.
 
-## API 갈아 끼우기
+## API
 
-**화면·컨트롤러는 한 줄도 고치지 않는다.** 모두 `ApiClient` 추상 타입만 알고 있다.
+**화면·컨트롤러는 `ApiClient` 추상 타입만 본다.** 구현체는 `RealApiClient` 하나이며 `main.dart`에서 등록한다.
 
-1. `pubspec.yaml` 에 `dio` · `retrofit` · `json_annotation` 추가
-2. `lib/data/models/*.dart` 의 `fromJson` 을 실제 응답 스키마에 맞게 수정
-   (또는 `@JsonSerializable` 로 바꾸고 `build_runner` 로 생성)
-3. `RealApiClient implements ApiClient` 작성
-4. `lib/main.dart` 의 이 **한 줄**만 교체:
-   ```dart
-   final api = Get.put<ApiClient>(MockApiClient(), permanent: true);
-   //                             ^^^^^^^^^^^^^^^ 여기
-   ```
+```dart
+final api = Get.put<ApiClient>(_buildRealApi(), permanent: true);
+```
 
-`ApiClient` 의 메서드는 서버 계약이 아니라 **화면이 필요로 하는 모양**으로 잡았다.
-실제 엔드포인트가 더 잘게 쪼개져 있으면 구현체가 여러 호출을 합쳐서 맞춰주면 된다.
+`ApiClient` 메서드는 화면이 필요로 하는 모양이다. 엔드포인트가 더 잘게 쪼개져 있으면 구현체가 합친다. 데이터가 없으면 빈 목록·토스트·생성 CTA로 이어지고, 목업으로 채우지 않는다.
 
-### 정해지면 시그니처가 바뀔 곳
+### 시그니처가 바뀔 수 있는 곳
 
 | 메서드 | 이유 |
 |---|---|
-| `generateToc()` | 오래 걸리는 작업이라 폴링·웹소켓이 될 수도 있다 |
-| `verificationCodeTtl` | 지금은 상수를 주고 **클라이언트가 3분을 센다**. `requestVerificationCode`가 만료 시각(`expiresAt`)을 돌려주게 되면 이 게터는 지운다 — 앱 시계와 서버 시계가 어긋나면 "다시 받기"가 아직 안 되는데 눌린다 |
-| `introProfile()` | 지금은 목업이 질문 id → 라벨을 직접 짝지어 준다. 서버가 라벨을 내려주면 그 매핑(`MockApiClient._profileLabels`)이 사라진다 |
+| `generateToc()` / intro answers | 오래 걸리는 작업이라 폴링·웹소켓이 될 수도 있다 |
+| `verificationCodeTtl` | `requestVerificationCode`가 만료 시각을 주면 클라이언트가 초를 세는 게터는 지울 수 있다 |
 
-### 실제 API가 붙으면 지울 것
+## 음성 인식 (STT)
 
-- `MockApiClient.failNextSave` 와 작성 화면 `⋯` 메뉴의 **"목업 · 다음 저장을
-  실패시키기"** — D5(저장 실패)를 손으로 확인하려고 둔 것이다.
-- 인증번호 화면 아래 **"목업 안내 · 인증번호는 482915 입니다"** 블록.
-- `Book.photoCount` 는 사진 첨부(시안 G)가 없어 늘 0이다. G가 들어오면
-  실제 개수로 바뀌고, 그때까지 완성 화면 요약에서 사진 항목이 빠진다.
-
-## 음성 인식 (STT) — 목업 아님
-
-**여기만 실제로 동작한다.** `speech_to_text` 로 단말의 음성 인식을 쓴다
-(안드로이드 `SpeechRecognizer`, iOS Speech 프레임워크). 오디오를 서버로
-올리지 않으므로 `ApiClient`가 아니라 `SpeechService`(GetxService)에 있다.
+단말 STT는 `speech_to_text`를 쓴다 (안드로이드 `SpeechRecognizer`, iOS Speech).
+서버 Clova STT도 API로 호출할 수 있다. 단말 경로는 `SpeechService`(GetxService)에 있다.
 
 - 로케일은 기기에 설치된 한국어를 고르고, 없으면 시스템 기본으로 물러난다
 - 말하는 동안 부분 인식 결과가 화면에 그대로 뜬다
@@ -191,7 +182,7 @@ lib/
 | 함정 | 내용 |
 |---|---|
 | **가변 폰트 굵기** | Noto Sans KR은 가변 폰트 파일 **하나**로만 배포돼서 굵기별 등록이 불가능하다. `fontWeight` 만 주면 **굵기가 안 바뀐다**. 굵기를 조정할 땐 반드시 `AppTypography.weight(style, w)` 를 쓴다 |
-| **09 → 10 목차 전달** | `offNamed` 로 로딩 라우트가 빠지면 GetX가 컨트롤러를 폐기한다. 목차는 필드가 아니라 **라우트 인자**로 넘겨야 한다 (`toc_controller_test.dart` 가 잠가 뒀다) |
+| **09 → 10 목차 전달** | `offNamed` 로 로딩 라우트가 빠지면 GetX가 컨트롤러를 폐기한다. 목차는 필드가 아니라 **라우트 인자**로 넘겨야 한다 |
 | **Column 안의 좌측 정렬** | 바깥 Column이 center 정렬이면 안쪽 블록이 자식 폭으로 줄어든다. 가로 전체를 쓰려면 `CrossAxisAlignment.stretch` 나 `SizedBox(width: double.infinity)` 로 감싼다 |
 | **`dart analyze` 를 쓴다** | 경로에 한글(`회사`)이 있으면 `flutter analyze` 의 LSP 채널이 깨진다 |
 | **`lazyPut` + 컨트롤러 안 쓰는 뷰** | 뷰가 `GetView`가 아니면 `Get.find`를 부르는 사람이 없어 **컨트롤러가 생성조차 안 된다.** A1 스플래시·B6 목차 로딩이 영영 안 넘어갔다. 두 바인딩은 `Get.put`(즉시 생성)이다 |
@@ -202,7 +193,7 @@ lib/
 | **테스트의 GetStorage** | path_provider 플러그인이 없어 `MissingPluginException` 이 난다. `test/support/test_env.dart` 가 채널을 임시 디렉터리로 물려준다 |
 | **접근성 라벨 중복** | `Semantics(label: ...)` 안의 `Text`가 같은 글자를 내보내면 스크린리더가 **두 번 읽는다**("여성 여성"). 자식이 이미 그 글자를 그리면 `label:`을 주지 말고, 라벨이 화면 글자와 달라야 하면 자식을 `ExcludeSemantics`로 감싼다 |
 | **숫자 입력칸에 `readOnly`** | A3~A6은 앱 자체 키패드([`AppNumberPad`])로만 입력받는다. 입력칸에 `readOnly: true`를 빼면 눌렀을 때 OS 키보드가 올라와 키패드와 겹친다 |
-| **`Chapter.copyWith`로 상태 재계산 금지** | `nextQuestionText`가 `?? this.x` 라 null을 넘겨도 예전 값이 남는다. 장을 다 끝냈는데 "다음 질문"이 계속 붙어 있게 된다 — `MockApiClient._recalc`는 생성자로 새로 만든다 |
+| **`Chapter.copyWith`로 상태 재계산 금지** | `nextQuestionText`가 `?? this.x` 라 null을 넘겨도 예전 값이 남는다. 장을 다 끝냈는데 "다음 질문"이 계속 붙어 있게 된다 — 서버/클라이언트에서 장을 재구성할 때 생성자로 새로 만든다 |
 | **녹음 상태를 따로 들지 않는다** | 컨트롤러가 자체 `isRecording` 플래그를 두면 인식기가 스스로 멈췄을 때(무음 타임아웃) 화면이 "듣고 있어요…"에 갇힌다. `SpeechService.isListening` 을 그대로 본다 |
 | **핫 리스타트는 앱을 다시 띄우면 날아간다** | 살아 있는 VM에만 적용된다. `pm clear` + 재실행하면 **설치된 예전 빌드**가 뜬다. 네이티브(매니페스트·권한)를 건드렸으면 반드시 전체 재빌드 |
 
@@ -281,7 +272,7 @@ padding: EdgeInsets.only(bottom: AppInsets.bottom(context, 22)),
 - 진행률은 답변 수로 **계산**한다. 시안의 "42%" 같은 정적 수치와 정확히 같지는 않다.
 - 카카오 로그인은 SDK 없이 성공만 돌려준다.
 - TTS("다시 들려줘")·공유·인쇄본 신청은 안내 토스트만 띄운다. 대응 화면이 시안에 없다.
-- **음성 인식은 목업이 아니다** (위 "음성 인식" 참고). 다만 에뮬레이터에는
+- **음성 인식은 서버 없이도 단말에서 동작한다** (위 "음성 인식" 참고). 다만 에뮬레이터에는
   실제 마이크 입력이 없어 한국어 인식 정확도는 실기기에서 확인해야 한다.
 
 ## 확인 방법

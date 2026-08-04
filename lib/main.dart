@@ -11,7 +11,6 @@ import 'package:dio/dio.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/network/api_env.dart';
 import 'package:life_legacy/core/network/auth_interceptor.dart';
-import 'package:life_legacy/core/network/mock_api_client.dart';
 import 'package:life_legacy/core/network/real_api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
@@ -73,13 +72,8 @@ ApiClient _buildRealApi() {
 
 /// 앱 생애주기 내내 살아있는 싱글턴. 등록 순서가 곧 의존성 순서다.
 void _registerGlobals() {
-  // ⚠️ **여기가 API 교체 지점이다.** 화면·컨트롤러는 `ApiClient` 추상 타입만
-  //    알고 있어서, 목업이든 실제 서버든 손댈 게 없다.
-  //    기본은 목업이고 `--dart-define=USE_MOCK=false`로 실제 서버에 붙는다.
-  final api = Get.put<ApiClient>(
-    ApiEnv.useMock ? MockApiClient() : _buildRealApi(),
-    permanent: true,
-  );
+  // 화면·컨트롤러는 `ApiClient` 추상 타입만 안다. 구현체는 RealApiClient 고정.
+  final api = Get.put<ApiClient>(_buildRealApi(), permanent: true);
 
   Get.put(AuthService(api), permanent: true);
   Get.put(ToastService(), permanent: true);

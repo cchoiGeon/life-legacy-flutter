@@ -31,10 +31,7 @@ dependencies:
   just_audio: ^0.10.6
   record: ^7.1.1
 
-  # dio는 파일 다운로드와 향후 실제 API 클라이언트에 사용한다.
-  #    현재 화면 API는 MockApiClient가 ApiClient 인터페이스를 구현한다.
-  #    실제 서버 연동 시 같은 인터페이스를 구현하는 클래스로 교체한다 —
-  #    화면 코드는 손대지 않는다. (교체 순서는 README "API 갈아 끼우기" 참고)
+  # dio — RealApiClient(Nest /v1) HTTP.
 
 dev_dependencies:
   flutter_test:

@@ -1,21 +1,13 @@
 import 'package:life_legacy/data/data_manager.dart';
 
-/// 서버 API 인터페이스 — **이 파일이 교체 지점이다.**
+/// 서버 API 인터페이스 — Nest `/v1` 계약의 앱 측 경계.
 ///
-/// 지금은 [MockApiClient](mock_api_client.dart)가 유일한 구현이고, 모든
-/// 컨트롤러는 이 추상 타입만 알고 있다. 실제 API가 정해지면:
+/// 구현체는 [RealApiClient](real_api_client.dart) 하나다. 컨트롤러는 이 추상
+/// 타입만 알고, 빈 목록·404 등은 서버 응답을 그대로 화면에 넘긴다
+/// (목업 시드로 채우지 않는다).
 ///
-///   1. pubspec에 dio · retrofit · json_annotation 추가
-///   2. 모델의 `fromJson`을 실제 응답 스키마에 맞게 수정
-///      (또는 `@JsonSerializable`로 바꾸고 코드 생성)
-///   3. `RealApiClient implements ApiClient` 를 새로 작성
-///   4. `main.dart`의 `Get.put<ApiClient>(MockApiClient())` 한 줄만 교체
-///
-/// 화면·컨트롤러는 **한 줄도 고치지 않는다.**
-///
-/// ⚠️ 메서드 이름과 파라미터는 서버 계약이 아니라 **화면이 필요로 하는 것**을
-///    기준으로 잡았다. 실제 엔드포인트가 더 잘게 쪼개져 있으면 구현체가
-///    여러 호출을 합쳐서 이 모양으로 맞춰준다.
+/// ⚠️ 메서드 이름과 파라미터는 화면이 필요로 하는 단위다. 엔드포인트가 더
+///    잘게 쪼개져 있으면 구현체가 여러 호출을 합친다.
 abstract interface class ApiClient {
   // ══════════════════════════════════════════════════════════
   // 인증

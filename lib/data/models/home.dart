@@ -3,7 +3,7 @@ import 'package:life_legacy/data/enums/enums.dart';
 /// 홈 대시보드가 한 번에 받아오는 요약(시안 11번 화면).
 ///
 /// 화면 하나가 필요한 값을 한 번에 준다는 가정이다. 서버가 쪼개서 준다면
-/// MockApiClient 자리에 들어갈 실제 구현이 여러 호출을 합쳐 이 모양으로
+/// RealApiClient가 홈 관련 호출을 합쳐 이 모양으로
 /// 맞춰주면 된다 — 화면은 그대로 둔다.
 class HomeSummary {
   const HomeSummary({

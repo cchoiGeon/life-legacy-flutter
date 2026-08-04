@@ -31,7 +31,7 @@ Flutter 라우트(`lib/core/route/app_routes.dart`, `app_pages.dart`)에는 설�
 
 - 현재 `TabScaffold`의 4개 탭은 홈·작성·자서전·설정이며, 설정은 독립 라우트다. QnA/FAQ의 최종 진입 위치(설정 내 목록, 홈 등)는 미정이므로 신규 기획 결정이 필요하다.
 - 알림 센터(`/notifications`)는 홈의 “전체 보기”에서 진입하는 별도 화면이다. 설정의 `daily_question_alarm`은 알림 목록 조회·읽음 처리와 다른 사용자 선호값이다.
-- 앱은 `ApiEnv.useMock` 기본값에서 `MockApiClient`, `--dart-define=USE_MOCK=false`에서 `RealApiClient`와 NestJS를 사용한다. 신규 지원 API는 `ApiClient` 인터페이스·실제/목업 구현을 함께 맞춰야 한다.
+- 앱은 `RealApiClient`로 NestJS `/v1`에 붙는다. 신규 지원 API는 `ApiClient` 인터페이스와 `RealApiClient`를 함께 맞춘다.
 
 ## 3. QnA
 
@@ -178,8 +178,8 @@ Flutter 라우트(`lib/core/route/app_routes.dart`, `app_pages.dart`)에는 설�
 ### 5.4 기존 코드 참고
 
 - Flutter 화면·상태·바인딩: `lib/feature/settings/{settings,profile,address}_{view,controller}.dart`, `binding.dart`
-- Flutter 네트워크·보안 저장소: `lib/core/network/{api_client,real_api_client,mock_api_client}.dart`, `lib/data/storage.dart`, `lib/main.dart`
-  - 실제 API는 `USE_MOCK=false`일 때만 사용한다.
+- Flutter 네트워크·보안 저장소: `lib/core/network/{api_client,real_api_client}.dart`, `lib/data/storage.dart`, `lib/main.dart`
+  - 앱은 항상 `RealApiClient`로 Nest `/v1`에 붙는다.
   - `Storage`는 access/refresh token을 현재 평문 `GetStorage`에 저장하므로 보안 저장소 전환이 필요한 기존 위험이다.
 - Flutter 알림과의 구분: `lib/feature/notifications/**`, `lib/data/models/notification.dart`
 - NestJS: `server/src/settings/**`, `server/src/users/entities/{app-user,user-setting,shipping-address,device-push-token}.entity.ts`, `server/src/users/**`, `server/src/notifications/**`

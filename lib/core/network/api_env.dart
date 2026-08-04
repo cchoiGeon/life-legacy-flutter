@@ -1,15 +1,12 @@
-/// 서버 주소와 목업 전환.
+/// 서버 주소 · 타임아웃.
 ///
-/// `--dart-define`으로 넘긴다. 기본값은 **목업**이라, 아무 설정 없이
-/// 실행하면 지금까지처럼 서버 없이 앱이 돈다.
+/// `--dart-define`으로 넘긴다. 앱은 항상 [RealApiClient]로 Nest `/v1`에 붙는다.
 ///
 /// ```
-/// flutter run --dart-define=USE_MOCK=false
-/// flutter run --dart-define=USE_MOCK=false --dart-define=API_BASE_URL=https://api.lifelegacy.app/v1
+/// flutter run
+/// flutter run --dart-define=API_BASE_URL=https://api.lifelegacy.app/v1
 /// ```
 abstract final class ApiEnv {
-  static const useMock = bool.fromEnvironment('USE_MOCK', defaultValue: true);
-
   /// ⚠️ 안드로이드 에뮬레이터에서 개발 PC는 `localhost`가 아니라 10.0.2.2다.
   ///    에뮬레이터 자신을 가리키는 localhost로 붙으면 연결이 거부된다.
   static const baseUrl = String.fromEnvironment(

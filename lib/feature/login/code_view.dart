@@ -5,8 +5,6 @@ import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
-import 'package:life_legacy/core/network/api_env.dart';
-import 'package:life_legacy/core/network/mock_api_client.dart';
 
 import 'login_controller.dart';
 
@@ -78,26 +76,6 @@ class CodeView extends GetView<LoginController> {
                     ),
                   ),
                   const SizedBox(height: AppDimens.space6),
-                  // 목업이라 문자가 오지 않는다. 정답을 화면에 적어 둔다.
-                  //
-                  // ⚠️ **목업일 때만** 띄운다. 실제 서버에 붙은 채로 이게 뜨면
-                  //    화면에 인증번호를 적어 놓고 문자를 기다리게 만든다.
-                  if (ApiEnv.useMock)
-                    Container(
-                      padding: const EdgeInsets.all(AppDimens.space3),
-                      decoration: BoxDecoration(
-                        color: AppColors.cream,
-                        borderRadius: BorderRadius.circular(
-                          AppDimens.radiusBase,
-                        ),
-                      ),
-                      child: Text(
-                        '목업 안내 · 인증번호는 ${MockApiClient.demoCode} 입니다',
-                        style: AppTypography.label.copyWith(
-                          color: AppColors.brand,
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),

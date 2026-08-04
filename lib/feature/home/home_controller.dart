@@ -52,7 +52,20 @@ class HomeController extends GetxController {
   Future<void> load() async {
     isLoading.value = true;
     try {
-      final bookId = _requireBookId();
+      final bookId = await _resolveBookId();
+      if (bookId == null) {
+        // 책이 아직 없으면 홈 빈 상태 — 목업 시드 없이 서버 목록이 비어 있음.
+        summary.value = const HomeSummary(
+          todayQuestion: null,
+          todayQuestionId: null,
+          progress: 0,
+          chapterDone: 0,
+          chapterTotal: 0,
+          remainingQuestions: 0,
+        );
+        chapters.clear();
+        return;
+      }
       final results = await Future.wait([
         _api.home(bookId),
         _api.chapters(bookId),
@@ -60,55 +73,85 @@ class HomeController extends GetxController {
       summary.value = results[0] as HomeSummary;
       chapters.value = results[1] as List<Chapter>;
     } on ApiException catch (e) {
+      summary.value = null;
+      chapters.clear();
       _toast.showError(e);
     } finally {
       isLoading.value = false;
     }
   }
 
-  String _requireBookId() {
+  /// 인자 → 저장소 → `GET /books` 첫 권 순으로 현재 책을 고른다.
+  Future<String?> _resolveBookId() async {
     final fromArgs = Get.arguments;
     if (fromArgs is Map && fromArgs['bookId'] is String) {
-      return fromArgs['bookId'] as String;
+      final id = fromArgs['bookId'] as String;
+      await Storage.saveCurrentBookId(id);
+      return id;
     }
     final stored = Storage.currentBookId;
     if (stored != null) return stored;
-    throw const ApiException('책을 선택해 주세요');
+
+    final books = await _api.books();
+    if (books.isEmpty) return null;
+    final id = books.first.id;
+    await Storage.saveCurrentBookId(id);
+    return id;
   }
 
   /// 빈 상태(C2) 카드 문구 — "1장 어린 시절의 질문 8개를 준비해뒀어요".
   String get emptyCaption {
-    if (chapters.isEmpty) return '첫 질문을 준비하고 있어요';
+    if (chapters.isEmpty) {
+      return Storage.currentBookId == null
+          ? '목차를 만들면 질문이 여기에 보여요'
+          : '첫 질문을 준비하고 있어요';
+    }
     final first = chapters.first;
     return '${first.order}장 ${first.title}의 질문 ${first.questionCount}개를 준비해뒀어요';
   }
 
   /// 빈 상태 CTA — "1장 시작하기"
-  String get emptyCtaLabel =>
-      chapters.isEmpty ? '시작하기' : '${chapters.first.order}장 시작하기';
+  String get emptyCtaLabel {
+    if (Storage.currentBookId == null) return '목차 만들러 가기';
+    return chapters.isEmpty ? '시작하기' : '${chapters.first.order}장 시작하기';
+  }
 
   /// "5장 · 질문 40개가 기다리고 있어요" (시안 348:812)
   String get emptyProgressCaption {
+    if (chapters.isEmpty) {
+      return Storage.currentBookId == null
+          ? '아직 만든 자서전이 없어요'
+          : '질문을 준비하고 있어요';
+    }
     final questions = chapters.fold(0, (sum, c) => sum + c.questionCount);
     return '${chapters.length}장 · 질문 $questions개가 기다리고 있어요';
   }
 
   /// "말로 답하기" · "1장 시작하기" 둘 다 작성 탭으로 간다.
   void continueWriting() {
-    final id = _requireBookId();
+    final stored = Storage.currentBookId;
+    if (stored == null) {
+      _toast.show('아직 만든 자서전이 없어요');
+      Get.offNamed(AppRoutes.intro);
+      return;
+    }
     final qid = summary.value?.todayQuestionId;
     Get.offNamed(
       AppRoutes.write,
       arguments: {
-        'bookId': id,
+        'bookId': stored,
         if (qid != null) 'questionId': qid,
       },
     );
   }
 
   void openBook() {
-    final id = _requireBookId();
-    Get.offNamed(AppRoutes.bookDetail, arguments: {'bookId': id});
+    final stored = Storage.currentBookId;
+    if (stored == null) {
+      Get.offNamed(AppRoutes.book);
+      return;
+    }
+    Get.offNamed(AppRoutes.bookDetail, arguments: {'bookId': stored});
   }
 
   /// 목차 한 줄을 눌렀을 때. 잠긴 장은 눌리지 않는다.
