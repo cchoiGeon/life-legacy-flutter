@@ -58,7 +58,7 @@ class LoginView extends GetView<LoginController> {
                     // 시안 341:751 — 이 화면의 두 버튼만 17이다(다른 CTA는 18).
                     // 두 줄이 나란히 서 있어 한 단계 낮춘 것으로 보인다.
                     labelStyle: AppTypography.ctaLabel.copyWith(fontSize: 17),
-                    onPressed: controller.goPhone,
+                    onPressed: controller.goAuth,
                   ),
                   const SizedBox(height: 22),
                   Text(

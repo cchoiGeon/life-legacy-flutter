@@ -71,6 +71,9 @@ class LoginController extends GetxController {
 
   void goPhone() => Get.toNamed(AppRoutes.phone);
 
+  /// OCTOMO 인증 흐름으로 이동한다.
+  void goAuth() => Get.toNamed(AppRoutes.auth);
+
   // ── A3·A4 전화번호 ────────────────────────────────────────
 
   static const _phoneLength = 11;

@@ -1,10 +1,12 @@
-import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { InjectRepository } from '@nestjs/typeorm';
+import { LessThanOrEqual, Repository } from 'typeorm';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
 import { UserId } from './decorator/user.decorator';
@@ -17,11 +19,26 @@ import { AuthTokensResponseDto } from './dto/response/auth-tokens-response.dto';
 import { VerificationChallengeResponseDto } from './dto/response/verification-challenge-response.dto';
 import { AccessTokenGuard } from './guard/access-token.guard';
 import { AuthService } from './services/auth.service';
+import { OctomoService } from './services/octomo.service';
+import { SignupService } from './services/signup.service';
+import { PhoneLookupDto } from './dto/request/phone-lookup.dto';
+import { OctomoChallengeDto } from './dto/request/octomo-challenge.dto';
+import { OctomoVerifyDto } from './dto/request/octomo-verify.dto';
+import { SignupDto } from './dto/request/signup.dto';
+import { PhoneLookupResponseDto } from './dto/response/phone-lookup-response.dto';
+import { OctomoChallengeResponseDto } from './dto/response/octomo-challenge-response.dto';
+import { ConsentDocumentModel } from './entities/consent-document.entity';
 
 @ApiTags('Auth API')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly octomoService: OctomoService,
+    private readonly signupService: SignupService,
+  ) {}
+
+  // ── 기존 OTP (backward compat) ─────────────────────────
 
   @ApiOperation({ summary: '인증번호 발송' })
   @ApiResponse({ status: 200, type: VerificationChallengeResponseDto })
@@ -65,5 +82,117 @@ export class AuthController {
   @Post('logout')
   logout(@UserId() userId: string) {
     return this.authService.logout(userId);
+  }
+
+  // ── OCTOMO 신규 인증 ──────────────────────────────────
+
+  /** api-spec §1.7 — 전화번호 조회 */
+  @ApiOperation({
+    summary: '전화번호 조회',
+    description:
+      '가입 여부와 무관하게 항상 같은 응답을 준다. enumeration 방지',
+  })
+  @ApiResponse({ status: 200, type: PhoneLookupResponseDto })
+  @UseGuards(ThrottlerGuard)
+  @HttpCode(200)
+  @Post('phone/lookup')
+  lookupPhone(@Body() _dto: PhoneLookupDto): PhoneLookupResponseDto {
+    return { next_step: 'verify' };
+  }
+
+  /** api-spec §1.8 — 인증 문자 발급 */
+  @ApiOperation({ summary: 'OCTOMO 인증 문자 발급' })
+  @ApiResponse({ status: 200, type: OctomoChallengeResponseDto })
+  @UseGuards(ThrottlerGuard)
+  @HttpCode(200)
+  @Post('octomo/challenge')
+  async challenge(@Body() dto: OctomoChallengeDto): Promise<OctomoChallengeResponseDto> {
+    const result = await this.octomoService.createChallenge(dto.phone, 'login');
+
+    return {
+      session_id: result.session.id,
+      receiver_number: result.receiverNumber,
+      verify_text: result.verifyText,
+      expires_in: result.expiresIn,
+      poll_interval: result.pollInterval,
+    };
+  }
+
+  /** api-spec §1.9 — 인증 확인 (폴링) */
+  @ApiOperation({ summary: 'OCTOMO 인증 확인 (폴링)' })
+  @HttpCode(200)
+  @Post('octomo/verify')
+  async verify(@Body() dto: OctomoVerifyDto) {
+    const result = await this.octomoService.checkVerification(dto.session_id);
+
+    if (result.status === 'pending') {
+      return {
+        status: 'pending',
+        expires_in: result.expiresIn,
+      };
+    }
+
+    // verified — 기존 사용자면 session, 신규면 signup_token + required_consents
+    const loginResult = await this.authService.loginViaOctomo(dto.session_id);
+    if (loginResult) {
+      return {
+        status: 'verified',
+        account: 'existing',
+        session: loginResult,
+      };
+    }
+
+    const consents = await this.signupService.listRequiredConsents();
+    return {
+      status: 'verified',
+      account: 'new',
+      signup_token: this.octomoService.toSignupToken(dto.session_id),
+      required_consents: consents,
+    };
+  }
+
+  /** api-spec §1.10 — 회원가입 */
+  @ApiOperation({ summary: '회원가입 (이름 + 약관 동의)' })
+  @HttpCode(200)
+  @Post('signup')
+  async signup(@Body() dto: SignupDto) {
+    return await this.signupService.signup(
+      dto.signup_token,
+      dto.name,
+      dto.consents,
+    );
+  }
+}
+
+/** api-spec §1.11 — 약관 문서 조회 */
+@ApiTags('Consents API')
+@Controller('consents')
+export class ConsentsController {
+  constructor(
+    @InjectRepository(ConsentDocumentModel)
+    private readonly consentDocumentRepository: Repository<ConsentDocumentModel>,
+  ) {}
+
+  @ApiOperation({ summary: '약관 문서 목록 (현재 시행 중인 버전)' })
+  @HttpCode(200)
+  @Get('documents')
+  async getDocuments() {
+    const now = new Date();
+    const docs = await this.consentDocumentRepository.find({
+      where: { effectiveAt: LessThanOrEqual(now) },
+      order: { createdAt: 'ASC' },
+    });
+
+    // api-spec §1.11 — key / required (consent_key·is_required 아님)
+    return {
+      items: docs.map((d) => ({
+        key: d.consentKey,
+        version: d.version,
+        title: d.title,
+        url: d.url || null,
+        required: d.isRequired,
+        effective_at: d.effectiveAt.toISOString(),
+      })),
+    };
   }
 }

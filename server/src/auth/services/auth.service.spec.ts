@@ -7,6 +7,9 @@ import { VERIFICATION_MAX_ATTEMPTS } from '../const/token.const';
  * 넣는다 — 빠르고 의존성 그래프에 끌려다니지 않는다.
  */
 function buildService() {
+  const dataSource = {
+    getRepository: jest.fn().mockReturnValue({ findOne: jest.fn() }),
+  };
   const appUserRepository = {
     findById: jest.fn(),
     findByPhone: jest.fn(),
@@ -42,14 +45,19 @@ function buildService() {
     getOrThrow: jest.fn().mockReturnValue('secret'),
     get: jest.fn(),
   };
+  const octomoService = {
+    consumeSession: jest.fn(),
+  };
 
   const service = new AuthService(
+    dataSource as never,
     appUserRepository as never,
     phoneVerificationRepository as never,
     refreshTokenRepository as never,
     smsService as never,
     jwtService as never,
     configService as never,
+    octomoService as never,
   );
 
   return {
@@ -58,6 +66,7 @@ function buildService() {
     phoneVerificationRepository,
     refreshTokenRepository,
     jwtService,
+    octomoService,
   };
 }
 

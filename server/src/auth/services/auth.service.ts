@@ -1,3 +1,5 @@
+import { DataSource } from 'typeorm';
+
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
@@ -27,18 +29,22 @@ import { VerificationChallengeResponseDto } from '../dto/response/verification-c
 import { PhoneVerificationRepository } from '../repositories/phone-verification.repository';
 import { RefreshTokenRepository } from '../repositories/refresh-token.repository';
 import { SmsService } from './sms.service';
+import { OctomoService } from './octomo.service';
+import { AuthVerificationSessionModel } from '../entities/auth-verification-session.entity';
 
 const ISSUE_LIMIT_PER_HOUR = 5;
 
 @Injectable()
 export class AuthService {
   constructor(
+    private readonly dataSource: DataSource,
     private readonly appUserRepository: AppUserRepository,
     private readonly phoneVerificationRepository: PhoneVerificationRepository,
     private readonly refreshTokenRepository: RefreshTokenRepository,
     private readonly smsService: SmsService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly octomoService: OctomoService,
   ) {}
 
   /** api-spec §1.1 */
@@ -165,6 +171,33 @@ export class AuthService {
 
   async logout(userId: string): Promise<void> {
     await this.refreshTokenRepository.revokeAllByUser(userId);
+  }
+
+  /**
+   * api-spec §1.9 — OCTOMO 인증 완료 후 기존 사용자면 세션을 발급한다.
+   * 신규 사용자면 null을 반환한다.
+   */
+  async loginViaOctomo(
+    sessionId: string,
+  ): Promise<{
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    needs_intro: boolean;
+    user: UserResponseDto;
+  } | null> {
+    const session = await this.dataSource
+      .getRepository(AuthVerificationSessionModel)
+      .findOne({ where: { id: sessionId } });
+
+    if (!session) return null;
+
+    const existing = await this.appUserRepository.findByPhone(session.normalizedPhone);
+    if (!existing) return null;
+
+    await this.octomoService.consumeSession(sessionId);
+
+    return await this.issueSession(existing);
   }
 
   private async issueSession(
