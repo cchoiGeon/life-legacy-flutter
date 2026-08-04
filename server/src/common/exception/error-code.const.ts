@@ -58,6 +58,24 @@ export const ERROR_CODE = {
       code: 'CODE_EXPIRED',
       message: '인증번호 유효시간이 지났어요. 다시 받아 주세요',
     },
+    /** api-spec §0.4 — OCTOMO 인증 세션이 아직 verified가 아님 */
+    VERIFICATION_NOT_COMPLETED: {
+      status: 401,
+      code: 'VERIFICATION_NOT_COMPLETED',
+      message: '인증이 완료되지 않았어요',
+    },
+    /** api-spec §0.4 — OCTOMO 인증 세션 만료 */
+    VERIFICATION_EXPIRED: {
+      status: 410,
+      code: 'VERIFICATION_EXPIRED',
+      message: '인증 유효시간이 지났어요. 다시 시작해 주세요',
+    },
+    /** api-spec §0.4 — 필수 약관 미동의 */
+    CONSENT_REQUIRED: {
+      status: 409,
+      code: 'CONSENT_REQUIRED',
+      message: '필수 약관에 동의해 주세요',
+    },
   },
 
   INTRO: {
@@ -101,6 +119,85 @@ export const ERROR_CODE = {
       status: 422,
       code: 'POLISH_FAILED',
       message: '저장에 실패했어요. 다시 시도해 주세요',
+    },
+    SYNTHESIZE_FAILED: {
+      status: 422,
+      code: 'SYNTHESIZE_FAILED',
+      message: '원고를 만들지 못했어요. 잠시 후 다시 시도해 주세요',
+    },
+    VERSION_CONFLICT: {
+      status: 409,
+      code: 'VERSION_CONFLICT',
+      message: '다른 곳에서 먼저 고친 원고가 있어요. 다시 불러와 주세요',
+    },
+    TTS_FAILED: {
+      status: 502,
+      code: 'TTS_FAILED',
+      message: '음성을 만들지 못했어요. 잠시 후 다시 시도해 주세요',
+    },
+    STT_FAILED: {
+      status: 502,
+      code: 'STT_FAILED',
+      message: '말씀을 알아듣지 못했어요. 다시 한 번 말씀해 주세요',
+    },
+  },
+
+  EBOOK: {
+    CHAPTER_NOT_REVIEWED: {
+      status: 403,
+      code: 'CHAPTER_NOT_REVIEWED',
+      message: '챕터 리뷰를 저장하면 전자책을 확인할 수 있어요',
+    },
+    NOT_READY: {
+      status: 404,
+      code: 'EBOOK_NOT_READY',
+      message: '전자책 파일을 먼저 만들어 주세요',
+    },
+    GENERATE_FAILED: {
+      status: 422,
+      code: 'EBOOK_GENERATE_FAILED',
+      message: '전자책을 만들지 못했어요. 잠시 후 다시 시도해 주세요',
+    },
+    TITLE_PROGRESS: {
+      status: 403,
+      code: 'TITLE_PROGRESS_REQUIRED',
+      message: '전체 작성 진행률 80% 이상에서 제목 추천을 쓸 수 있어요',
+    },
+  },
+
+  PLAN: {
+    PLAN_REQUIRED: {
+      status: 403,
+      code: 'PLAN_REQUIRED',
+      message: '유료 플랜에서 이용할 수 있어요',
+    },
+    QUOTA_EXCEEDED: {
+      status: 429,
+      code: 'QUOTA_EXCEEDED',
+      message: '생성 횟수를 모두 썼어요',
+    },
+  },
+
+  AUDIOBOOK: {
+    CHAPTER_NOT_REVIEWED: {
+      status: 409,
+      code: 'CHAPTER_NOT_REVIEWED',
+      message: '챕터 리뷰를 저장한 뒤 음성책을 만들 수 있어요',
+    },
+    JOB_IN_PROGRESS: {
+      status: 409,
+      code: 'JOB_IN_PROGRESS',
+      message: '이미 만들고 있는 음성책이 있어요',
+    },
+    NOT_READY: {
+      status: 404,
+      code: 'AUDIOBOOK_NOT_READY',
+      message: '음성책 파일을 먼저 만들어 주세요',
+    },
+    TTS_FAILED: {
+      status: 502,
+      code: 'AUDIOBOOK_TTS_FAILED',
+      message: '음성책을 만들지 못했어요. 잠시 후 다시 시도해 주세요',
     },
   },
 } as const;
