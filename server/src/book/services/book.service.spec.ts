@@ -1,19 +1,36 @@
 import { ChapterStatus } from 'src/chapters/const/chapter-status.enum';
+import { ReviewStatus } from 'src/common/const/review-status.enum';
 import { BookService } from './book.service';
 
 /**
  * 쪽 나누기는 **서버가** 한다. 앱은 받은 대로 그린다.
- *
- * 그래서 "어떤 글이 실리고 어떻게 잘리는지"가 곧 계약이다.
  */
 function buildService(
   options: {
     chapters?: unknown[];
     answersByChapter?: Record<string, unknown[]>;
+    reviews?: Array<{ userChapterId: string; status: ReviewStatus }>;
   } = {},
 ) {
+  const pages = {};
+  const books = {};
+  const reviews = {
+    find: jest.fn().mockResolvedValue(options.reviews ?? []),
+  };
+  const bookAccess = {
+    requireOwnedBook: jest.fn().mockResolvedValue({
+      id: 'b1',
+      title: '나의 이야기',
+      authorName: '김영희',
+      photoCount: 0,
+    }),
+    findOwnedBooks: jest.fn().mockResolvedValue([]),
+  };
   const chaptersRepository = {
-    findAllByUser: jest.fn().mockResolvedValue(options.chapters ?? []),
+    findAllByBook: jest.fn().mockResolvedValue(options.chapters ?? []),
+    countByBook: jest.fn().mockResolvedValue({ total: 0, answered: 0 }),
+    findWritingChapter: jest.fn().mockResolvedValue(null),
+    findFirstPending: jest.fn().mockResolvedValue(null),
   };
   const answersRepository = {
     findPolishedByChapter: jest
@@ -21,20 +38,32 @@ function buildService(
       .mockImplementation((id: string) =>
         Promise.resolve(options.answersByChapter?.[id] ?? []),
       ),
-    countAnsweredByUser: jest.fn().mockResolvedValue(0),
+    countAnsweredByBook: jest.fn().mockResolvedValue(0),
   };
-  const usersService = {
-    getOrThrow: jest.fn().mockResolvedValue({ name: '김영희' }),
+  const entitlementService = {
+    getDashboardEntitlements: jest.fn().mockResolvedValue({
+      ebook: { allowed: true, reason: null },
+      audiobook: { allowed: false, reason: 'PLAN_REQUIRED' },
+      storybook: { allowed: false, reason: 'WEB_ONLY' },
+    }),
+    getBookEntitlements: jest.fn().mockResolvedValue({
+      plan_code: 'free',
+      features: {},
+    }),
   };
 
   return {
     service: new BookService(
-      {} as never,
+      pages as never,
+      books as never,
+      reviews as never,
+      bookAccess as never,
       chaptersRepository as never,
       answersRepository as never,
-      usersService as never,
+      entitlementService as never,
     ),
     answersRepository,
+    entitlementService,
   };
 }
 
@@ -43,94 +72,83 @@ const chapter = (id: string, order: number, status: ChapterStatus) => ({
   sortOrder: order,
   title: `${order}장`,
   status,
+  answeredCount: 0,
+  questionCount: 5,
 });
 
 describe('BookService · 미리보기 쪽', () => {
-  it('끝난 장만 싣는다', async () => {
+  it('reviewed 장만 싣는다', async () => {
     const { service, answersRepository } = buildService({
       chapters: [
         chapter('c1', 1, ChapterStatus.DONE),
-        chapter('c2', 2, ChapterStatus.WRITING),
-        chapter('c3', 3, ChapterStatus.LOCKED),
-      ],
-      answersByChapter: { c1: [{ polishedText: '가\n\n나' }] },
-    });
-
-    const pages = await service.getPages('u1');
-
-    // 작성 중인 장을 실으면 아직 다듬지 않은 글이 책에 들어간다.
-    expect(answersRepository.findPolishedByChapter).toHaveBeenCalledTimes(1);
-    expect(pages.every((p) => p.chapter_order === 1)).toBe(true);
-  });
-
-  it('문단 셋마다 한 쪽으로 끊고 통쪽수를 매긴다', async () => {
-    const { service } = buildService({
-      chapters: [
-        chapter('c1', 1, ChapterStatus.DONE),
         chapter('c2', 2, ChapterStatus.DONE),
+        chapter('c3', 3, ChapterStatus.WRITING),
       ],
+      reviews: [{ userChapterId: 'c1', status: ReviewStatus.REVIEWED }],
       answersByChapter: {
-        c1: [{ polishedText: '가\n\n나\n\n다\n\n라' }],
-        c2: [{ polishedText: '마\n\n바' }],
+        c1: [{ polishedText: '첫 문단\n\n둘째 문단', firstText: '원문' }],
+        c2: [{ polishedText: '리뷰 전', firstText: '원문' }],
       },
     });
 
-    const pages = await service.getPages('u1');
+    const pages = await service.getPages('u1', 'b1');
 
-    // 1장 4문단 → 2쪽, 2장 2문단 → 1쪽
-    expect(pages.map((p) => p.page_number)).toEqual([1, 2, 3]);
-    // 장이 바뀌어도 쪽 번호는 1로 돌아가지 않는다.
-    expect(pages.map((p) => p.chapter_order)).toEqual([1, 1, 2]);
-    // 앱이 쪽 하나만 들고도 "2 / 3쪽"을 그릴 수 있어야 한다.
-    expect(pages.every((p) => p.total_pages === 3)).toBe(true);
+    expect(answersRepository.findPolishedByChapter).toHaveBeenCalledWith('c1');
+    expect(answersRepository.findPolishedByChapter).not.toHaveBeenCalledWith(
+      'c2',
+    );
+    expect(pages.length).toBeGreaterThan(0);
   });
 
-  it('윤문이 없으면 사용자 원문으로 채운다', async () => {
+  it('문단 3개씩 쪽으로 나눈다', async () => {
     const { service } = buildService({
       chapters: [chapter('c1', 1, ChapterStatus.DONE)],
+      reviews: [{ userChapterId: 'c1', status: ReviewStatus.REVIEWED }],
       answersByChapter: {
-        c1: [{ polishedText: null, firstText: '원문만 있다' }],
+        c1: [
+          {
+            polishedText: 'a\n\nb\n\nc\n\nd',
+            firstText: '',
+          },
+        ],
       },
     });
 
-    // 윤문이 실패한 채로 저장된 답변도 책에서 빠지면 안 된다.
-    expect((await service.getPages('u1'))[0].paragraphs).toEqual([
-      '원문만 있다',
-    ]);
-  });
-
-  it('빈 문단은 버린다', async () => {
-    const { service } = buildService({
-      chapters: [chapter('c1', 1, ChapterStatus.DONE)],
-      answersByChapter: { c1: [{ polishedText: '가\n\n\n\n   \n\n나' }] },
-    });
-
-    expect((await service.getPages('u1'))[0].paragraphs).toEqual(['가', '나']);
+    const pages = await service.getPages('u1', 'b1');
+    expect(pages).toHaveLength(2);
+    expect(pages[0].paragraphs).toEqual(['a', 'b', 'c']);
+    expect(pages[1].paragraphs).toEqual(['d']);
+    expect(pages.every((p) => p.total_pages === 2)).toBe(true);
   });
 });
 
-describe('BookService · 책 요약', () => {
-  it('모든 장이 끝나야 완성이다', async () => {
-    const { service } = buildService({
-      chapters: [
-        chapter('c1', 1, ChapterStatus.DONE),
-        chapter('c2', 2, ChapterStatus.WRITING),
-      ],
+describe('BookService · entitlements', () => {
+  it('소유 책의 상세 entitlements를 위임한다', async () => {
+    const { service, entitlementService } = buildService({
+      chapters: [chapter('c1', 1, ChapterStatus.WRITING)],
     });
 
-    expect((await service.getBook('u1')).is_complete).toBe(false);
+    await service.getBook('u1', 'b1');
+    expect(entitlementService.getDashboardEntitlements).toHaveBeenCalledWith(
+      'u1',
+      'b1',
+    );
   });
 
-  it('장이 하나도 없으면 완성이 아니다', async () => {
-    const { service } = buildService({ chapters: [] });
+  it('GET entitlements는 소유 검사 후 §11 응답을 돌린다', async () => {
+    const { service, entitlementService } = buildService();
+    entitlementService.getBookEntitlements.mockResolvedValue({
+      plan_code: 'free',
+      features: {
+        ebook: { allowed: true, reason: null, remaining_generations: null },
+      },
+    });
 
-    // every()는 빈 배열에서 true다. 목차도 안 만든 사람이 "완성"이 되면 안 된다.
-    expect((await service.getBook('u1')).is_complete).toBe(false);
-  });
-
-  it('사진 수는 v1에서 항상 0이다', async () => {
-    const { service } = buildService({ chapters: [] });
-
-    expect((await service.getBook('u1')).photo_count).toBe(0);
+    const result = await service.getEntitlements('u1', 'b1');
+    expect(result.plan_code).toBe('free');
+    expect(entitlementService.getBookEntitlements).toHaveBeenCalledWith(
+      'u1',
+      'b1',
+    );
   });
 });

@@ -18,10 +18,11 @@ import type { Response } from 'express';
 
 import { UserId } from 'src/auth/decorator/user.decorator';
 import { AccessTokenGuard } from 'src/auth/guard/access-token.guard';
+import { AnswersService } from 'src/answers/services/answers.service';
 import { UpdateQuestionTextDto } from './dto/request/update-question-text.dto';
 import { ChapterResponseDto } from './dto/response/chapter-response.dto';
+import { ChapterCompletionResponseDto } from './dto/response/chapter-completion-response.dto';
 import { QuestionResponseDto } from './dto/response/question-response.dto';
-import { AnswersService } from 'src/answers/services/answers.service';
 import { ChaptersService } from './services/chapters.service';
 
 @ApiTags('Chapters API')
@@ -34,23 +35,29 @@ export class ChaptersController {
     private readonly answersService: AnswersService,
   ) {}
 
-  @ApiOperation({ summary: '장 목록' })
+  @ApiOperation({ summary: '장 목록 (책 범위)' })
   @ApiResponse({ status: 200, type: ChapterResponseDto, isArray: true })
-  @Get('chapters')
-  async getChapters(@UserId() userId: string) {
-    return { items: await this.chaptersService.getChapters(userId) };
+  @Get('books/:bookId/chapters')
+  async getChapters(
+    @UserId() userId: string,
+    @Param('bookId', ParseUUIDPipe) bookId: string,
+  ) {
+    return { items: await this.chaptersService.getChapters(userId, bookId) };
   }
 
   @ApiOperation({ summary: '지금 답할 질문 (없으면 204)' })
   @ApiResponse({ status: 200, type: QuestionResponseDto })
-  @Get('questions/current')
+  @Get('books/:bookId/questions/current')
   async getCurrentQuestion(
     @UserId() userId: string,
+    @Param('bookId', ParseUUIDPipe) bookId: string,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const question = await this.chaptersService.getCurrentQuestion(userId);
+    const question = await this.chaptersService.getCurrentQuestion(
+      userId,
+      bookId,
+    );
     if (!question) {
-      // 앱은 204를 "다 끝났다"로 읽고 자서전 화면으로 보낸다.
       response.status(204);
       return;
     }
@@ -91,6 +98,21 @@ export class ChaptersController {
       userId,
       questionId,
       dto.text,
+    );
+  }
+
+  @ApiOperation({ summary: '챕터 완료 화면용 조회 (§5.9)' })
+  @ApiResponse({ status: 200, type: ChapterCompletionResponseDto })
+  @Get('books/:bookId/chapters/:chapterId/completion')
+  getChapterCompletion(
+    @UserId() userId: string,
+    @Param('bookId', ParseUUIDPipe) bookId: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+  ) {
+    return this.chaptersService.getChapterCompletion(
+      userId,
+      bookId,
+      chapterId,
     );
   }
 }

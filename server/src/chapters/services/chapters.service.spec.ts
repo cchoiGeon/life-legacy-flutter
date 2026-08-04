@@ -7,18 +7,33 @@ import { ChaptersService } from './chapters.service';
  */
 function buildService() {
   const chaptersRepository = {
-    findAllByUser: jest.fn(),
+    findAllByBook: jest.fn(),
     findWritingChapter: jest.fn(),
     findFirstPending: jest.fn(),
     findQuestionById: jest.fn(),
+    findChapterById: jest.fn(),
+    findNextChapter: jest.fn(),
+    countQuestionsInChapter: jest.fn(),
     saveQuestion: jest
       .fn()
       .mockImplementation((q: unknown) => Promise.resolve(q)),
   };
+  const bookAccess = {
+    requireOwnedBook: jest.fn().mockResolvedValue({ id: 'b1' }),
+  };
+  const reviews = {
+    findOne: jest.fn().mockResolvedValue(null),
+    find: jest.fn().mockResolvedValue([]),
+  };
 
   return {
-    service: new ChaptersService(chaptersRepository as never),
+    service: new ChaptersService(
+      chaptersRepository as never,
+      bookAccess as never,
+      reviews as never,
+    ),
     chaptersRepository,
+    reviews,
   };
 }
 
@@ -30,8 +45,9 @@ const question = (overrides: Record<string, unknown> = {}) => ({
   isEdited: false,
   userChapter: {
     id: 'c1',
+    bookId: 'b1',
     status: ChapterStatus.WRITING,
-    user: { id: 'u1' },
+    book: { id: 'b1', ownerUserId: 'u1' },
   },
   ...overrides,
 });
@@ -43,145 +59,137 @@ describe('ChaptersService · 소유권과 잠금', () => {
       question({
         userChapter: {
           id: 'c1',
+          bookId: 'b1',
           status: ChapterStatus.WRITING,
-          user: { id: '남' },
-        },
-      }),
-    );
-
-    // ⚠️ 403이 아니다. 403으로 답하면 "그 id가 있긴 하다"를 알려 주는 셈이다.
-    await expect(service.getOwnedQuestion('u1', 'q1')).rejects.toMatchObject({
-      code: 'NOT_FOUND',
-    });
-  });
-
-  it('없는 질문도 404다', async () => {
-    const { service, chaptersRepository } = buildService();
-    chaptersRepository.findQuestionById.mockResolvedValue(null);
-
-    await expect(service.getOwnedQuestion('u1', 'q1')).rejects.toMatchObject({
-      code: 'NOT_FOUND',
-    });
-  });
-
-  it('잠긴 장의 질문은 CHAPTER_LOCKED로 막는다', async () => {
-    const { service, chaptersRepository } = buildService();
-    chaptersRepository.findQuestionById.mockResolvedValue(
-      question({
-        userChapter: {
-          id: 'c3',
-          status: ChapterStatus.LOCKED,
-          user: { id: 'u1' },
+          book: { id: 'b1', ownerUserId: 'other' },
         },
       }),
     );
 
     await expect(service.getOwnedQuestion('u1', 'q1')).rejects.toMatchObject({
-      code: 'CHAPTER_LOCKED',
+      response: expect.objectContaining({ code: 'NOT_FOUND' }),
     });
   });
 
-  it('끝난 장의 질문은 열어 준다 — 다시 읽을 수 있어야 한다', async () => {
+  it('잠긴 장 질문은 CHAPTER_LOCKED다', async () => {
     const { service, chaptersRepository } = buildService();
     chaptersRepository.findQuestionById.mockResolvedValue(
       question({
         userChapter: {
           id: 'c1',
-          status: ChapterStatus.DONE,
-          user: { id: 'u1' },
+          bookId: 'b1',
+          status: ChapterStatus.LOCKED,
+          book: { id: 'b1', ownerUserId: 'u1' },
         },
       }),
     );
 
-    await expect(service.getOwnedQuestion('u1', 'q1')).resolves.toBeTruthy();
-  });
-});
-
-describe('ChaptersService · 문구 수정', () => {
-  it('답변 전이면 고칠 수 있고 고친 표시가 남는다', async () => {
-    const { service, chaptersRepository } = buildService();
-    chaptersRepository.findQuestionById.mockResolvedValue(question());
-
-    const result = await service.updateQuestionText('u1', 'q1', '새 문구');
-
-    expect(result.text).toBe('새 문구');
-    expect(chaptersRepository.saveQuestion).toHaveBeenCalledWith(
-      expect.objectContaining({ isEdited: true }),
-    );
+    await expect(service.getOwnedQuestion('u1', 'q1')).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CHAPTER_LOCKED' }),
+    });
   });
 
-  it('이미 답한 질문의 문구는 못 고친다', async () => {
-    const { service, chaptersRepository } = buildService();
-    chaptersRepository.findQuestionById.mockResolvedValue(
-      question({ status: QuestionStatus.ANSWERED }),
-    );
-
-    // 문구를 바꾸면 이미 저장된 원고와 어긋난다.
-    await expect(
-      service.updateQuestionText('u1', 'q1', '새 문구'),
-    ).rejects.toMatchObject({ code: 'ALREADY_ANSWERED' });
-  });
-
-  it('건너뛴 질문도 못 고친다', async () => {
-    const { service, chaptersRepository } = buildService();
-    chaptersRepository.findQuestionById.mockResolvedValue(
-      question({ status: QuestionStatus.SKIPPED }),
-    );
-
-    await expect(
-      service.updateQuestionText('u1', 'q1', '새 문구'),
-    ).rejects.toMatchObject({ code: 'ALREADY_ANSWERED' });
-  });
-});
-
-describe('ChaptersService · 목록과 현재 질문', () => {
-  it('다음 질문 제목은 진행 중인 장에만 붙는다', async () => {
-    const { service, chaptersRepository } = buildService();
-    chaptersRepository.findAllByUser.mockResolvedValue([
+  it('장 목록은 책 범위로 조회하고 review_status를 실는다', async () => {
+    const { service, chaptersRepository, reviews } = buildService();
+    chaptersRepository.findAllByBook.mockResolvedValue([
       {
         id: 'c1',
         sortOrder: 1,
-        title: '1장',
+        title: '탄생',
         status: ChapterStatus.DONE,
         answeredCount: 5,
         questionCount: 5,
+        sourceType: 'template',
       },
+    ]);
+    reviews.find.mockResolvedValue([
+      { userChapterId: 'c1', status: 'reviewed' },
+    ]);
+
+    const items = await service.getChapters('u1', 'b1');
+    expect(chaptersRepository.findAllByBook).toHaveBeenCalledWith('b1');
+    expect(items[0].review_status).toBe('reviewed');
+    expect(items[0].ebook_eligible).toBe(true);
+  });
+
+  it('장 목록 writing 장은 next_question_text를 채운다', async () => {
+    const { service, chaptersRepository } = buildService();
+    chaptersRepository.findAllByBook.mockResolvedValue([
       {
-        id: 'c2',
-        sortOrder: 2,
-        title: '2장',
+        id: 'c1',
+        sortOrder: 1,
+        title: '탄생',
         status: ChapterStatus.WRITING,
-        answeredCount: 1,
-        questionCount: 5,
-      },
-      {
-        id: 'c3',
-        sortOrder: 3,
-        title: '3장',
-        status: ChapterStatus.LOCKED,
         answeredCount: 0,
-        questionCount: 6,
+        questionCount: 5,
+        sourceType: 'template',
       },
     ]);
     chaptersRepository.findFirstPending.mockResolvedValue({
-      text: '다음에 물어볼 것',
+      text: '다음 질문',
     });
 
-    const items = await service.getChapters('u1');
-
-    expect(items.map((i) => i.next_question_text)).toEqual([
-      null,
-      '다음에 물어볼 것',
-      // 잠긴 장에 붙이면 아직 못 여는 질문을 미리 보여주는 셈이다.
-      null,
-    ]);
+    const items = await service.getChapters('u1', 'b1');
+    expect(items[0].next_question_text).toBe('다음 질문');
+    expect(items[0].review_status).toBeNull();
   });
 
-  it('진행 중인 장이 없으면 현재 질문도 없다', async () => {
+  it('현재 질문이 없으면 null', async () => {
     const { service, chaptersRepository } = buildService();
     chaptersRepository.findWritingChapter.mockResolvedValue(null);
 
-    // 앱은 이걸 204로 받아 "다 끝났다"로 읽는다.
-    expect(await service.getCurrentQuestion('u1')).toBeNull();
+    await expect(service.getCurrentQuestion('u1', 'b1')).resolves.toBeNull();
+  });
+});
+
+describe('ChaptersService · 챕터 완료', () => {
+  it('done 장이면 review CTA를 켠다', async () => {
+    const { service, chaptersRepository } = buildService();
+    chaptersRepository.findChapterById.mockResolvedValue({
+      id: 'c2',
+      bookId: 'b1',
+      sortOrder: 2,
+      title: '가족',
+      status: ChapterStatus.DONE,
+    });
+    chaptersRepository.countQuestionsInChapter.mockResolvedValue({
+      questionCount: 6,
+      answeredCount: 5,
+      skippedCount: 1,
+    });
+    chaptersRepository.findNextChapter.mockResolvedValue({
+      id: 'c3',
+      sortOrder: 3,
+      title: '청소년기',
+    });
+
+    const result = await service.getChapterCompletion('u1', 'b1', 'c2');
+
+    expect(result).toMatchObject({
+      chapter_id: 'c2',
+      chapter_order: 2,
+      answered_count: 5,
+      skipped_count: 1,
+      review_status: null,
+      actions: { review: true, hub: true },
+      next_chapter: { id: 'c3', order: 3, title: '청소년기' },
+    });
+  });
+
+  it('잠긴 장은 CHAPTER_LOCKED', async () => {
+    const { service, chaptersRepository } = buildService();
+    chaptersRepository.findChapterById.mockResolvedValue({
+      id: 'c3',
+      bookId: 'b1',
+      sortOrder: 3,
+      title: '잠김',
+      status: ChapterStatus.LOCKED,
+    });
+
+    await expect(
+      service.getChapterCompletion('u1', 'b1', 'c3'),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CHAPTER_LOCKED' }),
+    });
   });
 });

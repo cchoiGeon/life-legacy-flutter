@@ -5,6 +5,9 @@ import { ApiProperty } from '@nestjs/swagger';
  * 하더라도 이 모양으로 합쳐서 준다.
  */
 export class HomeResponseDto {
+  @ApiProperty({ example: 'b_001' })
+  book_id: string;
+
   @ApiProperty({
     nullable: true,
     description: 'null이면 앱이 빈 상태 화면을 그린다',

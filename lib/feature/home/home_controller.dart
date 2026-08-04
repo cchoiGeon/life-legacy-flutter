@@ -52,7 +52,11 @@ class HomeController extends GetxController {
   Future<void> load() async {
     isLoading.value = true;
     try {
-      final results = await Future.wait([_api.home(), _api.chapters()]);
+      final bookId = _requireBookId();
+      final results = await Future.wait([
+        _api.home(bookId),
+        _api.chapters(bookId),
+      ]);
       summary.value = results[0] as HomeSummary;
       chapters.value = results[1] as List<Chapter>;
     } on ApiException catch (e) {
@@ -60,6 +64,16 @@ class HomeController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  String _requireBookId() {
+    final fromArgs = Get.arguments;
+    if (fromArgs is Map && fromArgs['bookId'] is String) {
+      return fromArgs['bookId'] as String;
+    }
+    final stored = Storage.currentBookId;
+    if (stored != null) return stored;
+    throw const ApiException('책을 선택해 주세요');
   }
 
   /// 빈 상태(C2) 카드 문구 — "1장 어린 시절의 질문 8개를 준비해뒀어요".
@@ -80,9 +94,22 @@ class HomeController extends GetxController {
   }
 
   /// "말로 답하기" · "1장 시작하기" 둘 다 작성 탭으로 간다.
-  void continueWriting() => Get.offNamed(AppRoutes.write);
+  void continueWriting() {
+    final id = _requireBookId();
+    final qid = summary.value?.todayQuestionId;
+    Get.offNamed(
+      AppRoutes.write,
+      arguments: {
+        'bookId': id,
+        if (qid != null) 'questionId': qid,
+      },
+    );
+  }
 
-  void openBook() => Get.offNamed(AppRoutes.book);
+  void openBook() {
+    final id = _requireBookId();
+    Get.offNamed(AppRoutes.bookDetail, arguments: {'bookId': id});
+  }
 
   /// 목차 한 줄을 눌렀을 때. 잠긴 장은 눌리지 않는다.
   void openChapter(Chapter chapter) {

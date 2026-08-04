@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -14,14 +14,17 @@ import { HomeService } from './services/home.service';
 @ApiTags('Home API')
 @ApiBearerAuth('access-token')
 @UseGuards(AccessTokenGuard)
-@Controller('home')
+@Controller('books')
 export class HomeController {
   constructor(private readonly homeService: HomeService) {}
 
-  @ApiOperation({ summary: '홈 요약' })
+  @ApiOperation({ summary: '홈 요약 (책 범위)' })
   @ApiResponse({ status: 200, type: HomeResponseDto })
-  @Get()
-  getHome(@UserId() userId: string) {
-    return this.homeService.getHome(userId);
+  @Get(':bookId/home')
+  getHome(
+    @UserId() userId: string,
+    @Param('bookId', ParseUUIDPipe) bookId: string,
+  ) {
+    return this.homeService.getHome(userId, bookId);
   }
 }

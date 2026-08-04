@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AnswersModule } from 'src/answers/answers.module';
 import { AuthGuardModule } from 'src/auth/auth-guard.module';
+import { BookAccessModule } from 'src/book/book-access.module';
+import { ChapterReviewModel } from 'src/review/entities/chapter-review.entity';
 import { ChaptersController } from './chapters.controller';
 import { UserChapterModel } from './entities/user-chapter.entity';
 import { UserQuestionModel } from './entities/user-question.entity';
@@ -11,9 +13,13 @@ import { ChaptersService } from './services/chapters.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserChapterModel, UserQuestionModel]),
+    TypeOrmModule.forFeature([
+      UserChapterModel,
+      UserQuestionModel,
+      ChapterReviewModel,
+    ]),
     AuthGuardModule,
-    // 컨트롤러가 저장된 답변을 함께 실어 주고, answers는 장 진행을 물어본다.
+    BookAccessModule,
     forwardRef(() => AnswersModule),
   ],
   controllers: [ChaptersController],

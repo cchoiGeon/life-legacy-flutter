@@ -16,26 +16,33 @@ export class ChaptersRepository {
     private readonly questions: Repository<UserQuestionModel>,
   ) {}
 
-  async findAllByUser(userId: string): Promise<UserChapterModel[]> {
+  async findAllByBook(bookId: string): Promise<UserChapterModel[]> {
     return await this.chapters.find({
-      where: { user: { id: userId } },
+      where: { bookId },
       order: { sortOrder: 'ASC' },
     });
   }
 
-  async findWritingChapter(userId: string): Promise<UserChapterModel | null> {
+  async findWritingChapter(bookId: string): Promise<UserChapterModel | null> {
     return await this.chapters.findOne({
-      where: { user: { id: userId }, status: ChapterStatus.WRITING },
+      where: { bookId, status: ChapterStatus.WRITING },
+    });
+  }
+
+  async findChapterById(chapterId: string): Promise<UserChapterModel | null> {
+    return await this.chapters.findOne({
+      where: { id: chapterId },
+      relations: { book: true },
     });
   }
 
   async findNextChapter(
-    userId: string,
+    bookId: string,
     afterOrder: number,
   ): Promise<UserChapterModel | null> {
     return await this.chapters
       .createQueryBuilder('c')
-      .where('c.user_id = :userId', { userId })
+      .where('c.book_id = :bookId', { bookId })
       .andWhere('c.sort_order > :afterOrder', { afterOrder })
       .orderBy('c.sort_order', 'ASC')
       .getOne();
@@ -49,7 +56,7 @@ export class ChaptersRepository {
         status: QuestionStatus.PENDING,
       },
       order: { sortOrder: 'ASC' },
-      relations: { userChapter: true },
+      relations: { userChapter: { book: true } },
     });
   }
 
@@ -58,7 +65,7 @@ export class ChaptersRepository {
   ): Promise<UserQuestionModel | null> {
     return await this.questions.findOne({
       where: { id: questionId },
-      relations: { userChapter: { user: true } },
+      relations: { userChapter: { book: true } },
     });
   }
 
@@ -70,22 +77,48 @@ export class ChaptersRepository {
     return await this.questions.save(question);
   }
 
-  async countByUser(
-    userId: string,
+  async countByBook(
+    bookId: string,
   ): Promise<{ total: number; answered: number }> {
     const total = await this.questions
       .createQueryBuilder('q')
       .innerJoin('q.userChapter', 'c')
-      .where('c.user_id = :userId', { userId })
+      .where('c.book_id = :bookId', { bookId })
       .getCount();
 
     const answered = await this.questions
       .createQueryBuilder('q')
       .innerJoin('q.userChapter', 'c')
-      .where('c.user_id = :userId', { userId })
+      .where('c.book_id = :bookId', { bookId })
       .andWhere('q.status != :pending', { pending: QuestionStatus.PENDING })
       .getCount();
 
     return { total, answered };
+  }
+
+  async countQuestionsInChapter(chapterId: string): Promise<{
+    questionCount: number;
+    answeredCount: number;
+    skippedCount: number;
+  }> {
+    const rows = await this.questions
+      .createQueryBuilder('q')
+      .innerJoin('q.userChapter', 'c')
+      .select('q.status', 'status')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('c.id = :chapterId', { chapterId })
+      .groupBy('q.status')
+      .getRawMany<{ status: QuestionStatus; cnt: string }>();
+
+    let questionCount = 0;
+    let answeredCount = 0;
+    let skippedCount = 0;
+    for (const row of rows) {
+      const n = Number(row.cnt);
+      questionCount += n;
+      if (row.status === QuestionStatus.ANSWERED) answeredCount = n;
+      if (row.status === QuestionStatus.SKIPPED) skippedCount = n;
+    }
+    return { questionCount, answeredCount, skippedCount };
   }
 }

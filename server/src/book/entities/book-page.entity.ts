@@ -1,21 +1,23 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne, Unique } from 'typeorm';
 
 import { BaseModel } from 'src/common/entities/base.entity';
-import { AppUserModel } from 'src/users/entities/app-user.entity';
 import { UserChapterModel } from 'src/chapters/entities/user-chapter.entity';
+import { BookModel } from './book.entity';
 
 /**
  * done 장의 polishedText를 이어 붙여 서버가 쪽을 나눈 결과.
- * 장이 완료될 때마다 그 장의 쪽을 다시 만든다(기존 행 삭제 후 재삽입).
- * 앱은 받은 대로 그리기만 한다.
+ * 책이 범위다 — user_id를 두지 않는다.
  */
 @Entity('book_page')
-@Unique('ux_book_page_number', ['user', 'pageNumber'])
+@Unique('ux_book_page_number', ['book', 'pageNumber'])
 @Index('ix_book_page_chapter', ['userChapter'])
 export class BookPageModel extends BaseModel {
-  @ManyToOne(() => AppUserModel, { onDelete: 'CASCADE', nullable: false })
-  @JoinColumn({ name: 'user_id' })
-  user: AppUserModel;
+  @ManyToOne(() => BookModel, { onDelete: 'CASCADE', nullable: false })
+  @JoinColumn({ name: 'book_id' })
+  book: BookModel;
+
+  @Column({ name: 'book_id', type: 'uuid' })
+  bookId: string;
 
   @ManyToOne(() => UserChapterModel, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'user_chapter_id' })

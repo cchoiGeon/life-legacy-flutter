@@ -1,66 +1,220 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { AnswersRepository } from 'src/answers/repositories/answers.repository';
 import { ChapterStatus } from 'src/chapters/const/chapter-status.enum';
 import { ChaptersRepository } from 'src/chapters/repositories/chapters.repository';
-import { UsersService } from 'src/users/services/users.service';
+import { ReviewStatus } from 'src/common/const/review-status.enum';
+import { EntitlementService } from 'src/entitlement/services/entitlement.service';
+import { ChapterReviewModel } from 'src/review/entities/chapter-review.entity';
+import { BookAccessService } from './book-access.service';
 import { BookPageModel } from '../entities/book-page.entity';
 import { BookPageResponseDto } from '../dto/response/book-page-response.dto';
-import { BookResponseDto } from '../dto/response/book-response.dto';
+import { BookModel } from '../entities/book.entity';
 
-/** 한 쪽에 담는 문단 수 — 쪽 나누기는 **서버가** 정한다. 앱은 받은 대로 그린다 */
 const PARAGRAPHS_PER_PAGE = 3;
+
+type BookStatus = 'draft' | 'writing' | 'completed';
 
 @Injectable()
 export class BookService {
   constructor(
     @InjectRepository(BookPageModel)
     private readonly pages: Repository<BookPageModel>,
+    @InjectRepository(BookModel)
+    private readonly books: Repository<BookModel>,
+    @InjectRepository(ChapterReviewModel)
+    private readonly reviews: Repository<ChapterReviewModel>,
+    private readonly bookAccess: BookAccessService,
     private readonly chaptersRepository: ChaptersRepository,
     private readonly answersRepository: AnswersRepository,
-    private readonly usersService: UsersService,
+    private readonly entitlementService: EntitlementService,
   ) {}
 
-  async getBook(userId: string): Promise<BookResponseDto> {
-    const user = await this.usersService.getOrThrow(userId);
-    const chapters = await this.chaptersRepository.findAllByUser(userId);
-    const answered = await this.answersRepository.countAnsweredByUser(userId);
-    const pages = await this.buildPages(userId);
+  async listBooks(userId: string): Promise<
+    Array<{
+      id: string;
+      title: string;
+      author_name: string;
+      status: BookStatus;
+      chapter_count: number;
+      chapter_done: number;
+      progress: number;
+      updated_at: string;
+    }>
+  > {
+    const books = await this.bookAccess.findOwnedBooks(userId);
+    const items: Array<{
+      id: string;
+      title: string;
+      author_name: string;
+      status: BookStatus;
+      chapter_count: number;
+      chapter_done: number;
+      progress: number;
+      updated_at: string;
+    }> = [];
+
+    for (const book of books) {
+      const chapters = await this.chaptersRepository.findAllByBook(book.id);
+      const { total, answered } =
+        await this.chaptersRepository.countByBook(book.id);
+      const reviewMap = await this.reviewStatusByChapter(
+        chapters.map((c) => c.id),
+      );
+      const chapterDone = chapters.filter(
+        (c) => c.status === ChapterStatus.DONE,
+      ).length;
+      const status = this.deriveStatus(chapters, reviewMap);
+
+      items.push({
+        id: book.id,
+        title: book.title,
+        author_name: book.authorName,
+        status,
+        chapter_count: chapters.length,
+        chapter_done: chapterDone,
+        progress: total === 0 ? 0 : answered / total,
+        updated_at: book.updatedAt.toISOString(),
+      });
+    }
+
+    return items;
+  }
+
+  /** api-spec §6.2 상세 허브 */
+  async getBook(userId: string, bookId: string) {
+    const book = await this.bookAccess.requireOwnedBook(userId, bookId);
+    const chapters = await this.chaptersRepository.findAllByBook(bookId);
+    const { total, answered } =
+      await this.chaptersRepository.countByBook(bookId);
+    const reviewMap = await this.reviewStatusByChapter(
+      chapters.map((c) => c.id),
+    );
+    const status = this.deriveStatus(chapters, reviewMap);
+    const chapterDone = chapters.filter(
+      (c) => c.status === ChapterStatus.DONE,
+    ).length;
+    const pages = await this.buildPages(bookId, reviewMap);
+
+    const chapterDtos: Array<{
+      id: string;
+      order: number;
+      title: string;
+      status: ChapterStatus;
+      answered_count: number;
+      question_count: number;
+      next_question_text: string | null;
+      review_status: ReviewStatus | null;
+      ebook_eligible: boolean;
+    }> = [];
+    for (const chapter of chapters) {
+      const next =
+        chapter.status === ChapterStatus.WRITING
+          ? await this.chaptersRepository.findFirstPending(chapter.id)
+          : null;
+      const reviewStatus = reviewMap.get(chapter.id) ?? null;
+      chapterDtos.push({
+        id: chapter.id,
+        order: chapter.sortOrder,
+        title: chapter.title,
+        status: chapter.status,
+        answered_count: chapter.answeredCount,
+        question_count: chapter.questionCount,
+        next_question_text:
+          chapter.status === ChapterStatus.WRITING
+            ? (next?.text ?? null)
+            : null,
+        review_status: reviewStatus,
+        ebook_eligible: reviewStatus === ReviewStatus.REVIEWED,
+      });
+    }
+
+    const current = await this.chaptersRepository.findWritingChapter(bookId);
+    let currentQuestion: {
+      id: string;
+      chapter_id: string;
+      chapter_title: string;
+      order: number;
+      text: string;
+    } | null = null;
+    if (current) {
+      const pending = await this.chaptersRepository.findFirstPending(
+        current.id,
+      );
+      if (pending) {
+        currentQuestion = {
+          id: pending.id,
+          chapter_id: current.id,
+          chapter_title: current.title,
+          order: pending.sortOrder,
+          text: pending.text,
+        };
+      }
+    }
 
     return {
-      title: '나의 이야기',
-      author_name: user.name,
+      id: book.id,
+      title: book.title,
+      author_name: book.authorName,
+      status,
+      progress: total === 0 ? 0 : answered / total,
+      chapter_done: chapterDone,
+      chapter_total: chapters.length,
+      current_question: currentQuestion,
+      chapters: chapterDtos,
+      entitlements: await this.entitlementService.getDashboardEntitlements(
+        userId,
+        bookId,
+      ),
+      // E3 완성 화면 호환
       chapter_count: chapters.length,
       question_count: answered,
       page_count: pages.length,
-      photo_count: 0,
-      is_complete:
-        chapters.length > 0 &&
-        chapters.every((c) => c.status === ChapterStatus.DONE),
+      photo_count: book.photoCount,
+      is_complete: status === 'completed',
     };
   }
 
-  async getPages(userId: string): Promise<BookPageResponseDto[]> {
-    return await this.buildPages(userId);
+  /** api-spec §11 */
+  async getEntitlements(userId: string, bookId: string) {
+    await this.bookAccess.requireOwnedBook(userId, bookId);
+    return this.entitlementService.getBookEntitlements(userId, bookId);
+  }
+
+  async getPages(
+    userId: string,
+    bookId: string,
+  ): Promise<BookPageResponseDto[]> {
+    await this.bookAccess.requireOwnedBook(userId, bookId);
+    const chapters = await this.chaptersRepository.findAllByBook(bookId);
+    const reviewMap = await this.reviewStatusByChapter(
+      chapters.map((c) => c.id),
+    );
+    return await this.buildPages(bookId, reviewMap);
   }
 
   /**
-   * done 장의 윤문 결과를 이어 붙여 쪽을 나눈다.
-   *
-   * 매번 새로 계산한다 — 장이 끝날 때마다 캐시를 갱신하는 쪽이 빠르지만,
-   * 어긋났을 때 사용자가 보는 건 "내 이야기가 사라졌다"이다. v1은 정확성을
-   * 택하고, 느려지면 book_page 표에 캐시한다.
+   * 미리보기/ebook: **reviewed** 장만 포함 (화면 MD 06-1-1).
+   * review 없는 done 장은 아직 원고로 올리지 않는다.
    */
-  private async buildPages(userId: string): Promise<BookPageResponseDto[]> {
-    const chapters = await this.chaptersRepository.findAllByUser(userId);
-    const done = chapters.filter((c) => c.status === ChapterStatus.DONE);
+  private async buildPages(
+    bookId: string,
+    reviewMap?: Map<string, ReviewStatus>,
+  ): Promise<BookPageResponseDto[]> {
+    const chapters = await this.chaptersRepository.findAllByBook(bookId);
+    const statuses =
+      reviewMap ??
+      (await this.reviewStatusByChapter(chapters.map((c) => c.id)));
+    const eligible = chapters.filter(
+      (c) => statuses.get(c.id) === ReviewStatus.REVIEWED,
+    );
 
     const result: BookPageResponseDto[] = [];
     let pageNumber = 1;
 
-    for (const chapter of done) {
+    for (const chapter of eligible) {
       const answers = await this.answersRepository.findPolishedByChapter(
         chapter.id,
       );
@@ -81,7 +235,32 @@ export class BookService {
       }
     }
 
-    // 앱이 쪽 하나만 들고도 "12 / 34쪽"을 그릴 수 있어야 해서 쪽마다 총수를 싣는다.
     return result.map((page) => ({ ...page, total_pages: result.length }));
+  }
+
+  private deriveStatus(
+    chapters: { id: string; status: ChapterStatus }[],
+    reviewMap: Map<string, ReviewStatus>,
+  ): BookStatus {
+    if (chapters.length === 0) return 'draft';
+    const allReviewed = chapters.every(
+      (c) => reviewMap.get(c.id) === ReviewStatus.REVIEWED,
+    );
+    if (allReviewed) return 'completed';
+    return 'writing';
+  }
+
+  private async reviewStatusByChapter(
+    chapterIds: string[],
+  ): Promise<Map<string, ReviewStatus>> {
+    const map = new Map<string, ReviewStatus>();
+    if (chapterIds.length === 0) return map;
+    const rows = await this.reviews.find({
+      where: { userChapterId: In(chapterIds) },
+    });
+    for (const row of rows) {
+      map.set(row.userChapterId, row.status);
+    }
+    return map;
   }
 }
