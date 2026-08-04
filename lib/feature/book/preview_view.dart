@@ -31,11 +31,42 @@ class BookPreviewView extends GetView<BookPreviewController> {
           children: [
             AppTopBar(
               title: controller.title,
-              trailing: AppTextAction(
-                label: '보내기',
-                onTap: controller.share,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppTextAction(
+                    label: '제목',
+                    onTap: controller.suggestTitles,
+                  ),
+                  Obx(
+                    () => AppTextAction(
+                      label:
+                          controller.isDownloading.value ? '준비 중…' : 'PDF 저장',
+                      enabled: !controller.isDownloading.value,
+                      onTap: controller.downloadPdf,
+                    ),
+                  ),
+                ],
               ),
             ),
+            Obx(() {
+              final caption = controller.scopeCaption;
+              if (caption.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppDimens.gutter,
+                  4,
+                  AppDimens.gutter,
+                  0,
+                ),
+                child: Text(
+                  caption,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              );
+            }),
             Expanded(
               child: page == null
                   ? const _EmptyBook()
