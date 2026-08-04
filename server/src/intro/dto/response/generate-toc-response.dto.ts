@@ -6,6 +6,9 @@ export class GenerateTocResponseDto {
   @ApiProperty({ example: 'legacy_college_married_children' })
   case_key: string;
 
+  @ApiProperty({ example: 'b_001' })
+  book_id: string;
+
   @ApiProperty({ type: [ChapterResponseDto] })
   chapters: ChapterResponseDto[];
 }

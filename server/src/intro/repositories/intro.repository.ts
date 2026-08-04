@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { CaseDefinitionModel } from '../entities/case-definition.entity';
 import { IntroChoiceModel } from '../entities/intro-choice.entity';
 import { IntroQuestionModel } from '../entities/intro-question.entity';
 import { UserIntroAnswerModel } from '../entities/user-intro-answer.entity';
 import { UserProfileModel } from '../entities/user-profile.entity';
+import { WritingPlanModel } from '../entities/writing-plan.entity';
+import { IntroChoiceResponseDto } from '../dto/response/intro-question-response.dto';
 
 @Injectable()
 export class IntroRepository {
@@ -21,6 +23,8 @@ export class IntroRepository {
     private readonly cases: Repository<CaseDefinitionModel>,
     @InjectRepository(UserProfileModel)
     private readonly profiles: Repository<UserProfileModel>,
+    @InjectRepository(WritingPlanModel)
+    private readonly writingPlans: Repository<WritingPlanModel>,
   ) {}
 
   async findActiveQuestions(): Promise<IntroQuestionModel[]> {
@@ -30,37 +34,40 @@ export class IntroRepository {
     });
   }
 
-  /**
-   * 질문 id → 선택지 라벨.
-   *
-   * ⚠️ 엔티티만 돌려주면 FK(intro_question_id)가 실려 오지 않아 어느 질문의
-   *    선택지인지 알 수 없다. 실제로 그 탓에 선택지가 전부 빈 배열로 나가서
-   *    앱이 학력 4지선다를 텍스트 입력으로 그렸다. id를 명시적으로 뽑는다.
-   */
-  async findChoiceLabelsByQuestionIds(
+  async findChoiceTreeByQuestionIds(
     questionIds: string[],
-  ): Promise<{ questionId: string; label: string }[]> {
-    if (questionIds.length === 0) {
-      return [];
+  ): Promise<Map<string, IntroChoiceResponseDto[]>> {
+    const result = new Map<string, IntroChoiceResponseDto[]>();
+    if (questionIds.length === 0) return result;
+
+    const all = await this.choices.find({
+      where: { introQuestion: { id: In(questionIds) } },
+      relations: { introQuestion: true, parentChoice: true },
+      order: { sortOrder: 'ASC' },
+    });
+
+    const tops = all.filter((c) => !c.parentChoice);
+    const details = all.filter((c) => c.parentChoice);
+
+    for (const qid of questionIds) {
+      const topForQ = tops.filter((c) => c.introQuestion.id === qid);
+      result.set(
+        qid,
+        topForQ.map((c) => {
+          const kids = details.filter((d) => d.parentChoice?.id === c.id);
+          const dto: IntroChoiceResponseDto = {
+            id: c.id,
+            label: c.label,
+          };
+          if (kids.length > 0) {
+            dto.details = kids.map((k) => ({ id: k.id, label: k.label }));
+          }
+          return dto;
+        }),
+      );
     }
 
-    return await this.choices
-      .createQueryBuilder('c')
-      .select('c.intro_question_id', 'questionId')
-      .addSelect('c.label', 'label')
-      .where('c.intro_question_id IN (:...ids)', { ids: questionIds })
-      .orderBy('c.sort_order', 'ASC')
-      .getRawMany<{ questionId: string; label: string }>();
-  }
-
-  async findCaseByAxes(
-    hasCollege: boolean,
-    hasMarriage: boolean,
-    hasChildren: boolean,
-  ): Promise<CaseDefinitionModel | null> {
-    return await this.cases.findOne({
-      where: { hasCollege, hasMarriage, hasChildren },
-    });
+    return result;
   }
 
   async findAnswersByUser(userId: string): Promise<UserIntroAnswerModel[]> {
@@ -71,10 +78,14 @@ export class IntroRepository {
     });
   }
 
-  async findProfile(userId: string): Promise<UserProfileModel | null> {
-    return await this.profiles.findOne({
-      where: { userId },
-      relations: { case: true },
-    });
+  async findWritingPlan(userId: string): Promise<WritingPlanModel | null> {
+    return await this.writingPlans.findOne({ where: { userId } });
+  }
+
+  async upsertWritingPlan(
+    plan: Partial<WritingPlanModel> & { userId: string },
+  ): Promise<WritingPlanModel> {
+    await this.writingPlans.save(this.writingPlans.create(plan));
+    return (await this.findWritingPlan(plan.userId))!;
   }
 }

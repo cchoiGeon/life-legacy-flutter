@@ -36,13 +36,19 @@ export class UserProfileModel {
   @Column({ name: 'display_name', type: 'varchar', length: 50 })
   displayName: string;
 
-  /** 문체 호칭용. 케이스와 무관 */
+  /** 문체 호칭용. 케이스와 무관. 남 | 여 */
   @Column({ type: 'varchar', length: 10, nullable: true })
   gender: string | null;
+
+  @Column({ name: 'birth_date', type: 'date', nullable: true })
+  birthDate: string | null;
 
   /** i5 원본 값. "고등학교" 등 */
   @Column({ name: 'education_level', type: 'varchar', length: 30 })
   educationLevel: string;
+
+  @Column({ name: 'education_detail', type: 'varchar', length: 30, nullable: true })
+  educationDetail: string | null;
 
   @Column({ name: 'has_college', type: 'boolean' })
   hasCollege: boolean;

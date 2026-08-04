@@ -6,15 +6,9 @@ import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/service/services.dart';
 
-/// B1~B5 자기소개 — 성함은 키보드로, 나머지는 선택지로 받는다.
+/// 자기소개 질문 + 작성 계획 — 성함은 가입 이름을 쓰고 i1은 없다.
 ///
-/// ⚠️ 여기에는 **음성 입력이 없다.** 작성 탭(D)과 달리 답이 이름 한 단어나
-///    보기 중 하나라 받아쓰기가 오히려 손이 더 간다. 되살릴 일이 생기면
-///    작성 탭의 [SpeechService] 사용 방식을 그대로 가져오면 된다.
-///
-/// ⚠️ 선택지는 **누른다고 넘어가지 않는다.** 예전에는 고르는 즉시 다음
-///    문항으로 갔지만, 학력 문항이 4지선다가 되면서 잘못 누른 걸 고칠 여지가
-///    필요해졌다. 이제 고른 값이 화면에 남고 하단 "다음"으로 넘어간다.
+/// 문항 뒤에 작성 계획 단계가 하나 더 있다([isWritingPlan]).
 class IntroController extends GetxController {
   IntroController(this._api, this._toast);
 
@@ -25,34 +19,65 @@ class IntroController extends GetxController {
 
   final RxList<IntroQuestion> questions = <IntroQuestion>[].obs;
   final RxBool isLoading = true.obs;
+  final RxBool isSubmittingPlan = false.obs;
 
-  /// 0부터. `questions[index]`가 지금 화면의 질문이다.
+  /// 0부터. `questions.length`면 작성 계획 단계.
   final RxInt index = 0.obs;
 
-  /// 입력창의 현재 값(반응형). "다음" 버튼 활성 판단에 쓴다.
   final RxString draft = ''.obs;
 
-  /// 지금 문항에서 고른 선택지. 고르기 문항에서만 쓴다.
+  /// 고른 선택지(라벨).
   final RxnString selected = RxnString();
 
-  /// 질문 id → 답변
-  final Map<String, String> answers = {};
+  /// 조건부 상세(라벨).
+  final RxnString selectedDetail = RxnString();
+
+  final RxnInt birthYear = RxnInt();
+  final RxnInt birthMonth = RxnInt();
+  final RxnInt birthDay = RxnInt();
+
+  // ── 작성 계획 ─────────────────────────────────────────────
+  final RxnInt dailyMinutes = RxnInt();
+  final RxList<int> availableWeekdays = <int>[].obs;
+  final RxList<String> availablePeriods = <String>[].obs;
+  final RxnInt durationWeeks = RxnInt();
+  final RxString durationSource = 'recommended'.obs;
+  final RxBool alarmEnabled = true.obs;
+  final RxInt recommendedWeeks = 2.obs;
+
+  /// questionId → 제출 초안
+  final Map<String, IntroAnswerSubmission> answers = {};
 
   IntroQuestion? get current =>
       index.value < questions.length ? questions[index.value] : null;
 
-  int get step => index.value + 1;
-  int get total => questions.length;
+  bool get isWritingPlan =>
+      !isLoading.value && index.value >= questions.length && questions.isNotEmpty;
 
-  /// 우상단 "3 / 5"
+  int get step => index.value + 1;
+  int get total => questions.isEmpty ? 0 : questions.length + 1;
+
   String get stepLabel => total == 0 ? '' : '$step / $total';
 
   double get progress => total == 0 ? 0 : step / total;
 
-  /// 버튼 문구는 다섯 문항 내내 "다음"이다 — 시안 346:820이 마지막 문항(B5)에도
-  /// "다음"을 쓴다. 마지막만 "목차 만들기"로 바꾸면 무슨 일이 일어날지 예고되지만,
-  /// 다섯 번 중 한 번만 달라지는 버튼은 오히려 손을 멈추게 한다.
-  String get ctaLabel => '다음';
+  String get ctaLabel => isWritingPlan ? '목차 만들기' : '다음';
+
+  IntroChoiceOption? get selectedChoice {
+    final label = selected.value;
+    if (label == null || current == null) return null;
+    for (final c in current!.choices) {
+      if (c.label == label) return c;
+    }
+    return null;
+  }
+
+  static const dailyMinuteOptions = [10, 30, 60, 90, 120];
+  static const durationWeekOptions = [1, 2, 4, 6];
+
+  /// UI: 평일 = 월~금(1~5), 주말 = 토·일(6,0) — 서버 계약 0=일~6=토.
+  static const weekdayPreset = [1, 2, 3, 4, 5];
+  static const weekendPreset = [6, 0];
 
   @override
   void onInit() {
@@ -81,58 +106,265 @@ class IntroController extends GetxController {
     }
   }
 
-  bool get canGoNext => switch (current?.type) {
-    IntroAnswerType.choice => selected.value != null,
-    IntroAnswerType.text => draft.value.trim().isNotEmpty,
-    null => false,
-  };
+  bool get canGoNext {
+    if (isWritingPlan) {
+      return dailyMinutes.value != null &&
+          availableWeekdays.isNotEmpty &&
+          availablePeriods.isNotEmpty &&
+          durationWeeks.value != null &&
+          !isSubmittingPlan.value;
+    }
 
-  /// 선택지를 고른다. **넘어가지는 않는다** — 하단 "다음"이 그 몫이다.
-  void choose(String value) => selected.value = value;
+    final q = current;
+    if (q == null) return false;
+    return switch (q.type) {
+      IntroAnswerType.choice =>
+        selected.value != null &&
+            (!(selectedChoice?.hasDetails ?? false) ||
+                selectedDetail.value != null),
+      IntroAnswerType.date =>
+        birthYear.value != null &&
+            birthMonth.value != null &&
+            birthDay.value != null,
+      IntroAnswerType.text => draft.value.trim().isNotEmpty,
+      IntroAnswerType.multiChoice => false,
+    };
+  }
 
-  /// 이 문항의 답을 확정하고 다음으로. 마지막이면 목차 생성으로 넘어간다.
+  void choose(String label) {
+    if (selected.value == label) return;
+    selected.value = label;
+    selectedDetail.value = null;
+  }
+
+  void chooseDetail(String label) => selectedDetail.value = label;
+
+  void setBirthYear(int? y) {
+    birthYear.value = y;
+    _clampDay();
+  }
+
+  void setBirthMonth(int? m) {
+    birthMonth.value = m;
+    _clampDay();
+  }
+
+  void setBirthDay(int? d) => birthDay.value = d;
+
+  void _clampDay() {
+    final y = birthYear.value;
+    final m = birthMonth.value;
+    final d = birthDay.value;
+    if (y == null || m == null || d == null) return;
+    final max = DateTime(y, m + 1, 0).day;
+    if (d > max) birthDay.value = max;
+  }
+
+  int daysInSelectedMonth() {
+    final y = birthYear.value ?? 2000;
+    final m = birthMonth.value ?? 1;
+    return DateTime(y, m + 1, 0).day;
+  }
+
+  void toggleWeekdayPreset(List<int> preset) {
+    final allOn = preset.every(availableWeekdays.contains);
+    if (allOn) {
+      availableWeekdays.removeWhere(preset.contains);
+    } else {
+      for (final d in preset) {
+        if (!availableWeekdays.contains(d)) availableWeekdays.add(d);
+      }
+    }
+    availableWeekdays.refresh();
+    _refreshRecommended();
+  }
+
+  bool weekdayPresetSelected(List<int> preset) =>
+      preset.every(availableWeekdays.contains);
+
+  void togglePeriod(String period) {
+    if (availablePeriods.contains(period)) {
+      availablePeriods.remove(period);
+    } else {
+      availablePeriods.add(period);
+    }
+    availablePeriods.refresh();
+  }
+
+  void selectDailyMinutes(int minutes) {
+    dailyMinutes.value = minutes;
+    _refreshRecommended();
+  }
+
+  void selectDurationWeeks(int weeks, {required bool recommended}) {
+    durationWeeks.value = weeks;
+    durationSource.value = recommended ? 'recommended' : 'manual';
+  }
+
+  void _refreshRecommended() {
+    final minutes = dailyMinutes.value ?? 30;
+    final days = availableWeekdays.isEmpty ? 3 : availableWeekdays.length;
+    final rec = () {
+      if (minutes >= 90 && days >= 4) return 1;
+      if (minutes >= 60) return 2;
+      if (minutes >= 30) return 4;
+      return 6;
+    }();
+    recommendedWeeks.value = rec;
+    if (durationSource.value == 'recommended' || durationWeeks.value == null) {
+      durationWeeks.value = rec;
+      durationSource.value = 'recommended';
+    }
+  }
+
+  /// 건너뛰기 — 결혼·자녀만.
+  void skip() {
+    final q = current;
+    if (q == null || !q.skippable) return;
+    answers[q.id] = IntroAnswerSubmission(questionId: q.id, skipped: true);
+    _advance();
+  }
+
   void next() {
+    if (isWritingPlan) {
+      _submitWritingPlanAndToc();
+      return;
+    }
+
     final q = current;
     if (q == null || !canGoNext) return;
 
-    answers[q.id] = q.type == IntroAnswerType.choice
-        ? selected.value!
-        : answerController.text.trim();
+    answers[q.id] = switch (q.type) {
+      IntroAnswerType.choice => IntroAnswerSubmission(
+          questionId: q.id,
+          value: selected.value,
+          choiceId: selectedChoice?.id,
+          detailValue: selectedDetail.value,
+          detailChoiceId: selectedChoice?.details
+              .where((d) => d.label == selectedDetail.value)
+              .map((d) => d.id)
+              .firstOrNull,
+        ),
+      IntroAnswerType.date => IntroAnswerSubmission(
+          questionId: q.id,
+          value:
+              '${birthYear.value!.toString().padLeft(4, '0')}-'
+              '${birthMonth.value!.toString().padLeft(2, '0')}-'
+              '${birthDay.value!.toString().padLeft(2, '0')}',
+        ),
+      IntroAnswerType.text => IntroAnswerSubmission(
+          questionId: q.id,
+          value: answerController.text.trim(),
+        ),
+      IntroAnswerType.multiChoice => IntroAnswerSubmission(
+          questionId: q.id,
+          skipped: true,
+        ),
+    };
 
-    if (index.value + 1 >= questions.length) {
-      Get.offNamed(AppRoutes.tocLoading, arguments: answers);
-      return;
-    }
-    index.value++;
-    _restore();
+    _advance();
   }
 
-  /// 뒤로 — 첫 질문에서는 화면을 벗어난다.
+  void _advance() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (index.value + 1 > questions.length) return;
+    index.value++;
+    if (isWritingPlan) {
+      _enterWritingPlan();
+    } else {
+      _restore();
+    }
+  }
+
+  Future<void> _enterWritingPlan() async {
+    try {
+      final result = await _api.writingPlan();
+      recommendedWeeks.value = result.recommendedWeeks;
+      final plan = result.plan;
+      if (plan != null) {
+        dailyMinutes.value = plan.dailyMinutes;
+        availableWeekdays
+          ..clear()
+          ..addAll(plan.availableWeekdays);
+        availablePeriods
+          ..clear()
+          ..addAll(plan.availablePeriods);
+        durationWeeks.value = plan.durationWeeks;
+        durationSource.value = plan.durationSource;
+        alarmEnabled.value = plan.alarmEnabled;
+      } else {
+        durationWeeks.value = result.recommendedWeeks;
+        durationSource.value = 'recommended';
+      }
+    } on ApiException {
+      durationWeeks.value = recommendedWeeks.value;
+      durationSource.value = 'recommended';
+    }
+  }
+
+  Future<void> _submitWritingPlanAndToc() async {
+    if (!canGoNext || isSubmittingPlan.value) return;
+    isSubmittingPlan.value = true;
+    try {
+      final plan = WritingPlan(
+        dailyMinutes: dailyMinutes.value!,
+        availableWeekdays: List.of(availableWeekdays),
+        availablePeriods: List.of(availablePeriods),
+        durationWeeks: durationWeeks.value!,
+        durationSource: durationSource.value,
+        alarmEnabled: alarmEnabled.value,
+      );
+      await _api.updateWritingPlan(plan);
+      Get.offNamed(
+        AppRoutes.tocLoading,
+        arguments: answers.values.toList(),
+      );
+    } on ApiException catch (e) {
+      _toast.showError(e);
+    } finally {
+      isSubmittingPlan.value = false;
+    }
+  }
+
   void back() {
-    // 성함 입력칸에 키보드가 올라와 있을 수 있다. 화면을 옮기기 전에 내린다.
     FocusManager.instance.primaryFocus?.unfocus();
     if (index.value == 0) {
       Get.back();
       return;
     }
     index.value--;
-    _restore();
+    if (index.value < questions.length) {
+      _restore();
+    }
   }
 
-  /// 지금 문항에 이미 답한 게 있으면 화면에 되살린다.
-  ///
-  /// 앞으로 갈 때도 부른다 — 뒤로 갔다가 다시 앞으로 오면 아까 고른 값이
-  /// 그대로 있어야 한다.
   void _restore() {
     final q = current;
-    final saved = q == null ? null : answers[q.id];
-
-    if (q?.type == IntroAnswerType.choice) {
-      selected.value = saved;
-      answerController.clear();
-      return;
-    }
     selected.value = null;
-    answerController.text = saved ?? '';
+    selectedDetail.value = null;
+    birthYear.value = null;
+    birthMonth.value = null;
+    birthDay.value = null;
+    answerController.clear();
+
+    final saved = q == null ? null : answers[q.id];
+    if (q == null || saved == null || saved.skipped) return;
+
+    switch (q.type) {
+      case IntroAnswerType.choice:
+        selected.value = saved.value;
+        selectedDetail.value = saved.detailValue;
+      case IntroAnswerType.date:
+        final parts = (saved.value ?? '').split('-');
+        if (parts.length == 3) {
+          birthYear.value = int.tryParse(parts[0]);
+          birthMonth.value = int.tryParse(parts[1]);
+          birthDay.value = int.tryParse(parts[2]);
+        }
+      case IntroAnswerType.text:
+        answerController.text = saved.value ?? '';
+      case IntroAnswerType.multiChoice:
+        break;
+    }
   }
 }

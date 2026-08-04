@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { mkdirSync, writeFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { DataSource, IsNull } from 'typeorm';
 
 import { PromptTemplateModel } from 'src/ai/entities/prompt-template.entity';
 import { PROMPT_SEED } from 'src/ai/seed/prompt.seed';
+import { BgmTrackModel } from 'src/audiobook/entities/bgm-track.entity';
 import { CaseDefinitionModel } from 'src/intro/entities/case-definition.entity';
 import { IntroChoiceModel } from 'src/intro/entities/intro-choice.entity';
 import { IntroQuestionModel } from 'src/intro/entities/intro-question.entity';
@@ -10,6 +13,8 @@ import { CASE_SEED } from 'src/intro/seed/case.seed';
 import { INTRO_QUESTION_SEED } from 'src/intro/seed/intro-question.seed';
 import { ChapterTemplateModel } from '../entities/chapter-template.entity';
 import { QuestionTemplateModel } from '../entities/question-template.entity';
+import { ConsentDocumentModel } from 'src/auth/entities/consent-document.entity';
+import { CONSENT_SEED } from 'src/auth/seed/consent.seed';
 import { CHAPTER_SEED } from './catalog.seed';
 
 /**
@@ -30,6 +35,8 @@ export class SeedService {
     await this.seedCases();
     await this.seedIntroQuestions();
     await this.seedPrompts();
+    await this.seedConsents();
+    await this.seedBgmTracks();
   }
 
   private async seedChapters(): Promise<void> {
@@ -89,6 +96,9 @@ export class SeedService {
     const questions = this.dataSource.getRepository(IntroQuestionModel);
     const choices = this.dataSource.getRepository(IntroChoiceModel);
 
+    // 성함 문항은 가입 이름으로 이관 — 남아 있으면 끈다
+    await questions.update({ code: 'i1' }, { isActive: false });
+
     for (const [index, seed] of INTRO_QUESTION_SEED.entries()) {
       let question = await questions.findOne({ where: { code: seed.code } });
       if (!question) {
@@ -99,27 +109,73 @@ export class SeedService {
             text: seed.text,
             subtitle: seed.subtitle,
             hint: seed.hint,
+            answerType: seed.answerType,
+            isSkippable: seed.skippable,
             axis: seed.axis,
+            isActive: true,
           }),
         );
+      } else {
+        await questions.update(
+          { id: question.id },
+          {
+            sortOrder: index + 1,
+            text: seed.text,
+            subtitle: seed.subtitle,
+            hint: seed.hint,
+            answerType: seed.answerType,
+            isSkippable: seed.skippable,
+            axis: seed.axis,
+            isActive: true,
+          },
+        );
+        question = (await questions.findOne({ where: { id: question.id } }))!;
       }
 
-      for (const [order, [label, axisValue]] of seed.choices.entries()) {
-        const exists = await choices.findOne({
-          where: { introQuestion: { id: question.id }, sortOrder: order + 1 },
+      for (const [order, choiceSeed] of seed.choices.entries()) {
+        let parent = await choices.findOne({
+          where: {
+            introQuestion: { id: question.id },
+            sortOrder: order + 1,
+            parentChoice: IsNull(),
+          },
         });
-        if (exists) {
-          continue;
+        if (!parent) {
+          parent = await choices.save(
+            choices.create({
+              introQuestion: question,
+              parentChoice: null,
+              sortOrder: order + 1,
+              label: choiceSeed.label,
+              axisValue: choiceSeed.axisValue,
+            }),
+          );
+        } else {
+          await choices.update(
+            { id: parent.id },
+            { label: choiceSeed.label, axisValue: choiceSeed.axisValue },
+          );
         }
 
-        await choices.save(
-          choices.create({
-            introQuestion: question,
-            sortOrder: order + 1,
-            label,
-            axisValue,
-          }),
-        );
+        for (const [dOrder, detail] of (choiceSeed.details ?? []).entries()) {
+          const exists = await choices.findOne({
+            where: {
+              introQuestion: { id: question.id },
+              parentChoice: { id: parent.id },
+              sortOrder: dOrder + 1,
+            },
+          });
+          if (exists) continue;
+          await choices.save(
+            choices.create({
+              introQuestion: question,
+              parentChoice: parent,
+              sortOrder: dOrder + 1,
+              label: detail.label,
+              axisValue: null,
+            }),
+          );
+        }
       }
     }
 
@@ -139,5 +195,73 @@ export class SeedService {
     }
 
     this.logger.log(`프롬프트 ${PROMPT_SEED.length}종 확인`);
+  }
+
+  private async seedConsents(): Promise<void> {
+    const docs = this.dataSource.getRepository(ConsentDocumentModel);
+    const effectiveAt = new Date('2026-08-01T00:00:00Z');
+
+    for (const seed of CONSENT_SEED) {
+      const exists = await docs.findOne({
+        where: { consentKey: seed.consentKey, version: seed.version },
+      });
+      if (exists) continue;
+
+      await docs.save(
+        docs.create({
+          consentKey: seed.consentKey,
+          version: seed.version,
+          title: seed.title,
+          url: seed.url,
+          isRequired: seed.isRequired,
+          effectiveAt,
+        }),
+      );
+    }
+
+    this.logger.log(`약관 ${CONSENT_SEED.length}종 확인`);
+  }
+
+  /** CC0 BGM 1곡 — lifelegacy catalog soothing-song */
+  private async seedBgmTracks(): Promise<void> {
+    const bgms = this.dataSource.getRepository(BgmTrackModel);
+    const relativeKey = 'storage/bgm/soothing-song.mp3';
+    const absolute = join(process.cwd(), relativeKey);
+    mkdirSync(join(process.cwd(), 'storage', 'bgm'), { recursive: true });
+
+    if (!existsSync(absolute)) {
+      try {
+        const url =
+          'https://cdn.freesound.org/previews/110/110215_682033-hq.mp3';
+        const res = await fetch(url);
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer());
+          writeFileSync(absolute, buf);
+          this.logger.log(`BGM 파일 다운로드 ${relativeKey}`);
+        } else {
+          this.logger.warn(`BGM 다운로드 실패 ${res.status}`);
+        }
+      } catch (e) {
+        this.logger.warn(`BGM 다운로드 스킵: ${(e as Error).message}`);
+      }
+    }
+
+    const existing = await bgms.findOne({
+      where: { title: 'a soothing song' },
+    });
+    if (!existing && existsSync(absolute)) {
+      await bgms.save(
+        bgms.create({
+          title: 'a soothing song',
+          mood: 'gentle',
+          objectKey: relativeKey,
+          licenseSource: 'CC0-1.0 cheesepuff / freesound',
+          isActive: true,
+        }),
+      );
+      this.logger.log('BGM 트랙 1종 시드');
+    } else if (existing) {
+      this.logger.log('BGM 트랙 확인');
+    }
   }
 }

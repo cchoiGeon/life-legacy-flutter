@@ -6,7 +6,7 @@ import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/service/services.dart';
 
-/// B6 목차 준비 중 · B7 목차 제안 확인.
+/// B6 목차 준비 중 · B7 목차 확인·편집 · 저장 완료.
 class TocController extends GetxController {
   TocController(this._api, this._auth, this._toast);
 
@@ -17,50 +17,50 @@ class TocController extends GetxController {
   final RxList<Chapter> chapters = <Chapter>[].obs;
   final RxBool isGenerating = false.obs;
   final RxBool isConfirming = false.obs;
-
-  /// "순서 바꾸기"를 눌러 끌어 옮길 수 있는 상태인지.
-  ///
-  /// 기본은 꺼져 있다. 목록이 늘 드래그 가능하면 시니어 사용자가 스크롤하려다
-  /// 장을 옮겨 버린다.
-  final RxBool isReordering = false.obs;
-
-  /// 로딩 화면 문구에 쓰는 이름. 자기소개 첫 답변에서 가져온다.
+  final RxBool isSavingDraft = false.obs;
+  final RxBool isEditing = false.obs;
+  final RxBool isSaved = false.obs;
+  final RxBool draftDirty = false.obs;
   final RxString name = ''.obs;
+  final RxnString bookId = RxnString();
+  final RxnString firstQuestionId = RxnString();
 
-  /// ⚠️ 09(로딩)와 10(확인)은 **서로 다른 컨트롤러 인스턴스**다.
-  ///
-  /// `offNamed`로 넘어가면서 로딩 라우트가 스택에서 빠지면 GetX가 그 컨트롤러를
-  /// 폐기하고, 10번 진입 시 `fenix`가 새로 만든다. 그래서 만들어 둔 목차를
-  /// 필드에 담아 두는 것으로는 전달되지 않는다 — **라우트 인자로 넘겨야 한다.**
-  ///
-  /// 그래서 인자가 두 가지 모양이다:
-  ///   · `Map<String, String>` = 자기소개 답변 → 목차를 만들어야 하는 09번
-  ///   · `List<Chapter>`       = 이미 만들어진 목차 → 보여주기만 하는 10번
+  int _tmpSeq = 0;
+
   @override
   void onInit() {
     super.onInit();
     applyArguments(Get.arguments);
   }
 
-  /// 라우트 인자 해석. `onInit`에서 분리해 둔 이유는 테스트에서
-  /// GetX 라우팅 없이 이 규칙만 확인하기 위해서다.
   @visibleForTesting
   void applyArguments(Object? args) {
-    if (args is Map<String, String>) {
-      name.value = (args['i1'] ?? '').trim();
+    if (args is List<IntroAnswerSubmission>) {
+      name.value = _auth.displayName;
       generate(args);
+    } else if (args is Map<String, String>) {
+      name.value = (args['i1'] ?? Storage.phone ?? '').trim();
+      if (name.value.isEmpty) name.value = _auth.displayName;
+      generate([
+        for (final e in args.entries)
+          IntroAnswerSubmission(questionId: e.key, value: e.value),
+      ]);
+    } else if (args is TocGenerateResult) {
+      bookId.value = args.bookId;
+      chapters.value = args.chapters;
     } else if (args is List<Chapter>) {
       chapters.value = args;
+      bookId.value = Storage.currentBookId;
     }
   }
 
-  Future<void> generate(Map<String, String> answers) async {
+  Future<void> generate(List<IntroAnswerSubmission> answers) async {
     isGenerating.value = true;
     try {
       final result = await _api.generateToc(answers);
-      chapters.value = result;
-      // 로딩 화면을 스택에서 지우고 결과로 바꾼다 — 뒤로가기로 로딩에
-      // 돌아가면 목차를 다시 만들어 버린다.
+      bookId.value = result.bookId;
+      await Storage.saveCurrentBookId(result.bookId);
+      chapters.value = result.chapters;
       Get.offNamed(AppRoutes.toc, arguments: result);
     } on ApiException catch (e) {
       _toast.showError(e);
@@ -70,21 +70,148 @@ class TocController extends GetxController {
     }
   }
 
+  void enterEdit() {
+    isEditing.value = true;
+  }
+
+  Future<void> exitEdit() async {
+    if (draftDirty.value) {
+      final ok = await saveDraft();
+      if (!ok) return;
+    }
+    isEditing.value = false;
+  }
+
+  void reorder(int oldIndex, int newIndex) {
+    if (newIndex == oldIndex) return;
+    final moved = chapters.removeAt(oldIndex);
+    chapters.insert(newIndex, moved);
+    draftDirty.value = true;
+  }
+
+  void rename(int index, String title) {
+    final t = title.trim();
+    if (t.isEmpty) return;
+    chapters[index] = chapters[index].copyWith(title: t);
+    chapters.refresh();
+    draftDirty.value = true;
+  }
+
+  void removeAt(int index) {
+    if (chapters.length <= 1) {
+      _toast.showError(const ApiException('장은 하나 이상 있어야 해요'));
+      return;
+    }
+    chapters.removeAt(index);
+    draftDirty.value = true;
+  }
+
+  void addFromCatalog(List<CatalogChapter> selected) {
+    for (final c in selected) {
+      if (c.alreadyAdded) continue;
+      if (chapters.any((x) => x.templateId == c.id || x.title == c.title)) {
+        continue;
+      }
+      _tmpSeq++;
+      chapters.add(
+        Chapter(
+          id: 'tpl_${c.id}_$_tmpSeq',
+          order: chapters.length + 1,
+          title: c.title,
+          status: ChapterStatus.locked,
+          answeredCount: 0,
+          questionCount: c.questionCount,
+          sourceType: ChapterSource.template,
+          templateId: c.id,
+        ),
+      );
+    }
+    draftDirty.value = true;
+  }
+
+  void addCustom(String title) {
+    final t = title.trim();
+    if (t.isEmpty) return;
+    _tmpSeq++;
+    chapters.add(
+      Chapter(
+        id: 'tmp_$_tmpSeq',
+        order: chapters.length + 1,
+        title: t,
+        status: ChapterStatus.locked,
+        answeredCount: 0,
+        questionCount: 0,
+        sourceType: ChapterSource.custom,
+      ),
+    );
+    draftDirty.value = true;
+  }
+
+  Future<List<CatalogChapter>> loadCatalog() async {
+    final id = bookId.value ?? Storage.currentBookId;
+    if (id == null) return const [];
+    return _api.catalogChapters(id);
+  }
+
+  List<TocDraftChapter> _toDraftPayload() => [
+        for (final c in chapters)
+          if (c.id.startsWith('tpl_') && c.templateId != null)
+            TocDraftChapter.fromTemplate(templateId: c.templateId!)
+          else if (c.id.startsWith('tmp_'))
+            TocDraftChapter.custom(title: c.title)
+          else
+            TocDraftChapter.existing(id: c.id, title: c.title),
+      ];
+
+  Future<bool> saveDraft() async {
+    final id = bookId.value ?? Storage.currentBookId;
+    if (id == null) {
+      _toast.showError(const ApiException('책 정보가 없어요. 다시 시작해 주세요'));
+      return false;
+    }
+    if (isSavingDraft.value) return false;
+    isSavingDraft.value = true;
+    try {
+      final next = await _api.saveTocDraft(
+        bookId: id,
+        chapters: _toDraftPayload(),
+      );
+      chapters.value = next;
+      draftDirty.value = false;
+      return true;
+    } on ApiException catch (e) {
+      _toast.showError(e);
+      return false;
+    } finally {
+      isSavingDraft.value = false;
+    }
+  }
+
+  /// 기본·편집 공통 — 초안을 서버에 맞춘 뒤 확정.
   Future<void> confirm() async {
-    if (isConfirming.value) return;
+    if (isConfirming.value || isSaved.value) return;
+    final id = bookId.value ?? Storage.currentBookId;
+    if (id == null) {
+      _toast.showError(const ApiException('책 정보가 없어요. 다시 시작해 주세요'));
+      return;
+    }
+
+    if (draftDirty.value || chapters.any((c) => c.isLocalDraft)) {
+      final ok = await saveDraft();
+      if (!ok) return;
+    }
+
     isConfirming.value = true;
     try {
-      await _api.confirmToc(chapters);
-
-      // ⚠️ 이 표시는 **앱이** 세운다. 스플래시가 로그인/자기소개/홈 중 어디로
-      //    보낼지 정하는 근거다. 예전에는 목업 구현 안에서 세우고 있어서,
-      //    실제 서버에 붙이면 앱을 다시 열 때마다 자기소개로 되돌아갔다.
+      final result = await _api.confirmToc(bookId: id, chapters: chapters);
+      await Storage.saveCurrentBookId(result.bookId);
       await Storage.markIntroDone();
-
-      // 성함은 방금 자기소개에서 서버에 저장됐다. 다시 읽지 않으면 홈
-      // 인사말에 이름이 비어 뜬다.
       await _auth.reload();
-      Get.offAllNamed(AppRoutes.home);
+      bookId.value = result.bookId;
+      firstQuestionId.value = result.firstQuestionId;
+      chapters.value = result.chapters;
+      isEditing.value = false;
+      isSaved.value = true;
     } on ApiException catch (e) {
       _toast.showError(e);
     } finally {
@@ -92,22 +219,15 @@ class TocController extends GetxController {
     }
   }
 
-  /// "순서 바꾸기" ↔ "다 바꿨어요"
-  void toggleReorder() => isReordering.toggle();
-
-  /// 끌어 놓은 결과를 반영한다.
-  ///
-  /// [newIndex]는 **꺼낸 뒤 기준**이다 — 화면이 `ReorderableListView.onReorderItem`
-  /// 을 쓰기 때문에 이미 보정돼서 들어온다. 구식 `onReorder`로 되돌리면
-  /// 아래로 옮길 때 한 칸씩 밀린다.
-  void reorder(int oldIndex, int newIndex) {
-    if (newIndex == oldIndex) return;
-    final moved = chapters.removeAt(oldIndex);
-    chapters.insert(newIndex, moved);
+  void goWrite() {
+    final id = bookId.value ?? Storage.currentBookId;
+    Get.offAllNamed(AppRoutes.write, arguments: {'bookId': id});
   }
 
-  /// 화면에 뜨는 번호. `Chapter.order`가 아니라 **목록에서의 자리**다 —
-  /// 순서를 바꾸는 동안에는 원래 order가 더 이상 맞지 않는다.
-  /// 확정할 때 `confirmToc`가 이 순서대로 order를 다시 매긴다.
+  void goBookHub() {
+    final id = bookId.value ?? Storage.currentBookId;
+    Get.offAllNamed(AppRoutes.bookDetail, arguments: {'bookId': id});
+  }
+
   int displayNumber(int index) => index + 1;
 }

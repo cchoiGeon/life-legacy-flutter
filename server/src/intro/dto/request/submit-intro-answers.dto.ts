@@ -1,8 +1,10 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
@@ -10,16 +12,36 @@ import {
 } from 'class-validator';
 
 export class IntroAnswerItemDto {
-  @ApiProperty({ example: 'i1' })
+  @ApiProperty({ example: 'i2' })
   @IsString()
   @MinLength(1)
   question_id: string;
 
-  @ApiProperty({ example: '김영희', description: '고르거나 적은 원본 문자열' })
+  @ApiPropertyOptional({ example: '여' })
+  @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(200)
-  value: string;
+  value?: string;
+
+  @ApiPropertyOptional({ example: 'ch_f' })
+  @IsOptional()
+  @IsString()
+  choice_id?: string;
+
+  @ApiPropertyOptional({ example: 'ch_u1' })
+  @IsOptional()
+  @IsString()
+  detail_choice_id?: string;
+
+  @ApiPropertyOptional({ example: '학사' })
+  @IsOptional()
+  @IsString()
+  detail_value?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  skipped?: boolean;
 }
 
 export class SubmitIntroAnswersDto {

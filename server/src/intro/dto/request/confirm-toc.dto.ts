@@ -2,6 +2,10 @@ import { ApiProperty } from '@nestjs/swagger';
 import { ArrayNotEmpty, IsArray, IsUUID } from 'class-validator';
 
 export class ConfirmTocDto {
+  @ApiProperty({ example: 'b_001' })
+  @IsUUID()
+  book_id: string;
+
   @ApiProperty({
     type: [String],
     description:

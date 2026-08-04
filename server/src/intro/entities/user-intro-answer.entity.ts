@@ -19,12 +19,20 @@ export class UserIntroAnswerModel extends BaseModel {
   @JoinColumn({ name: 'intro_question_id' })
   introQuestion: IntroQuestionModel;
 
-  /** 선택지 문항일 때. 텍스트 문항이면 null */
   @ManyToOne(() => IntroChoiceModel, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'intro_choice_id' })
   introChoice: IntroChoiceModel | null;
 
-  /** 고르거나 적은 **원본 문자열**. 판정용으로 접지 않는다 */
-  @Column({ name: 'value_text', type: 'varchar', length: 200 })
+  @ManyToOne(() => IntroChoiceModel, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'detail_choice_id' })
+  detailChoice: IntroChoiceModel | null;
+
+  @Column({ name: 'value_text', type: 'varchar', length: 200, default: '' })
   valueText: string;
+
+  @Column({ name: 'value_json', type: 'jsonb', nullable: true })
+  valueJson: string[] | null;
+
+  @Column({ name: 'is_skipped', type: 'boolean', default: false })
+  isSkipped: boolean;
 }
