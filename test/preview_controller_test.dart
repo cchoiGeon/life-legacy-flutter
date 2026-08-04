@@ -11,11 +11,24 @@ import 'support/test_env.dart';
 /// 예전에는 장 단위였다. 시안 하단이 "12 / 34쪽"으로 바뀌면서 한 장 안에서도
 /// 쪽을 넘길 수 있어야 하고, 특정 장으로 들어와도 쪽번호는 책 전체 기준이어야
 /// 한다("이 책 어디쯤인지"를 알려주는 숫자라서).
+///
+/// mock [bookPages]는 `reviewed` 장만 싣는다 — 시드 답변이 있는 c1·c2를
+/// 리뷰 확정한 뒤 미리보기를 연다.
 void main() {
+  const bookId = 'b_mock_001';
+  late MockApiClient api;
+
   setUpAll(() => initTestEnv('preview'));
 
+  setUp(() async {
+    api = MockApiClient();
+    await Storage.saveCurrentBookId(bookId);
+    await api.saveReview(bookId: bookId, chapterId: 'c1', version: 1);
+    await api.saveReview(bookId: bookId, chapterId: 'c2', version: 1);
+  });
+
   Future<BookPreviewController> build({Chapter? chapter}) async {
-    final c = BookPreviewController(MockApiClient(), ToastService());
+    final c = BookPreviewController(api, ToastService());
     if (chapter != null) c.applyArguments(chapter);
     await c.load();
     return c;
@@ -59,7 +72,7 @@ void main() {
   });
 
   test('장을 골라 들어오면 그 장의 쪽만 나온다 — 쪽번호는 책 전체 기준', () async {
-    final chapters = await MockApiClient().chapters();
+    final chapters = await api.chapters(bookId);
     final first = chapters.first;
     final c = await build(chapter: first);
 
@@ -78,7 +91,7 @@ void main() {
   test('장을 고르지 않으면 책 전체를 처음부터 본다', () async {
     final c = await build();
 
-    expect(c.title, '책 미리보기');
+    expect(c.title, startsWith('전자책 미리보기'));
     expect(c.pages.map((p) => p.chapterOrder).toSet().length, greaterThan(1));
   });
 }
