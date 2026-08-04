@@ -36,7 +36,7 @@ class SplashController extends GetxController {
 
     Get.offAllNamed(
       switch (restored) {
-        false => AppRoutes.login,
+        false => AppRoutes.index,
         true when Storage.introDone => AppRoutes.home,
         true => AppRoutes.intro,
       },
