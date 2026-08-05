@@ -13,20 +13,75 @@
 
 ## 실행
 
-로컬 Nest가 `http://localhost:3000` 에서 떠 있어야 한다. 안드로이드 에뮬레이터 기본 baseUrl은 `http://10.0.2.2:3000/v1` 이다.
+로컬 Nest가 `http://localhost:3000` 에서 떠 있어야 한다.
+
+### 1. DB · 서버
+
+PostgreSQL에 DB `life_legacy`가 있어야 한다. 로컬 기본 계정은 `server/.env.local`을 따른다.
 
 ```bash
-# 서버
-cd server && npm run start:local
-
-# 앱
-flutter pub get
-flutter run
-# 기기/실기기 PC IP 등
-flutter run --dart-define=API_BASE_URL=http://192.168.0.10:3000/v1
+cd server
+npm install
+npm run start:local   # Nest watch · NODE_ENV=local · :3000
+# (최초/시드 갱신) npm run seed
 ```
 
+- API: `http://localhost:3000/v1`
+- Swagger: `http://localhost:3000/docs`
+- DB 구조 요약: [`docs/db-schema.md`](docs/db-schema.md) · ERD DBML: [`erd/new-erd.dbml`](erd/new-erd.dbml)
+
+### 2. Flutter 앱
+
+```bash
+# 레포 루트
+flutter pub get
+```
+
+| 환경 | 명령 | API baseUrl |
+|---|---|---|
+| **Android 에뮬레이터** | 아래 「에뮬」 참고 후 `flutter run` | 기본 `http://10.0.2.2:3000/v1` (에뮬→호스트 PC) |
+| **Chrome / Edge (브라우저)** | `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:3000/v1` | **반드시** `localhost` (기본값 10.0.2.2는 브라우저에서 안 됨) |
+| **실기기** | `flutter run --dart-define=API_BASE_URL=http://<PC_IP>:3000/v1` | PC LAN IP |
+
+#### Android 에뮬레이터
+
+```bash
+flutter emulators                         # 목록
+flutter emulators --launch Pixel_6_API_34 # 기동 (이름에 맞게)
+flutter devices                           # emulator-5554 등이 보여야 함
+flutter run
+```
+
+에뮬이 꺼져 있으면 `No supported devices connected`가 난다. Windows/Chrome만 보이는 건 이 프로젝트가 **Android·iOS·web**만 쓰도록 잡혀 있어서다(desktop 미지원).
+
+#### 브라우저 (Chrome / Edge)
+
+웹 플랫폼(`web/`)이 있어야 한다. 없으면:
+
+```bash
+flutter create . --platforms=web
+```
+
+실행:
+
+```bash
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:3000/v1
+# 또는
+flutter run -d edge --dart-define=API_BASE_URL=http://localhost:3000/v1
+```
+
+#### 포트가 이미 쓰일 때 (서버)
+
+```text
+Error: listen EADDRINUSE :::3000
+```
+
+→ `3000`을 쓰는 기존 Node를 종료한 뒤 `npm run start:local`을 다시 돌린다.
+
 인증은 OCTOMO SMS(앱) · 웹 ID/PW 등은 서버·화면 MD를 따른다. 목업 고정 코드(`482915`)는 없다.
+
+> **형제 프로젝트:** 웹 lifelegacy는 `C:\Users\laptop\Desktop\lifelegacy` (Neon DB).  
+> 이 Flutter/Nest 앱의 로컬 DB는 `life_legacy`다. 서로 다른 DB다.
 
 ## 구조
 

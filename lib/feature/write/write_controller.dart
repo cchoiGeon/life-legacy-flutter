@@ -454,13 +454,13 @@ class WriteController extends GetxController {
 
   // ── 13 · 14 음성 ──────────────────────────────────────────
 
-  /// 실제 음성 녹음을 시작한다. 전사는 멈춘 뒤 서버 Clova STT.
+  /// 단말 로컬 STT(speech_to_text)를 시작한다.
   Future<void> startRecording() async {
     stage.value = WriteStage.recording;
     elapsed.value = 0;
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => elapsed.value++);
 
-    final started = await _speech.start();
+    final started = await _speech.start(onFinal: _onTranscribed);
     if (!started) {
       _tick?.cancel();
       stage.value = WriteStage.ask;
@@ -484,39 +484,47 @@ class WriteController extends GetxController {
     _save(text);
   }
 
-  /// "멈춤" — 녹음을 서버에 올려 Clova STT한다.
+  /// "멈춤" — 지금까지 단말에서 인식된 내용으로 마무리한다.
   Future<void> stopRecording() async {
     if (stage.value != WriteStage.recording) return;
     _tick?.cancel();
+    await _speech.stop();
 
-    final captured = await _speech.stopToAudio();
-    if (captured == null) {
+    // stop() 뒤에도 최종 결과가 곧 도착하는 게 정상이다. 다만 한 마디도
+    // 못 알아들은 경우엔 콜백이 오지 않으므로 여기서 되돌린다.
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (stage.value != WriteStage.recording) return;
+
+    final heard = _speech.partial.value.trim();
+    if (heard.isEmpty) {
       stage.value = WriteStage.ask;
       _toast.show('말씀을 알아듣지 못했어요', description: '다시 한 번 말씀해 주세요');
       return;
     }
+    _onTranscribed(heard);
 
-    stage.value = WriteStage.saving;
-    isTranscribing.value = true;
-    try {
-      final result = await _api.transcribeAudio(
-        bytes: captured.bytes,
-        filename: captured.filename,
-        durationMs: captured.durationMs,
-      );
-      if (result.text.trim().isEmpty) {
-        stage.value = WriteStage.ask;
-        _toast.show('말씀을 알아듣지 못했어요', description: '다시 한 번 말씀해 주세요');
-        return;
-      }
-      elapsed.value = (captured.durationMs / 1000).round();
-      _onTranscribed(result.text.trim());
-    } on ApiException catch (e) {
-      stage.value = WriteStage.ask;
-      _toast.showError(e);
-    } finally {
-      isTranscribing.value = false;
-    }
+    // --- 서버 Clova STT (로컬 개발 중 비활성) ---
+    // final captured = await _speech.stopToAudio();
+    // if (captured == null) {
+    //   stage.value = WriteStage.ask;
+    //   _toast.show('말씀을 알아듣지 못했어요', description: '다시 한 번 말씀해 주세요');
+    //   return;
+    // }
+    // stage.value = WriteStage.saving;
+    // isTranscribing.value = true;
+    // try {
+    //   final result = await _api.transcribeAudio(
+    //     bytes: captured.bytes,
+    //     filename: captured.filename,
+    //     durationMs: captured.durationMs,
+    //   );
+    //   ...
+    // } on ApiException catch (e) {
+    //   stage.value = WriteStage.ask;
+    //   _toast.showError(e);
+    // } finally {
+    //   isTranscribing.value = false;
+    // }
   }
 
   /// 녹음 화면에 뜨는 안내/부분 결과.

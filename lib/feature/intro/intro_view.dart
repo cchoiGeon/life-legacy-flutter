@@ -24,10 +24,10 @@ class IntroView extends GetView<IntroController> {
         }
 
         if (controller.isWritingPlan) {
-          return _IntroScaffold(
+          return const _IntroScaffold(
             title: '자서전 작성하는 데\n예상 시간은?',
             subtitle: '알림 여부 맞춰서 드릴게요. 나중에 변경 가능해요.',
-            body: const _WritingPlanBody(),
+            body: _WritingPlanBody(),
             showSkip: false,
           );
         }
@@ -314,7 +314,7 @@ class _WritingPlanBody extends GetView<IntroController> {
       () => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _SectionLabel('하루 가능 시간'),
+          const _SectionLabel('하루 가능 시간'),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -329,7 +329,7 @@ class _WritingPlanBody extends GetView<IntroController> {
             ],
           ),
           const SizedBox(height: 28),
-          _SectionLabel('가능 요일'),
+          const _SectionLabel('가능 요일'),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -359,7 +359,7 @@ class _WritingPlanBody extends GetView<IntroController> {
             ],
           ),
           const SizedBox(height: 28),
-          _SectionLabel('시간대'),
+          const _SectionLabel('시간대'),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -381,7 +381,7 @@ class _WritingPlanBody extends GetView<IntroController> {
             ],
           ),
           const SizedBox(height: 28),
-          _SectionLabel('예상 기간'),
+          const _SectionLabel('예상 기간'),
           const SizedBox(height: 8),
           Text(
             '평균 2~3주 정도 걸려요. 추천 ${controller.recommendedWeeks.value}주',

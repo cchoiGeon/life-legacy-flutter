@@ -4,7 +4,7 @@ import { join } from 'path';
 import { DataSource, IsNull } from 'typeorm';
 
 import { PromptTemplateModel } from 'src/ai/entities/prompt-template.entity';
-import { PROMPT_SEED } from 'src/ai/seed/prompt.seed';
+import { PROMPT_OBSOLETE_KEYS, PROMPT_SEED } from 'src/ai/seed/prompt.seed';
 import { BgmTrackModel } from 'src/audiobook/entities/bgm-track.entity';
 import { CaseDefinitionModel } from 'src/intro/entities/case-definition.entity';
 import { IntroChoiceModel } from 'src/intro/entities/intro-choice.entity';
@@ -188,13 +188,22 @@ export class SeedService {
     for (const seed of PROMPT_SEED) {
       const exists = await prompts.findOne({ where: { key: seed.key } });
       if (exists) {
+        exists.title = seed.title;
+        exists.body = seed.body;
+        exists.version = (exists.version ?? 1) + 1;
+        exists.updatedBy = 'seed';
+        await prompts.save(exists);
         continue;
       }
 
       await prompts.save(prompts.create(seed));
     }
 
-    this.logger.log(`프롬프트 ${PROMPT_SEED.length}종 확인`);
+    for (const key of PROMPT_OBSOLETE_KEYS) {
+      await prompts.delete({ key });
+    }
+
+    this.logger.log(`프롬프트 ${PROMPT_SEED.length}종 upsert`);
   }
 
   private async seedConsents(): Promise<void> {

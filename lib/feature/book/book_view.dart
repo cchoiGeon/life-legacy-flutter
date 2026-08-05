@@ -148,7 +148,8 @@ class _HorizontalBookStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 210,
+      // 표지 88 + 여백·제목·저자·상태 2줄이 들어가도록 넉넉히
+      height: 228,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: AppDimens.gutter),
@@ -237,13 +238,17 @@ class _BookCard extends StatelessWidget {
                   color: AppColors.textTertiary,
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 8),
               Text(
                 statusLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: AppTypography.caption.copyWith(color: AppColors.brand),
               ),
               Text(
                 progressLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: AppTypography.caption.copyWith(
                   color: AppColors.textTertiary,
                 ),

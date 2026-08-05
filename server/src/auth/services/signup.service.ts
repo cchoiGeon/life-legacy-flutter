@@ -190,6 +190,7 @@ export class SignupService {
         await this.entitlementService.grantAudiobookT1(
           savedUser.id,
           'signup_auto',
+          entityManager,
         );
       }
 

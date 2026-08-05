@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 
 import { EntitlementLedgerModel } from '../entities/entitlement-ledger.entity';
 import { UserEntitlementModel } from '../entities/user-entitlement.entity';
@@ -154,11 +154,19 @@ export class EntitlementService {
   }
 
   /** 로컬/프로모션 — audiobook T1 권한 부여(멱등) */
-  async grantAudiobookT1(userId: string, source = 'default'): Promise<void> {
-    const existing = await this.findActiveFeature(userId, 'audiobook');
+  async grantAudiobookT1(
+    userId: string,
+    source = 'default',
+    /** signup 트랜잭션 안에서는 같은 manager를 써야 FK가 보인다 */
+    manager?: EntityManager,
+  ): Promise<void> {
+    const repo = manager
+      ? manager.getRepository(UserEntitlementModel)
+      : this.entitlements;
+    const existing = await this.findActiveFeature(userId, 'audiobook', repo);
     if (existing) return;
-    await this.entitlements.save(
-      this.entitlements.create({
+    await repo.save(
+      repo.create({
         userId,
         feature: 'audiobook',
         planCode: 'T1',
@@ -170,13 +178,17 @@ export class EntitlementService {
   async findActiveFeature(
     userId: string,
     feature: string,
+    repo: Repository<UserEntitlementModel> = this.entitlements,
   ): Promise<UserEntitlementModel | null> {
-    const active = await this.findActive(userId);
+    const active = await this.findActive(userId, repo);
     return active.find((r) => r.feature === feature) ?? null;
   }
 
-  private async findActive(userId: string): Promise<UserEntitlementModel[]> {
-    const rows = await this.entitlements.find({
+  private async findActive(
+    userId: string,
+    repo: Repository<UserEntitlementModel> = this.entitlements,
+  ): Promise<UserEntitlementModel[]> {
+    const rows = await repo.find({
       where: { userId, revokedAt: IsNull() },
       order: { grantedAt: 'DESC' },
     });

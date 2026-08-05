@@ -10,8 +10,9 @@ import { ConfigService } from '@nestjs/config';
 
 const CLOVA_TTS_URL =
   'https://naveropenapi.apigw.ntruss.com/tts-premium/v1/tts';
-const CLOVA_STT_URL =
-  'https://naveropenapi.apigw.ntruss.com/recog/v1/stt?lang=Kor';
+// 로컬 개발: 앱이 단말 STT 사용 — Clova STT URL 일시 비활성
+// const CLOVA_STT_URL =
+//   'https://naveropenapi.apigw.ntruss.com/recog/v1/stt?lang=Kor';
 
 /** 한국어 TTS 한도 2000자 — 여유를 두고 청크 */
 export const CLOVA_TTS_MAX_CHARS = 1800;
@@ -132,29 +133,32 @@ export class ClovaVoiceClient {
     return { audio, mimeType: 'audio/mpeg' };
   }
 
-  async speechToText(audio: Buffer): Promise<ClovaSttResult> {
-    if (!audio.length) {
-      throw new Error('empty stt audio');
-    }
+  async speechToText(_audio: Buffer): Promise<ClovaSttResult> {
+    // 로컬 개발: 앱이 단말 speech_to_text 를 쓰므로 Clova STT 비활성.
+    throw new Error('CLOVA STT disabled (use on-device STT)');
 
-    const { clientId, clientSecret } = this.credentials();
-    const res = await fetch(CLOVA_STT_URL, {
-      method: 'POST',
-      headers: {
-        'X-NCP-APIGW-API-KEY-ID': clientId,
-        'X-NCP-APIGW-API-KEY': clientSecret,
-        'Content-Type': 'application/octet-stream',
-      },
-      body: new Uint8Array(audio),
-    });
-
-    if (!res.ok) {
-      const detail = (await res.text()).slice(0, 300);
-      this.logger.warn(`CLOVA STT ${res.status}: ${detail}`);
-      throw new Error(`CLOVA STT ${res.status}`);
-    }
-
-    const json = (await res.json()) as { text?: string };
-    return { text: (json.text ?? '').trim() };
+    // if (!_audio.length) {
+    //   throw new Error('empty stt audio');
+    // }
+    //
+    // const { clientId, clientSecret } = this.credentials();
+    // const res = await fetch(CLOVA_STT_URL, {
+    //   method: 'POST',
+    //   headers: {
+    //     'X-NCP-APIGW-API-KEY-ID': clientId,
+    //     'X-NCP-APIGW-API-KEY': clientSecret,
+    //     'Content-Type': 'application/octet-stream',
+    //   },
+    //   body: new Uint8Array(_audio),
+    // });
+    //
+    // if (!res.ok) {
+    //   const detail = (await res.text()).slice(0, 300);
+    //   this.logger.warn(`CLOVA STT ${res.status}: ${detail}`);
+    //   throw new Error(`CLOVA STT ${res.status}`);
+    // }
+    //
+    // const json = (await res.json()) as { text?: string };
+    // return { text: (json.text ?? '').trim() };
   }
 }

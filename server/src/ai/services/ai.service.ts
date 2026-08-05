@@ -8,12 +8,20 @@ import { Repository } from 'typeorm';
 import { PromptTemplateModel } from '../entities/prompt-template.entity';
 import { PROMPT_SEED } from '../seed/prompt.seed';
 
+type FollowupPair = { question: string; answer: string };
+
+const MIN_MAX_TOKENS = 800;
+const MAX_MAX_TOKENS = 2400;
+const TOKENS_PER_INPUT_CHAR = 1.8;
+const SPARSE_ANSWER_CHARS = 80;
+
 /**
  * 꼬리질문 생성·윤문·챕터 종합.
  *
  * `AI_PROVIDER=stub`(기본)이면 형태만 맞춘 고정 글을 돌려준다.
  * `AI_PROVIDER=openrouter`이면 OpenRouter chat completions를 호출한다.
  * 프롬프트는 `prompt_template` 표(없으면 시드 문구)를 쓴다.
+ * 키·플레이스홀더는 lifelegacy(`second_question` / `polish`)와 같다.
  */
 @Injectable()
 export class AiService {
@@ -39,52 +47,82 @@ export class AiService {
         );
   }
 
-  /** 요약 + 공감 + 질문이 한 덩어리로 온다. 빈 줄이 요약·공감과 질문을 가른다 */
+  /**
+   * 요약 + 공감 + 질문이 한 덩어리로 온다 (lifelegacy second_question).
+   * 원 질문·원 답은 고정하고, 이전 꼬리 Q&A는 history로 넘긴다.
+   */
   async generateFollowup(input: {
     chapterTitle: string;
-    question: string;
-    answer: string;
+    mainQuestion: string;
+    mainAnswer: string;
+    followups?: FollowupPair[];
   }): Promise<string> {
     if (this.isStub) {
       this.logger.log(`[stub] 꼬리질문 생성 · ${input.chapterTitle}`);
       return [
         '말씀해 주신 장면이 눈에 그려집니다.',
         '그 시간이 지금까지도 마음에 남아 계신 것 같아요.',
-        '',
         '그때 곁에 누가 함께 있었는지, 기억나는 대로 조금만 더 들려주시겠어요?',
-      ].join('\n');
+      ].join(' ');
     }
 
-    const prompt = await this.renderPrompt('followup', {
-      chapter_title: input.chapterTitle,
-      question: input.question,
-      answer: input.answer,
+    const followups = input.followups ?? [];
+    const historyText = followups
+      .map(
+        (f, index) =>
+          `후속 질문${index + 1}: ${f.question}\n답변${index + 1}: ${f.answer}`,
+      )
+      .join('\n\n');
+
+    const prompt = await this.renderPrompt('second_question', {
+      contentTitle: input.chapterTitle,
+      mainQuestion: input.mainQuestion,
+      mainAnswer: input.mainAnswer.slice(0, 1500),
+      history: historyText,
     });
     return this.chat(prompt, { maxTokens: 400, temperature: 0.7 });
   }
 
-  /** 1인칭 회고체 산문. 문단 사이는 빈 줄로 가른다 */
+  /** 1인칭 회고체 산문 (lifelegacy polish / polish_sparse) */
   async polish(input: {
-    question: string;
-    answer: string;
-    followupQuestion: string;
-    followupAnswer: string;
+    mainQuestion: string;
+    mainAnswer: string;
+    followups: FollowupPair[];
   }): Promise<string> {
     if (this.isStub) {
       this.logger.log('[stub] 윤문');
-      return [input.answer, input.followupAnswer]
+      return [input.mainAnswer, ...input.followups.map((f) => f.answer)]
         .map((part) => part.trim())
         .filter((part) => part.length > 0)
         .join('\n\n');
     }
 
-    const prompt = await this.renderPrompt('polish', {
-      question: input.question,
-      answer: input.answer,
-      followup_question: input.followupQuestion,
-      followup_answer: input.followupAnswer,
+    const qaText = [
+      `질문: ${input.mainQuestion}\n답변: ${input.mainAnswer}`,
+      ...input.followups.map(
+        (f, index) =>
+          `후속 질문${index + 1}: ${f.question}\n답변${index + 1}: ${f.answer}`,
+      ),
+    ].join('\n\n');
+
+    const totalInputChars = [input.mainAnswer, ...input.followups.map((f) => f.answer)]
+      .join('')
+      .replace(/\s/g, '').length;
+    const sparse = totalInputChars < SPARSE_ANSWER_CHARS;
+    const maxTokens = sparse
+      ? Math.min(600, Math.max(200, Math.ceil(Math.max(totalInputChars, 40) * 1.2)))
+      : Math.min(
+          MAX_MAX_TOKENS,
+          Math.max(
+            MIN_MAX_TOKENS,
+            Math.ceil(totalInputChars * TOKENS_PER_INPUT_CHAR),
+          ),
+        );
+
+    const prompt = await this.renderPrompt(sparse ? 'polish_sparse' : 'polish', {
+      qaText,
     });
-    return this.chat(prompt, { maxTokens: 1200, temperature: 0.5 });
+    return this.chat(prompt, { maxTokens, temperature: 0.5 });
   }
 
   /** 챕터 답변들을 자서전 원고로 종합 (§9.2) */
@@ -129,10 +167,8 @@ export class AiService {
     if (!body) {
       throw new Error(`프롬프트 템플릿이 없습니다: ${key}`);
     }
-    for (const [name, value] of Object.entries(vars)) {
-      body = body.replaceAll(`{{${name}}}`, value);
-    }
-    return body;
+    // lifelegacy와 동일: 없는 키는 빈 문자열
+    return body.replace(/\{\{(\w+)\}\}/g, (_, name: string) => vars[name] ?? '');
   }
 
   private async chat(

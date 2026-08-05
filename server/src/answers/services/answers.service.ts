@@ -69,8 +69,9 @@ export class AnswersService {
       followupText = await this.callWithRetry(() =>
         this.aiService.generateFollowup({
           chapterTitle: question.userChapter.title,
-          question: question.text,
-          answer: input.text,
+          mainQuestion: question.text,
+          mainAnswer: input.text,
+          followups: [],
         }),
       );
     } catch {
@@ -131,11 +132,16 @@ export class AnswersService {
       const nextSeq = currentSeq + 1;
       let nextText: string;
       try {
+        // lifelegacy와 동일: 원 질문·원 답 고정 + 지금까지 꼬리 Q&A를 history로
         nextText = await this.callWithRetry(() =>
           this.aiService.generateFollowup({
             chapterTitle: question.userChapter.title,
-            question: draft.followupQuestionText ?? question.text,
-            answer: input.text,
+            mainQuestion: question.text,
+            mainAnswer: draft.firstText,
+            followups: completed.map((f) => ({
+              question: f.question,
+              answer: f.answer,
+            })),
           }),
         );
       } catch {
@@ -159,17 +165,16 @@ export class AnswersService {
       };
     }
 
-    const followupQuestions = completed.map((f) => f.question).join('\n\n');
-    const followupAnswers = completed.map((f) => f.answer).join('\n\n');
-
     let polished: string;
     try {
       polished = await this.callWithRetry(() =>
         this.aiService.polish({
-          question: question.text,
-          answer: draft.firstText,
-          followupQuestion: followupQuestions,
-          followupAnswer: followupAnswers,
+          mainQuestion: question.text,
+          mainAnswer: draft.firstText,
+          followups: completed.map((f) => ({
+            question: f.question,
+            answer: f.answer,
+          })),
         }),
       );
     } catch {
