@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import 'package:life_legacy/common/constants/dimens.dart';
@@ -9,61 +10,58 @@ import '../auth_controller.dart';
 
 /// 1단계: 전화번호 입력 — Figma A3/A4 대응.
 ///
-/// 앱 자체 숫자 키패드로만 입력받는다. OS 키보드는 뜨지 않는다.
+/// OS 숫자 키보드로 입력한다. (커스텀 [AppNumberPad] 없음)
 class PhoneInputStep extends GetView<AuthController> {
   const PhoneInputStep({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              AppDimens.gutter,
-              AppDimens.space6,
-              AppDimens.gutter,
-              AppDimens.space6,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const AppScreenHeading(
-                  title: '전화번호를\n알려주세요',
-                  subtitle: 'OCTOMO 인증을 위해 전화번호가 필요해요',
-                ),
-                const SizedBox(height: 33),
-                AppField(
-                  controller: controller.phoneController,
-                  hint: '010 - 0000 - 0000',
-                  height: AppDimens.fieldHeight,
-                  readOnly: true,
-                  showCursor: false,
-                  textStyle: AppTypography.weight(
-                    AppTypography.titlePage,
-                    AppTypography.medium,
-                  ).copyWith(fontSize: 24, height: 1.2),
-                ),
-                const SizedBox(height: AppDimens.space6),
-                Obx(
-                  () => AppButton(
-                    label: '다음',
-                    size: AppButtonSize.lg,
-                    block: true,
-                    enabled: controller.canProceedPhone,
-                    loading: controller.isLoading.value,
-                    onPressed: controller.submitPhone,
-                  ),
-                ),
-              ],
-            ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        AppDimens.gutter,
+        AppDimens.space6,
+        AppDimens.gutter,
+        AppDimens.space6,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AppScreenHeading(
+            title: '전화번호를\n알려주세요',
+            subtitle: 'OCTOMO 인증을 위해 전화번호가 필요해요',
           ),
-        ),
-        AppNumberPad(
-          onDigit: controller.onPhoneDigit,
-          onBackspace: controller.onPhoneBackspace,
-        ),
-      ],
+          const SizedBox(height: 33),
+          AppField(
+            controller: controller.phoneController,
+            hint: '010 - 0000 - 0000',
+            height: AppDimens.fieldHeight,
+            keyboardType: TextInputType.phone,
+            autofocus: true,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9\- ]')),
+              LengthLimitingTextInputFormatter(17), // "010 - 0000 - 0000"
+            ],
+            textStyle: AppTypography.weight(
+              AppTypography.titlePage,
+              AppTypography.medium,
+            ).copyWith(fontSize: 24, height: 1.2),
+            onChanged: controller.onPhoneChanged,
+          ),
+          const SizedBox(height: AppDimens.space6),
+          Obx(() {
+            final ready = controller.phoneDigits.value.length == 11;
+            final loading = controller.isLoading.value;
+            return AppButton(
+              label: '다음',
+              size: AppButtonSize.lg,
+              block: true,
+              enabled: ready,
+              loading: loading,
+              onPressed: controller.submitPhone,
+            );
+          }),
+        ],
+      ),
     );
   }
 }

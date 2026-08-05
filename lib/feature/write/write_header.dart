@@ -35,7 +35,10 @@ class WriteHeader extends GetView<WriteController> {
             // 짧은 본문으로 그려진다(홈 뼈대가 46px 넘쳤던 원인).
             controller.requestLeave();
           },
-          trailing: _MoreButton(),
+          trailing: KeyedSubtree(
+            key: controller.tutorialSkipKey,
+            child: _MoreButton(),
+          ),
         ),
         Obx(
           () => AppProgressBar(

@@ -34,17 +34,26 @@ class AskStage extends GetView<WriteController> {
           child: Align(
             alignment: Alignment.topCenter,
             child: Obx(
-              () => QuestionPanel(
-                question: controller.displayQuestion,
-                isFollowup: controller.isFollowup.value,
-                onReplay: controller.replayQuestion,
+              () => KeyedSubtree(
+                key: controller.tutorialQuestionKey,
+                child: QuestionPanel(
+                  question: controller.displayQuestion,
+                  isFollowup: controller.isFollowup.value,
+                  onReplay: controller.replayQuestion,
+                ),
               ),
             ),
           ),
         ),
         // 파문은 자리를 차지하지 않으므로 닿는 만큼 비워 준다.
         const SizedBox(height: AppMicButton.bloom),
-        AppMicButton(recording: false, onTap: controller.startRecording),
+        KeyedSubtree(
+          key: controller.tutorialMicKey,
+          child: AppMicButton(
+            recording: false,
+            onTap: controller.startRecording,
+          ),
+        ),
         const SizedBox(height: 22),
         Text(
           '눌러서 시작하세요',
@@ -56,11 +65,14 @@ class AskStage extends GetView<WriteController> {
         const SizedBox(height: 28),
         Obx(() {
           if (!controller.isFollowup.value) {
-            return AppButton(
-              label: '글로 답하기',
-              variant: AppButtonVariant.neutral,
-              size: AppButtonSize.assist,
-              onPressed: controller.useKeyboard,
+            return KeyedSubtree(
+              key: controller.tutorialTypingKey,
+              child: AppButton(
+                label: '글로 답하기',
+                variant: AppButtonVariant.neutral,
+                size: AppButtonSize.assist,
+                onPressed: controller.useKeyboard,
+              ),
             );
           }
           return Column(
@@ -79,11 +91,14 @@ class AskStage extends GetView<WriteController> {
                 onPressed: controller.appendToFirstAnswer,
               ),
               const SizedBox(height: 10),
-              AppButton(
-                label: '글로 답하기',
-                variant: AppButtonVariant.neutral,
-                size: AppButtonSize.assist,
-                onPressed: controller.useKeyboard,
+              KeyedSubtree(
+                key: controller.tutorialTypingKey,
+                child: AppButton(
+                  label: '글로 답하기',
+                  variant: AppButtonVariant.neutral,
+                  size: AppButtonSize.assist,
+                  onPressed: controller.useKeyboard,
+                ),
               ),
             ],
           );

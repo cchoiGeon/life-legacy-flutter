@@ -30,6 +30,7 @@ dependencies:
   open_filex: ^4.7.0
   just_audio: ^0.10.6
   record: ^7.1.1
+  url_launcher: ^6.3.2
 
   # dio — RealApiClient(Nest /v1) HTTP.
 

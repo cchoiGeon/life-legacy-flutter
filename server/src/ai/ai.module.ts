@@ -1,3 +1,4 @@
+import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -7,6 +8,7 @@ import { AiService } from './services/ai.service';
 
 @Module({
   imports: [
+    HttpModule.register({ timeout: 60_000 }),
     TypeOrmModule.forFeature([PromptTemplateModel, AiGenerationLogModel]),
   ],
   providers: [AiService],

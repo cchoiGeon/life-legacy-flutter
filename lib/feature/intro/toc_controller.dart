@@ -188,6 +188,8 @@ class TocController extends GetxController {
   }
 
   /// 기본·편집 공통 — 초안을 서버에 맞춘 뒤 확정.
+  ///
+  /// 저장 중에는 전체 로딩 화면을 띄운다(초안 반영 + book/장 확정).
   Future<void> confirm() async {
     if (isConfirming.value || isSaved.value) return;
     final id = bookId.value ?? Storage.currentBookId;
@@ -196,13 +198,13 @@ class TocController extends GetxController {
       return;
     }
 
-    if (draftDirty.value || chapters.any((c) => c.isLocalDraft)) {
-      final ok = await saveDraft();
-      if (!ok) return;
-    }
-
     isConfirming.value = true;
     try {
+      if (draftDirty.value || chapters.any((c) => c.isLocalDraft)) {
+        final ok = await saveDraft();
+        if (!ok) return;
+      }
+
       final result = await _api.confirmToc(bookId: id, chapters: chapters);
       await Storage.saveCurrentBookId(result.bookId);
       await Storage.markIntroDone();

@@ -15,108 +15,165 @@ class TocView extends GetView<TocController> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        bottom: false,
-        child: Obx(() {
-          if (controller.isSaved.value) {
-            return const _SavedBody();
-          }
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppDimens.gutter,
-                  30,
-                  AppDimens.gutter,
-                  0,
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: AppScreenHeading(
-                    title: controller.isEditing.value
-                        ? '목차를\n수정할까요?'
-                        : '이런 순서로\n써볼까요?',
-                    subtitle: controller.isEditing.value
-                        ? '이름 바꾸기 · 삭제 · 추가 · 순서 변경'
-                        : '나중에 바꿀 수 있어요',
-                  ),
-                ),
+    return Obx(() {
+      final confirming = controller.isConfirming.value;
+      final saved = controller.isSaved.value;
+
+      if (confirming) {
+        return const PopScope(
+          canPop: false,
+          child: Scaffold(
+            backgroundColor: AppColors.cream,
+            body: _ConfirmingBody(),
+          ),
+        );
+      }
+
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          bottom: false,
+          child: saved ? const _SavedBody() : const _TocBody(),
+        ),
+      );
+    });
+  }
+}
+
+/// 저장하기 → book/장 DB 확정 중. B6 로딩과 같은 링 UI.
+class _ConfirmingBody extends StatelessWidget {
+  const _ConfirmingBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppDimens.space10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const AppWaitingRing(),
+            const SizedBox(height: 34),
+            Text(
+              '목차를 저장하고 있어요',
+              textAlign: TextAlign.center,
+              style: AppTypography.titleSerifSm.copyWith(
+                fontSize: 25,
+                height: 36 / 25,
               ),
-              const SizedBox(height: 33),
-              Expanded(child: _ChapterList(controller: controller)),
-              if (controller.isEditing.value)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppDimens.gutter,
-                    0,
-                    AppDimens.gutter,
-                    8,
-                  ),
-                  child: AppButton(
-                    label: '추가하기',
-                    size: AppButtonSize.md,
-                    block: true,
-                    variant: AppButtonVariant.outline,
-                    onPressed: () => _openAddSheet(context),
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppDimens.gutter,
-                  AppDimens.space4,
-                  AppDimens.gutter,
-                  58,
-                ),
-                child: Column(
-                  children: [
-                    Obx(
-                      () => AppButton(
-                        label: '저장하기',
-                        size: AppButtonSize.lg,
-                        block: true,
-                        loading: controller.isConfirming.value ||
-                            controller.isSavingDraft.value,
-                        onPressed: controller.confirm,
-                      ),
-                    ),
-                    const SizedBox(height: AppDimens.space4),
-                    Obx(
-                      () => Semantics(
-                        button: true,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () async {
-                            if (controller.isEditing.value) {
-                              await controller.exitEdit();
-                            } else {
-                              controller.enterEdit();
-                            }
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Text(
-                              controller.isEditing.value ? '다 바꿨어요' : '수정하기',
-                              style: AppTypography.weight(
-                                AppTypography.bodyBase,
-                                AppTypography.bold,
-                              ).copyWith(
-                                color: AppColors.brand,
-                                letterSpacing: -0.1,
-                              ),
-                            ),
-                          ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '책과 장을 준비하고 있어요\n잠시만 기다려 주세요',
+              textAlign: TextAlign.center,
+              style: AppTypography.subtitle.copyWith(
+                height: 28 / 16,
+                color: AppColors.textStrong,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TocBody extends GetView<TocController> {
+  const _TocBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppDimens.gutter,
+            30,
+            AppDimens.gutter,
+            0,
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: Obx(
+              () => AppScreenHeading(
+                title: controller.isEditing.value
+                    ? '목차를\n수정할까요?'
+                    : '이런 순서로\n써볼까요?',
+                subtitle: controller.isEditing.value
+                    ? '이름 바꾸기 · 삭제 · 추가 · 순서 변경'
+                    : '나중에 바꿀 수 있어요',
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 33),
+        Expanded(child: _ChapterList(controller: controller)),
+        Obx(() {
+          if (!controller.isEditing.value) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppDimens.gutter,
+              0,
+              AppDimens.gutter,
+              8,
+            ),
+            child: AppButton(
+              label: '추가하기',
+              size: AppButtonSize.md,
+              block: true,
+              variant: AppButtonVariant.outline,
+              onPressed: () => _openAddSheet(context),
+            ),
+          );
+        }),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppDimens.gutter,
+            AppDimens.space4,
+            AppDimens.gutter,
+            58,
+          ),
+          child: Column(
+            children: [
+              AppButton(
+                label: '저장하기',
+                size: AppButtonSize.lg,
+                block: true,
+                onPressed: controller.confirm,
+              ),
+              const SizedBox(height: AppDimens.space4),
+              Obx(
+                () => Semantics(
+                  button: true,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () async {
+                      if (controller.isEditing.value) {
+                        await controller.exitEdit();
+                      } else {
+                        controller.enterEdit();
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        controller.isEditing.value ? '다 바꿨어요' : '수정하기',
+                        style: AppTypography.weight(
+                          AppTypography.bodyBase,
+                          AppTypography.bold,
+                        ).copyWith(
+                          color: AppColors.brand,
+                          letterSpacing: -0.1,
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
-          );
-        }),
-      ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -205,6 +262,7 @@ class _ChapterList extends StatelessWidget {
         itemCount: chapters.length,
         separatorBuilder: (_, _) => const SizedBox(height: _gap),
         itemBuilder: (_, i) => _ChapterCard(
+          index: i,
           number: i + 1,
           chapter: chapters[i],
           editing: false,
@@ -217,6 +275,8 @@ class _ChapterList extends StatelessWidget {
     return ReorderableListView.builder(
       padding: _padding,
       itemCount: chapters.length,
+      // Material 기본 ≡ 핸들과 카드 우측 drag_handle이 겹치지 않게 끈다.
+      buildDefaultDragHandles: false,
       onReorderItem: controller.reorder,
       proxyDecorator: (child, _, animation) => AnimatedBuilder(
         animation: animation,
@@ -229,6 +289,7 @@ class _ChapterList extends StatelessWidget {
         key: ValueKey(chapters[i].id),
         padding: const EdgeInsets.only(bottom: _gap),
         child: _ChapterCard(
+          index: i,
           number: i + 1,
           chapter: chapters[i],
           editing: true,
@@ -270,6 +331,7 @@ class _ChapterList extends StatelessWidget {
 
 class _ChapterCard extends StatelessWidget {
   const _ChapterCard({
+    required this.index,
     required this.number,
     required this.chapter,
     required this.editing,
@@ -277,6 +339,7 @@ class _ChapterCard extends StatelessWidget {
     required this.onDelete,
   });
 
+  final int index;
   final int number;
   final Chapter chapter;
   final bool editing;
@@ -335,7 +398,14 @@ class _ChapterCard extends StatelessWidget {
               icon: const Icon(Icons.close, color: AppColors.stone400),
               visualDensity: VisualDensity.compact,
             ),
-            const Icon(Icons.drag_handle, color: AppColors.stone400),
+            // 기본 Material 핸들은 끄고, 이 아이콘만 드래그 시작점으로 쓴다.
+            ReorderableDragStartListener(
+              index: index,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(Icons.drag_handle, color: AppColors.stone400),
+              ),
+            ),
           ],
         ],
       ),

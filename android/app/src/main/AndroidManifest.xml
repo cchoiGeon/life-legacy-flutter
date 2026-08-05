@@ -10,6 +10,15 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- 로컬 문자 앱 (OCTOMO SMS 인증) -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="sms" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
     </queries>
 
     <application

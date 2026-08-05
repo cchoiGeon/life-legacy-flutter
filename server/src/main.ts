@@ -19,6 +19,17 @@ async function bootstrap() {
 
     app.setGlobalPrefix('v1', { exclude: ['health'] });
 
+    // Flutter web(Chrome)은 localhost:포트 → API 가 cross-origin이라
+    // 브라우저가 OPTIONS preflight를 보낸다. CORS 없으면 404로 죽고
+    // 앱은 connectionError → "인터넷 연결을 확인해 주세요"로 보인다.
+    // 네이티브(APK/iOS/Windows)는 CORS를 쓰지 않는다.
+    app.enableCors({
+      origin: process.env.NODE_ENV === 'production' ? false : true,
+      credentials: true,
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    });
+
     app.useGlobalFilters(new HttpExceptionFilter());
 
     app.useGlobalPipes(

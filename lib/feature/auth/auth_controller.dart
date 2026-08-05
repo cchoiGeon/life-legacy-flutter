@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
@@ -13,11 +14,8 @@ enum AuthStep {
   /// 전화번호 입력
   phone,
 
-  /// OCTOMO 문자 발송 안내
-  octomoInstruction,
-
-  /// OCTOMO 확인 폴링
-  octomoVerifying,
+  /// 로컬 문자 앱 전송 + OCTOMO 수신 확인
+  octomoSms,
 
   /// 신규 사용자 — 이름 + 약관 동의
   signup,
@@ -40,19 +38,22 @@ class ConsentItemState {
       ConsentItemState(document: document, agreed: agreed ?? this.agreed);
 }
 
-/// 메인 인증 컨트롤러 — 5단계 선형 흐름을 관리한다.
+/// 메인 인증 컨트롤러 — 선형 흐름을 관리한다.
 ///
-/// [AuthStep]으로 현재 단계를 구분하고, 각 단계별로 필요한 데이터를
-/// Rx 필드로 노출한다. 뷰는 이 값을 구독해 화면을 교체한다.
-class AuthController extends GetxController {
+/// SMS 단계는 로컬 문자 앱에 수신번호·본문을 채운 뒤 열고,
+/// 앱으로 돌아오면 OCTOMO 수신 여부를 폴링한다. 제한 시간은 5분.
+class AuthController extends GetxController with WidgetsBindingObserver {
   AuthController(this._api, this._auth, this._toast);
 
   final ApiClient _api;
   final AuthService _auth;
   final ToastService _toast;
 
+  /// 클라이언트 카운트다운 상한(초). 서버 TTL과 맞춤.
+  static const smsTimeoutSeconds = 300;
+
   // ── 단계 ────────────────────────────────────────────────────
-    final Rx<AuthStep> currentStep = AuthStep.phone.obs;
+  final Rx<AuthStep> currentStep = AuthStep.phone.obs;
 
   /// 페이지 컨트롤러 — 단계 간 슬라이드 전환.
   final pageController = PageController();
@@ -69,31 +70,35 @@ class AuthController extends GetxController {
 
   String get phoneCompact => _format(phoneDigits.value, '-');
 
-  void onPhoneDigit(String digit) {
-    if (phoneDigits.value.length >= _phoneLength) return;
-    _setPhone(phoneDigits.value + digit);
-  }
-
-  void onPhoneBackspace() {
-    final v = phoneDigits.value;
-    if (v.isEmpty) return;
-    _setPhone(v.substring(0, v.length - 1));
+  /// OS 키보드 입력. 숫자만 모아 11자리까지 두고 표시는 `010 - 0000 - 0000` 형식.
+  void onPhoneChanged(String raw) {
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    final clipped =
+        digits.length > _phoneLength ? digits.substring(0, _phoneLength) : digits;
+    final formatted = _format(clipped, ' - ');
+    if (clipped == phoneDigits.value && phoneController.text == formatted) {
+      return;
+    }
+    _setPhone(clipped);
   }
 
   void _setPhone(String digits) {
     phoneDigits.value = digits;
+    final formatted = _format(digits, ' - ');
     phoneController.value = TextEditingValue(
-      text: phoneFieldText,
-      selection: TextSelection.collapsed(offset: phoneFieldText.length),
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 
-  // ── OCTOMO ──────────────────────────────────────────────────
+  // ── OCTOMO / SMS ────────────────────────────────────────────
   final RxString sessionId = ''.obs;
   final RxString receiverNumber = ''.obs;
   final RxString verifyText = ''.obs;
-  final RxInt octomoExpiresIn = 0.obs;
   final RxInt octomoPollInterval = 3.obs;
+
+  /// 남은 인증 시간(초). UI 카운트다운.
+  final RxInt remainingSeconds = smsTimeoutSeconds.obs;
 
   /// 폴링 진행 중.
   final RxBool isChecking = false.obs;
@@ -104,6 +109,14 @@ class AuthController extends GetxController {
   Timer? _pollTimer;
   int _secondsSincePoll = 0;
   int _totalElapsed = 0;
+  int _timeoutSeconds = smsTimeoutSeconds;
+
+  String get remainingLabel {
+    final s = remainingSeconds.value.clamp(0, smsTimeoutSeconds);
+    final m = (s ~/ 60).toString().padLeft(2, '0');
+    final sec = (s % 60).toString().padLeft(2, '0');
+    return '$m:$sec';
+  }
 
   // ── 회원가입 ────────────────────────────────────────────────
   final nameController = TextEditingController();
@@ -144,12 +157,28 @@ class AuthController extends GetxController {
 
   // ── 공통 ──────────────────────────────────────────────────
   @override
+  void onInit() {
+    super.onInit();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     phoneController.dispose();
     nameController.dispose();
     pageController.dispose();
     super.onClose();
+  }
+
+  /// 문자 앱에서 돌아와 앱이 다시 보이면 즉시 수신 확인.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (currentStep.value != AuthStep.octomoSms) return;
+    if (isExpired.value || sessionId.value.isEmpty) return;
+    unawaited(manualVerify());
   }
 
   /// 단계 전환 (PageController 애니메이션).
@@ -166,29 +195,32 @@ class AuthController extends GetxController {
   }
 
   // ══════════════════════════════════════════════════════════
-  // 1. 전화번호 입력 → OCTOMO 챌린지 발급
+  // 1. 전화번호 입력 → 챌린지 → 문자 앱 → 폴링
   // ══════════════════════════════════════════════════════════
 
-  /// 전화번호 확인 후 OCTOMO 챌린지 발급.
+  /// 전화번호 확인 후 OCTOMO 챌린지 발급 → 문자 앱 오픈 → 수신 폴링.
   Future<void> submitPhone() async {
     if (!canProceedPhone || isLoading.value) return;
     isLoading.value = true;
     try {
-      // 1. 전화번호 조회 (가입 여부와 무관하게 항상 verify)
       final phone = phoneDigits.value;
       await _api.lookupPhone(phone);
       await Storage.savePhone(phone);
 
-      // 2. OCTOMO 챌린지 발급
       final challenge = await _api.requestOctomoChallenge(phone);
       sessionId.value = challenge.sessionId;
       receiverNumber.value = challenge.receiverNumber;
       verifyText.value = challenge.verifyText;
-      octomoExpiresIn.value = challenge.expiresIn;
       octomoPollInterval.value = challenge.pollInterval;
+      _timeoutSeconds = challenge.expiresIn > 0
+          ? challenge.expiresIn.clamp(1, smsTimeoutSeconds)
+          : smsTimeoutSeconds;
+      remainingSeconds.value = _timeoutSeconds;
       isExpired.value = false;
 
-      _goToStep(AuthStep.octomoInstruction);
+      _goToStep(AuthStep.octomoSms);
+      await openSmsApp();
+      _startPolling();
     } on ApiException catch (e) {
       _toast.showError(e);
     } finally {
@@ -196,76 +228,93 @@ class AuthController extends GetxController {
     }
   }
 
-  // ══════════════════════════════════════════════════════════
-  // 2. OCTOMO 문자 전송 안내 → 확인 버튼 → 폴링
-  // ══════════════════════════════════════════════════════════
+  /// 로컬 문자 앱을 연다. 수신번호 + 보낼 문자(본문)가 채워진 상태.
+  Future<void> openSmsApp() async {
+    final number = receiverNumber.value.replaceAll(RegExp(r'[\s-]'), '');
+    final body = verifyText.value;
+    if (number.isEmpty || body.isEmpty) {
+      _toast.show('인증 정보가 아직 준비되지 않았어요');
+      return;
+    }
 
-  /// 수신번호를 클립보드에 복사한다.
-  void copyReceiverNumber() {
-    // 복사 기능은 Flutter Clipboard 사용
-    // 실제 구현에서는 flutter/services.dart Clipboard.setData
-    _toast.show('수신번호를 복사했어요');
+    final uri = Uri.parse(
+      'sms:$number?body=${Uri.encodeComponent(body)}',
+    );
+
+    try {
+      final launched = await launchUrl(uri);
+      if (!launched) {
+        _toast.show('문자 앱을 열 수 없어요. 아래 번호로 직접 보내 주세요');
+      }
+    } catch (_) {
+      _toast.show('문자 앱을 열 수 없어요. 아래 번호로 직접 보내 주세요');
+    }
   }
 
-  /// 인증 텍스트를 클립보드에 복사한다.
-  void copyVerifyText() {
-    _toast.show('인증번호를 복사했어요');
-  }
-
-  /// "문자를 보냈어요" → 폴링 시작.
-  Future<void> startVerification() async {
-    _goToStep(AuthStep.octomoVerifying);
-    _startPolling();
+  /// "문자를 보냈어요" — 폴링이 꺼져 있으면 다시 시작하고, 즉시 한 번 확인.
+  Future<void> confirmSmsSent() async {
+    if (isExpired.value) return;
+    if (!isChecking.value) {
+      _startPolling();
+      return;
+    }
+    await manualVerify();
   }
 
   void _startPolling() {
     _pollTimer?.cancel();
     _secondsSincePoll = 0;
     _totalElapsed = 0;
+    remainingSeconds.value = _timeoutSeconds;
     isChecking.value = true;
     isExpired.value = false;
 
-    // 즉시 한 번 확인 후, poll_interval마다 재시도
     _doVerify();
 
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _secondsSincePoll++;
       _totalElapsed++;
+      remainingSeconds.value =
+          (_timeoutSeconds - _totalElapsed).clamp(0, _timeoutSeconds);
+
       if (_secondsSincePoll >= octomoPollInterval.value) {
         _secondsSincePoll = 0;
         _doVerify();
       }
-      if (_totalElapsed >= octomoExpiresIn.value) {
+      if (_totalElapsed >= _timeoutSeconds) {
         isExpired.value = true;
         _pollTimer?.cancel();
         isChecking.value = false;
+        remainingSeconds.value = 0;
       }
     });
   }
 
   Future<void> _doVerify() async {
+    if (sessionId.value.isEmpty || isExpired.value) return;
     try {
       final result = await _api.verifyOctomo(sessionId.value);
       if (result.isPending) {
-        // 남은 만료 시간 갱신
         if (result.expiresIn != null) {
-          octomoExpiresIn.value = result.expiresIn!;
+          final left = result.expiresIn!.clamp(0, smsTimeoutSeconds);
+          // 서버 잔여 시간이 더 짧으면 맞춤
+          if (left < remainingSeconds.value) {
+            remainingSeconds.value = left;
+            _timeoutSeconds = _totalElapsed + left;
+          }
         }
         return;
       }
 
-      // verified
       _pollTimer?.cancel();
       isChecking.value = false;
 
       if (result.isExisting && result.session != null) {
-        // 기존 사용자 — 세션 발급 후 홈/인트로로 이동
         await _auth.applySession(result.session!);
         Get.offAllNamed(
           result.session!.needsIntro ? AppRoutes.intro : AppRoutes.home,
         );
       } else if (result.isNewUser) {
-        // 신규 사용자 — 약관 동의 단계로
         signupToken.value = result.signupToken ?? '';
         consents.value = result.requiredConsents
             .map((d) => ConsentItemState(document: d))
@@ -277,8 +326,8 @@ class AuthController extends GetxController {
         isExpired.value = true;
         _pollTimer?.cancel();
         isChecking.value = false;
+        remainingSeconds.value = 0;
       }
-      // 그 외 오류는 폴링 계속
     }
   }
 
@@ -297,7 +346,7 @@ class AuthController extends GetxController {
   }
 
   // ══════════════════════════════════════════════════════════
-  // 3. 회원가입 — 이름 + 약관 동의
+  // 2. 회원가입 — 이름 + 약관 동의
   // ══════════════════════════════════════════════════════════
 
   Future<void> submitSignup() async {
@@ -326,7 +375,7 @@ class AuthController extends GetxController {
   }
 
   // ══════════════════════════════════════════════════════════
-  // 4. 가입 성공 → 온보딩
+  // 3. 가입 성공 → 온보딩
   // ══════════════════════════════════════════════════════════
 
   void goToIntro() {

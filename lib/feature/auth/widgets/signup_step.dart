@@ -33,18 +33,17 @@ class SignupStep extends GetView<AuthController> {
           ),
           const SizedBox(height: 32),
 
-          // 이름 입력
-          Obx(
-            () => AppField(
-              controller: controller.nameController,
-              hint: '이름을 입력해 주세요',
-              height: AppDimens.fieldHeight,
-              textStyle: AppTypography.weight(
-                AppTypography.titlePage,
-                AppTypography.medium,
-              ).copyWith(fontSize: 20, height: 1.2),
-              onChanged: controller.onNameChanged,
-            ),
+          // 이름 입력 — TextEditingController만 쓰므로 Obx 불필요
+          // (Obx 안에 .obs가 없으면 GetX improper use 오류가 난다)
+          AppField(
+            controller: controller.nameController,
+            hint: '이름을 입력해 주세요',
+            height: AppDimens.fieldHeight,
+            textStyle: AppTypography.weight(
+              AppTypography.titlePage,
+              AppTypography.medium,
+            ).copyWith(fontSize: 20, height: 1.2),
+            onChanged: controller.onNameChanged,
           ),
           const SizedBox(height: 32),
 

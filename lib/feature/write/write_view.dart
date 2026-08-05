@@ -62,6 +62,7 @@ class WriteView extends GetView<WriteController> {
                   WriteStage.ask => const AskStage(),
                   WriteStage.recording => const RecordingStage(),
                   WriteStage.keyboard => const KeyboardStage(),
+                  // 정상 흐름에서는 확인 화면을 건너뛴다. 저장 실패(D5) 시에만 진입.
                   WriteStage.confirm => const ConfirmStage(),
                   WriteStage.generatingFollowup ||
                   WriteStage.saving => const AiLoadingStage(),
@@ -204,40 +205,94 @@ class _AllDone extends GetView<WriteController> {
 class _TutorialOverlay extends GetView<WriteController> {
   const _TutorialOverlay();
 
+  static const _cardWidth = 300.0;
+  static const _holePad = 10.0;
+  static const _gap = 14.0;
+
   @override
   Widget build(BuildContext context) {
+    // 첫 프레임 후 타깃 Rect 확보
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.scheduleTutorialTargetRefresh();
+    });
+
     return Obx(() {
       final step = controller.tutorialStep.value;
       final (title, body) = WriteController.tutorialSteps[step];
       final isLast = step + 1 >= WriteController.tutorialSteps.length;
+      final target = controller.tutorialTargetRect.value;
+      final media = MediaQuery.of(context);
+      final screen = media.size;
+
+      final hole = target == null
+          ? null
+          : RRect.fromRectAndRadius(
+              target.inflate(_holePad).intersect(
+                    Offset.zero & screen,
+                  ),
+              const Radius.circular(14),
+            );
+
+      final cardTop = _cardTop(
+        hole: hole,
+        screenHeight: screen.height,
+        safeBottom: media.padding.bottom,
+        safeTop: media.padding.top,
+      );
+      final cardLeft = _cardLeft(
+        hole: hole,
+        screenWidth: screen.width,
+      );
 
       return Material(
-        color: Colors.black.withValues(alpha: 0.55),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(AppDimens.gutter),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Align(
-                  alignment: Alignment.topRight,
-                  child: TextButton(
-                    onPressed: controller.finishTutorial,
-                    child: const Text(
-                      '건너뛰기',
-                      style: TextStyle(color: Colors.white),
-                    ),
+        type: MaterialType.transparency,
+        child: Stack(
+          children: [
+            // 딤 + 하이라이트 구멍 + 점선. 바탕 탭 → 다음.
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: controller.nextTutorial,
+                child: CustomPaint(
+                  painter: _TutorialSpotlightPainter(
+                    hole: hole,
+                    dimColor: Colors.black.withValues(alpha: 0.58),
+                    dashColor: AppColors.brand,
                   ),
                 ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.all(24),
+              ),
+            ),
+
+            // 건너뛰기
+            Positioned(
+              top: media.padding.top + 4,
+              right: 8,
+              child: TextButton(
+                onPressed: controller.finishTutorial,
+                child: const Text(
+                  '건너뛰기',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
+
+            // 타깃 근처 다이얼로그 (카드 탭은 다음으로 가지 않음)
+            Positioned(
+              left: cardLeft,
+              top: cardTop,
+              width: _cardWidth,
+              child: GestureDetector(
+                onTap: () {},
+                child: Container(
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: AppColors.background,
                     borderRadius: BorderRadius.circular(16),
+                    boxShadow: AppShadows.md,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         '${step + 1} / ${WriteController.tutorialSteps.length}',
@@ -255,7 +310,7 @@ class _TutorialOverlay extends GetView<WriteController> {
                       ),
                       const SizedBox(height: 8),
                       Text(body, style: AppTypography.subtitle),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
                       Row(
                         children: [
                           if (step > 0)
@@ -271,15 +326,100 @@ class _TutorialOverlay extends GetView<WriteController> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '화면을 눌러도 다음으로 넘어가요',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 40),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       );
     });
   }
+
+  double _cardLeft({required RRect? hole, required double screenWidth}) {
+    const gutter = AppDimens.gutter;
+    if (hole == null) {
+      return (screenWidth - _cardWidth) / 2;
+    }
+    final preferred = hole.center.dx - _cardWidth / 2;
+    return preferred.clamp(gutter, screenWidth - gutter - _cardWidth);
+  }
+
+  double _cardTop({
+    required RRect? hole,
+    required double screenHeight,
+    required double safeBottom,
+    required double safeTop,
+  }) {
+    // 카드 대략 높이(제목·본문·버튼). 레이아웃 전이라 여유 있게.
+    const estimatedH = 200.0;
+    if (hole == null) {
+      return screenHeight - safeBottom - estimatedH - 48;
+    }
+
+    final below = hole.bottom + _gap;
+    final above = hole.top - _gap - estimatedH;
+    final fitsBelow = below + estimatedH <= screenHeight - safeBottom - 12;
+    if (fitsBelow) return below;
+    if (above >= safeTop + 40) return above;
+    // 둘 다 애매하면 화면 중앙
+    return (screenHeight - estimatedH) / 2;
+  }
+}
+
+/// 딤 오버레이에서 타깃만 뚫고, 둘레에 점선 테두리를 그린다.
+class _TutorialSpotlightPainter extends CustomPainter {
+  const _TutorialSpotlightPainter({
+    required this.hole,
+    required this.dimColor,
+    required this.dashColor,
+  });
+
+  final RRect? hole;
+  final Color dimColor;
+  final Color dashColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final overlay = Path()..addRect(Offset.zero & size);
+    if (hole == null) {
+      canvas.drawPath(overlay, Paint()..color = dimColor);
+      return;
+    }
+
+    final holePath = Path()..addRRect(hole!);
+    final cut = Path.combine(PathOperation.difference, overlay, holePath);
+    canvas.drawPath(cut, Paint()..color = dimColor);
+
+    final border = Paint()
+      ..color = dashColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+
+    final metrics = holePath.computeMetrics();
+    const dash = 7.0;
+    const gap = 5.0;
+    for (final metric in metrics) {
+      var d = 0.0;
+      while (d < metric.length) {
+        final next = (d + dash).clamp(0.0, metric.length);
+        canvas.drawPath(metric.extractPath(d, next), border);
+        d = next + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TutorialSpotlightPainter old) =>
+      old.hole != hole || old.dimColor != dimColor || old.dashColor != dashColor;
 }

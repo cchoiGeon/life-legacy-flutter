@@ -8,14 +8,10 @@ import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'auth_controller.dart';
 import 'widgets/phone_input_step.dart';
 import 'widgets/octomo_instruction_step.dart';
-import 'widgets/octomo_verify_step.dart';
 import 'widgets/signup_step.dart';
 import 'widgets/signup_success_step.dart';
 
-/// 메인 인증 화면 — 5개 단계를 PageView로 표시한다.
-///
-/// 각 단계는 AuthStep 값에 따라 다른 위젯으로 교체된다.
-/// 하단에 진행 표시(step indicator)를 둔다.
+/// 메인 인증 화면 — 단계를 PageView로 표시한다.
 class AuthView extends GetView<AuthController> {
   const AuthView({super.key});
 
@@ -55,8 +51,7 @@ class AuthView extends GetView<AuthController> {
 
   Widget _stepWidget(AuthStep step) => switch (step) {
     AuthStep.phone => const PhoneInputStep(),
-    AuthStep.octomoInstruction => const OctomoInstructionStep(),
-    AuthStep.octomoVerifying => const OctomoVerifyStep(),
+    AuthStep.octomoSms => const OctomoInstructionStep(),
     AuthStep.signup => const SignupStep(),
     AuthStep.success => const SignupSuccessStep(),
   };

@@ -115,12 +115,31 @@ class WriteController extends GetxController {
   final RxBool showTutorial = false.obs;
   final RxInt tutorialStep = 0.obs;
 
+  /// 각 단계가 가리킬 위젯(질문·마이크·타이핑·더보기/건너뛰기).
+  final tutorialQuestionKey = GlobalKey();
+  final tutorialMicKey = GlobalKey();
+  final tutorialTypingKey = GlobalKey();
+  final tutorialSkipKey = GlobalKey();
+
+  /// 현재 단계 타깃의 화면 좌표. 오버레이가 하이라이트·다이얼로그 위치를 잡는다.
+  final Rxn<Rect> tutorialTargetRect = Rxn<Rect>();
+
   static const tutorialSteps = [
     ('질문을 읽어요', '화면의 질문을 소리로도 들을 수 있어요'),
     ('말씀으로 답해요', '가운데 마이크를 누르고 편하게 이야기하세요'),
-    ('글로도 적을 수 있어요', '아래 “타이핑으로 변경하기”를 눌러 보세요'),
-    ('건너뛸 수도 있어요', '꼭 지금 답하지 않아도 됩니다'),
+    ('글로도 적을 수 있어요', '아래 “글로 답하기”를 눌러 보세요'),
+    ('건너뛸 수도 있어요', '오른쪽 위 ⋯ 메뉴에서 이 질문을 건너뛸 수 있어요'),
   ];
+
+  List<GlobalKey> get tutorialKeys => [
+        tutorialQuestionKey,
+        tutorialMicKey,
+        tutorialTypingKey,
+        tutorialSkipKey,
+      ];
+
+  GlobalKey get currentTutorialKey =>
+      tutorialKeys[tutorialStep.value.clamp(0, tutorialKeys.length - 1)];
 
   String? _bookId;
 
@@ -195,6 +214,7 @@ class WriteController extends GetxController {
           stage.value == WriteStage.ask) {
         showTutorial.value = true;
         tutorialStep.value = 0;
+        scheduleTutorialTargetRefresh();
       }
     } on ApiException catch (e) {
       _toast.showError(e);
@@ -214,13 +234,14 @@ class WriteController extends GetxController {
         stage.value = WriteStage.ask;
         return;
       }
-      // 1차 초안 — 확인 화면으로 복원
+      // 1차 초안 — 확인 화면 생략, 바로 이어서 저장/다음
       transcript.value = draft.text;
       spokenSeconds.value = draft.spokenSeconds ?? 0;
       answerSource.value = draft.inputMode == ComposeMode.keyboard
           ? WriteStage.keyboard
           : WriteStage.recording;
-      stage.value = WriteStage.confirm;
+      // stage.value = WriteStage.confirm; // TODO: 확인 화면 복구 시 주석 해제
+      await _save(draft.text);
     } on ApiException {
       // 복원 실패해도 작성은 이어간다
     }
@@ -345,15 +366,35 @@ class WriteController extends GetxController {
       return;
     }
     tutorialStep.value++;
+    scheduleTutorialTargetRefresh();
   }
 
   void prevTutorial() {
-    if (tutorialStep.value > 0) tutorialStep.value--;
+    if (tutorialStep.value > 0) {
+      tutorialStep.value--;
+      scheduleTutorialTargetRefresh();
+    }
   }
 
   Future<void> finishTutorial() async {
     showTutorial.value = false;
+    tutorialTargetRect.value = null;
     await Storage.markWriteTutorialDone();
+  }
+
+  /// 레이아웃이 끝난 뒤 타깃 위젯의 화면 Rect를 갱신한다.
+  void scheduleTutorialTargetRefresh() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!showTutorial.value) return;
+      final ctx = currentTutorialKey.currentContext;
+      final box = ctx?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize || !box.attached) {
+        tutorialTargetRect.value = null;
+        return;
+      }
+      final offset = box.localToGlobal(Offset.zero);
+      tutorialTargetRect.value = offset & box.size;
+    });
   }
 
   /// 질문판에 들어갈 글. 1차면 원래 질문, 꼬리질문이면 AI가 만든 글이다.
@@ -431,15 +472,16 @@ class WriteController extends GetxController {
     }
   }
 
-  /// 인식이 끝났다. 받아쓴 글을 확인 화면으로 넘긴다.
+  /// 인식이 끝났다. 확인 화면(이렇게 정리했어요)은 일시 생략하고 바로 저장/다음.
   void _onTranscribed(String text) {
     _tick?.cancel();
     answerSource.value = WriteStage.recording;
     transcript.value = text;
     spokenSeconds.value = elapsed.value;
     saveFailed.value = false;
-    stage.value = WriteStage.confirm;
+    // stage.value = WriteStage.confirm; // TODO: 확인 화면 복구 시 주석 해제
     _autosaveDraft(text);
+    _save(text);
   }
 
   /// "멈춤" — 녹음을 서버에 올려 Clova STT한다.
@@ -514,7 +556,7 @@ class WriteController extends GetxController {
 
   bool get canSubmitTyped => draft.value.trim().isNotEmpty;
 
-  /// 적은 글도 확인 화면을 거친다 — 음성과 같은 흐름으로 맞춘 것이다.
+  /// 적은 글도 확인 화면을 거치지 않고 바로 저장/다음. (확인 UI 일시 생략)
   void submitTyped() {
     final text = answerController.text.trim();
     if (text.isEmpty) return;
@@ -523,8 +565,9 @@ class WriteController extends GetxController {
     // 적은 글에는 "말한 시간"이 없다.
     spokenSeconds.value = 0;
     saveFailed.value = false;
-    stage.value = WriteStage.confirm;
+    // stage.value = WriteStage.confirm; // TODO: 확인 화면 복구 시 주석 해제
     _autosaveDraft(text);
+    _save(text);
   }
 
   // ── D4 답변 확인 · D5 저장 실패 ────────────────────────────
