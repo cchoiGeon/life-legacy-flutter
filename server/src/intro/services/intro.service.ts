@@ -174,15 +174,18 @@ export class IntroService {
   }
 }
 
-/** 임시 추천 — 하루 시간이 많을수록 짧은 기간 */
+/** 하루 분량 × 가능 요일 × 시간대로 주간 여유를 가늠해 추천 기간을 고른다. */
 function recommendWeeks(plan: {
   dailyMinutes?: number;
   availableWeekdays?: number[];
+  availablePeriods?: string[];
 } | null): number {
   const minutes = plan?.dailyMinutes ?? 30;
   const days = plan?.availableWeekdays?.length ?? 3;
-  if (minutes >= 90 && days >= 4) return 1;
-  if (minutes >= 60) return 2;
-  if (minutes >= 30) return 4;
+  const periods = plan?.availablePeriods?.length || 1;
+  const capacity = minutes * days * periods;
+  if (capacity >= 480) return 1;
+  if (capacity >= 240) return 2;
+  if (capacity >= 120) return 4;
   return 6;
 }

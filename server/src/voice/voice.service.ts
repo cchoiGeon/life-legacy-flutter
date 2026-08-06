@@ -10,7 +10,7 @@ import {
 } from './clova-voice.client';
 
 const SAMPLE_TEXT =
-  '안녕하세요. 인생유산입니다. 소리가 잘 들리시나요?';
+  '안녕하세요. Life Legacy입니다. 소리가 잘 들리시나요?';
 
 @Injectable()
 export class VoiceService {

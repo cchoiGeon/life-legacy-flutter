@@ -21,13 +21,14 @@ export type IntroQuestionSeed = {
 
 /**
  * 자기소개 문항 — api-spec §2.1.
- * i1(성함)은 가입 이름으로 옮겼다. i6 생년월일·건너뛰기·학업 상세 포함.
+ * i1(성함)은 가입 이름으로 옮겼다.
+ * i2·i6는 서버에 따로 두되, 앱 UI는 한 화면으로 합친다.
  */
 export const INTRO_QUESTION_SEED: IntroQuestionSeed[] = [
   {
     code: 'i2',
-    text: '성별을\n알려주세요',
-    subtitle: '책에서 부르는 말을 정할 때 써요',
+    text: '성별과 생년월일을\n알려주세요',
+    subtitle: '책에서 부르는 말과 나이 맞춤 질문에 써요',
     hint: null,
     answerType: IntroAnswerType.CHOICE,
     skippable: false,
@@ -39,7 +40,7 @@ export const INTRO_QUESTION_SEED: IntroQuestionSeed[] = [
   },
   {
     code: 'i6',
-    text: '생년월일을\n알려주세요',
+    text: '생년월일',
     subtitle: null,
     hint: null,
     answerType: IntroAnswerType.DATE,

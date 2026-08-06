@@ -5,7 +5,7 @@ import { BaseModel } from 'src/common/entities/base.entity';
 /** 프롬프트를 코드에 박지 않는다. 문구 조정이 배포 없이 되어야 한다 */
 @Entity('prompt_template')
 export class PromptTemplateModel extends BaseModel {
-  /** second_question | polish | polish_sparse */
+  /** second_question | polish | polish_sparse | synthesize_chapter | ai_photo_prompt* */
   @Column({ type: 'varchar', length: 30, unique: true })
   key: string;
 
