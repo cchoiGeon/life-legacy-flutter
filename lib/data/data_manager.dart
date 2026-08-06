@@ -7,6 +7,7 @@ library;
 export 'enums/enums.dart';
 export 'models/book.dart';
 export 'models/chapter.dart';
+export 'models/coupon.dart';
 export 'models/home.dart';
 export 'models/notification.dart';
 export 'models/user.dart';

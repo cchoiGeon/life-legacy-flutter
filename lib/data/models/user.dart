@@ -8,6 +8,9 @@ class User {
     required this.name,
     required this.phone,
     this.childLinked = false,
+    this.loginId,
+    this.hasPassword = false,
+    this.hasAvatar = false,
   });
 
   final String id;
@@ -20,6 +23,15 @@ class User {
 
   /// 자녀 계정 연결 여부 (설정 화면)
   final bool childLinked;
+
+  /// 아이디/비밀번호 로그인용 아이디. 없으면 null.
+  final String? loginId;
+
+  /// 아이디·비밀번호가 설정돼 있으면 true.
+  final bool hasPassword;
+
+  /// 프로필 사진이 있으면 true. 이미지는 GET /users/me/avatar.
+  final bool hasAvatar;
 
   /// 아바타 원 안에 넣는 한 글자. 이름 마지막 글자가 아니라 **성**을 쓴다
   /// — 시안의 "김영희" → "김".
@@ -36,6 +48,9 @@ class User {
     name: json['name'] as String? ?? '',
     phone: json['phone'] as String? ?? '',
     childLinked: json['child_linked'] as bool? ?? false,
+    loginId: json['login_id'] as String?,
+    hasPassword: json['has_password'] as bool? ?? false,
+    hasAvatar: json['has_avatar'] as bool? ?? false,
   );
 
   Map<String, dynamic> toJson() => {
@@ -43,7 +58,28 @@ class User {
     'name': name,
     'phone': phone,
     'child_linked': childLinked,
+    'login_id': loginId,
+    'has_password': hasPassword,
+    'has_avatar': hasAvatar,
   };
+
+  User copyWith({
+    String? id,
+    String? name,
+    String? phone,
+    bool? childLinked,
+    String? loginId,
+    bool? hasPassword,
+    bool? hasAvatar,
+  }) => User(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    phone: phone ?? this.phone,
+    childLinked: childLinked ?? this.childLinked,
+    loginId: loginId ?? this.loginId,
+    hasPassword: hasPassword ?? this.hasPassword,
+    hasAvatar: hasAvatar ?? this.hasAvatar,
+  );
 }
 
 /// 인증번호 발송 결과.

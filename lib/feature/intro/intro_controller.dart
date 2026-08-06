@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
+import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
@@ -36,6 +37,9 @@ class IntroController extends GetxController {
   final RxnInt birthMonth = RxnInt();
   final RxnInt birthDay = RxnInt();
 
+  /// 서버는 성별(i2)·생년월일(i6)을 따로 두지만, UI는 한 화면으로 합친다.
+  IntroQuestion? birthQuestion;
+
   // ── 작성 계획 ─────────────────────────────────────────────
   final RxnInt dailyMinutes = RxnInt();
   final RxList<int> availableWeekdays = <int>[].obs;
@@ -50,6 +54,10 @@ class IntroController extends GetxController {
 
   IntroQuestion? get current =>
       index.value < questions.length ? questions[index.value] : null;
+
+  /// 성별 문항(i2)에 생년월일(i6)을 같이 그리는 단계.
+  bool get isGenderBirthStep =>
+      current?.id == 'i2' && birthQuestion != null;
 
   bool get isWritingPlan =>
       !isLoading.value && index.value >= questions.length && questions.isNotEmpty;
@@ -98,13 +106,21 @@ class IntroController extends GetxController {
   Future<void> load() async {
     isLoading.value = true;
     try {
-      questions.value = await _api.introQuestions();
+      final all = await _api.introQuestions();
+      birthQuestion = all.where((q) => q.id == 'i6').firstOrNull;
+      // i6는 성별 화면에 합쳐 그리므로 단계 목록에서는 뺀다.
+      questions.value = all.where((q) => q.id != 'i6').toList();
     } on ApiException catch (e) {
       _toast.showError(e);
     } finally {
       isLoading.value = false;
     }
   }
+
+  bool get _hasBirthDate =>
+      birthYear.value != null &&
+      birthMonth.value != null &&
+      birthDay.value != null;
 
   bool get canGoNext {
     if (isWritingPlan) {
@@ -117,18 +133,41 @@ class IntroController extends GetxController {
 
     final q = current;
     if (q == null) return false;
+
+    if (isGenderBirthStep) {
+      return selected.value != null && _hasBirthDate;
+    }
+
     return switch (q.type) {
       IntroAnswerType.choice =>
         selected.value != null &&
             (!(selectedChoice?.hasDetails ?? false) ||
                 selectedDetail.value != null),
-      IntroAnswerType.date =>
-        birthYear.value != null &&
-            birthMonth.value != null &&
-            birthDay.value != null,
+      IntroAnswerType.date => _hasBirthDate,
       IntroAnswerType.text => draft.value.trim().isNotEmpty,
       IntroAnswerType.multiChoice => false,
     };
+  }
+
+  DateTime? get birthDate {
+    final y = birthYear.value;
+    final m = birthMonth.value;
+    final d = birthDay.value;
+    if (y == null || m == null || d == null) return null;
+    return DateTime(y, m, d);
+  }
+
+  void setBirthDate(DateTime date) {
+    birthYear.value = date.year;
+    birthMonth.value = date.month;
+    birthDay.value = date.day;
+  }
+
+  String? get _birthDateValue {
+    if (!_hasBirthDate) return null;
+    return '${birthYear.value!.toString().padLeft(4, '0')}-'
+        '${birthMonth.value!.toString().padLeft(2, '0')}-'
+        '${birthDay.value!.toString().padLeft(2, '0')}';
   }
 
   void choose(String label) {
@@ -138,33 +177,6 @@ class IntroController extends GetxController {
   }
 
   void chooseDetail(String label) => selectedDetail.value = label;
-
-  void setBirthYear(int? y) {
-    birthYear.value = y;
-    _clampDay();
-  }
-
-  void setBirthMonth(int? m) {
-    birthMonth.value = m;
-    _clampDay();
-  }
-
-  void setBirthDay(int? d) => birthDay.value = d;
-
-  void _clampDay() {
-    final y = birthYear.value;
-    final m = birthMonth.value;
-    final d = birthDay.value;
-    if (y == null || m == null || d == null) return;
-    final max = DateTime(y, m + 1, 0).day;
-    if (d > max) birthDay.value = max;
-  }
-
-  int daysInSelectedMonth() {
-    final y = birthYear.value ?? 2000;
-    final m = birthMonth.value ?? 1;
-    return DateTime(y, m + 1, 0).day;
-  }
 
   void toggleWeekdayPreset(List<int> preset) {
     final allOn = preset.every(availableWeekdays.contains);
@@ -189,6 +201,7 @@ class IntroController extends GetxController {
       availablePeriods.add(period);
     }
     availablePeriods.refresh();
+    _refreshRecommended();
   }
 
   void selectDailyMinutes(int minutes) {
@@ -201,13 +214,16 @@ class IntroController extends GetxController {
     durationSource.value = recommended ? 'recommended' : 'manual';
   }
 
+  /// 하루 분량 × 가능 요일 × 시간대 수로 주간 여유를 가늠해 추천 기간을 고른다.
   void _refreshRecommended() {
     final minutes = dailyMinutes.value ?? 30;
     final days = availableWeekdays.isEmpty ? 3 : availableWeekdays.length;
+    final periods = availablePeriods.isEmpty ? 1 : availablePeriods.length;
+    final capacity = minutes * days * periods;
     final rec = () {
-      if (minutes >= 90 && days >= 4) return 1;
-      if (minutes >= 60) return 2;
-      if (minutes >= 30) return 4;
+      if (capacity >= 480) return 1;
+      if (capacity >= 240) return 2;
+      if (capacity >= 120) return 4;
       return 6;
     }();
     recommendedWeeks.value = rec;
@@ -234,6 +250,21 @@ class IntroController extends GetxController {
     final q = current;
     if (q == null || !canGoNext) return;
 
+    if (isGenderBirthStep) {
+      answers[q.id] = IntroAnswerSubmission(
+        questionId: q.id,
+        value: selected.value,
+        choiceId: selectedChoice?.id,
+      );
+      final birth = birthQuestion!;
+      answers[birth.id] = IntroAnswerSubmission(
+        questionId: birth.id,
+        value: _birthDateValue,
+      );
+      _advance();
+      return;
+    }
+
     answers[q.id] = switch (q.type) {
       IntroAnswerType.choice => IntroAnswerSubmission(
           questionId: q.id,
@@ -247,10 +278,7 @@ class IntroController extends GetxController {
         ),
       IntroAnswerType.date => IntroAnswerSubmission(
           questionId: q.id,
-          value:
-              '${birthYear.value!.toString().padLeft(4, '0')}-'
-              '${birthMonth.value!.toString().padLeft(2, '0')}-'
-              '${birthDay.value!.toString().padLeft(2, '0')}',
+          value: _birthDateValue,
         ),
       IntroAnswerType.text => IntroAnswerSubmission(
           questionId: q.id,
@@ -304,6 +332,20 @@ class IntroController extends GetxController {
 
   Future<void> _submitWritingPlanAndToc() async {
     if (!canGoNext || isSubmittingPlan.value) return;
+
+    final context = Get.context;
+    if (context == null) return;
+
+    // 작성 알림은 기본 동의. 다음(목차 만들기)에서 받을지 한 번 더 확인한다.
+    final wantAlarm = await AppDialog.confirm(
+      context,
+      title: '작성 알림을 받을까요?',
+      message: '작성 시간에 맞춰 알림을 보내 드려요.\n나중에 설정에서 바꿀 수 있어요.',
+      confirmLabel: '받을게요',
+      cancelLabel: '괜찮아요',
+    );
+    alarmEnabled.value = wantAlarm;
+
     isSubmittingPlan.value = true;
     try {
       final plan = WritingPlan(
@@ -347,24 +389,39 @@ class IntroController extends GetxController {
     birthDay.value = null;
     answerController.clear();
 
-    final saved = q == null ? null : answers[q.id];
-    if (q == null || saved == null || saved.skipped) return;
+    if (q == null) return;
+
+    if (isGenderBirthStep) {
+      final genderSaved = answers[q.id];
+      if (genderSaved != null && !genderSaved.skipped) {
+        selected.value = genderSaved.value;
+      }
+      _restoreBirthDate(answers[birthQuestion!.id]);
+      return;
+    }
+
+    final saved = answers[q.id];
+    if (saved == null || saved.skipped) return;
 
     switch (q.type) {
       case IntroAnswerType.choice:
         selected.value = saved.value;
         selectedDetail.value = saved.detailValue;
       case IntroAnswerType.date:
-        final parts = (saved.value ?? '').split('-');
-        if (parts.length == 3) {
-          birthYear.value = int.tryParse(parts[0]);
-          birthMonth.value = int.tryParse(parts[1]);
-          birthDay.value = int.tryParse(parts[2]);
-        }
+        _restoreBirthDate(saved);
       case IntroAnswerType.text:
         answerController.text = saved.value ?? '';
       case IntroAnswerType.multiChoice:
         break;
     }
+  }
+
+  void _restoreBirthDate(IntroAnswerSubmission? saved) {
+    if (saved == null || saved.skipped) return;
+    final parts = (saved.value ?? '').split('-');
+    if (parts.length != 3) return;
+    birthYear.value = int.tryParse(parts[0]);
+    birthMonth.value = int.tryParse(parts[1]);
+    birthDay.value = int.tryParse(parts[2]);
   }
 }

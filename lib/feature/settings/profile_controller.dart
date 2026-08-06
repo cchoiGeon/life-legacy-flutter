@@ -1,14 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/service/services.dart';
 
-/// F3 내 정보 (보기 전용) — Figma 368:901.
-///
-/// **고치는 기능이 없다.** 시안에 이름·전화번호·자기소개를 바꾸는 화면이
-/// 없어서다(배송지만 F4에서 고친다). 여기는 "무엇으로 등록돼 있는지"를
-/// 확인하는 자리다.
+/// F3 내 정보 — 프로필 사진 업로드 포함.
 class ProfileController extends GetxController {
   ProfileController(this._api, this._auth, this._toast);
 
@@ -19,8 +18,10 @@ class ProfileController extends GetxController {
   final Rxn<Address> address = Rxn<Address>();
   final Rxn<IntroProfile> introProfile = Rxn<IntroProfile>();
   final RxBool isLoading = true.obs;
+  final RxBool isUploadingAvatar = false.obs;
 
   User? get user => _auth.user.value;
+  Uint8List? get avatarBytes => _auth.avatarBytes.value;
 
   @override
   void onInit() {
@@ -41,6 +42,41 @@ class ProfileController extends GetxController {
       _toast.showError(e);
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  Future<void> pickAndUploadAvatar() async {
+    if (isUploadingAvatar.value) return;
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (file == null) return;
+
+    isUploadingAvatar.value = true;
+    try {
+      final bytes = await file.readAsBytes();
+      final name = file.name.toLowerCase();
+      final contentType = name.endsWith('.png')
+          ? 'image/png'
+          : name.endsWith('.webp')
+              ? 'image/webp'
+              : 'image/jpeg';
+      final user = await _api.uploadAvatar(
+        bytes: bytes,
+        filename: file.name,
+        contentType: contentType,
+      );
+      _auth.updateUser(user);
+      await _auth.setAvatarBytes(Uint8List.fromList(bytes));
+      _toast.show('프로필 사진을 올렸어요');
+    } on ApiException catch (e) {
+      _toast.showError(e);
+    } finally {
+      isUploadingAvatar.value = false;
     }
   }
 

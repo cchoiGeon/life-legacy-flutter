@@ -34,6 +34,7 @@ class AppField extends StatelessWidget {
     this.height,
     this.readOnly = false,
     this.showCursor,
+    this.obscureText = false,
   });
 
   final String? label;
@@ -68,6 +69,9 @@ class AppField extends StatelessWidget {
   final bool readOnly;
 
   final bool? showCursor;
+
+  /// 비밀번호 입력용.
+  final bool obscureText;
 
   @override
   Widget build(BuildContext context) {
@@ -110,14 +114,15 @@ class AppField extends StatelessWidget {
                   focusNode: focusNode,
                   readOnly: readOnly,
                   showCursor: showCursor,
+                  obscureText: obscureText,
                   style: style.copyWith(
                     color: hasError
                         ? AppColors.destructive
                         : AppColors.textPrimary,
                   ),
                   cursorColor: AppColors.brand,
-                  maxLines: maxLines,
-                  minLines: minLines,
+                  maxLines: obscureText ? 1 : maxLines,
+                  minLines: obscureText ? 1 : minLines,
                   autofocus: autofocus,
                   textAlign: textAlign,
                   keyboardType: keyboardType,

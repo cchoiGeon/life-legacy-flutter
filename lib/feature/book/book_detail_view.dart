@@ -6,7 +6,8 @@ import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/data/data_manager.dart';
-import 'package:life_legacy/feature/shared/tab_scaffold.dart';
+import 'package:life_legacy/feature/shared/app_shell.dart';
+import 'package:life_legacy/service/services.dart';
 
 import 'book_detail_controller.dart';
 
@@ -16,8 +17,7 @@ class BookDetailView extends GetView<BookDetailController> {
 
   @override
   Widget build(BuildContext context) {
-    return TabScaffold(
-      tab: AppTab.book,
+    return AppShell(
       body: Obx(() {
         if (controller.isLoading.value) {
           return const Center(child: AppSpinner());
@@ -175,10 +175,16 @@ class _CurrentQuestionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            question.text,
-            style: AppTypography.titleSerifSm.copyWith(height: 1.35),
-          ),
+          Obx(() {
+            final size = Get.find<PrefsService>().questionCardSize;
+            return Text(
+              question.text,
+              style: AppTypography.titleSerifSm.copyWith(
+                fontSize: size,
+                height: 1.35,
+              ),
+            );
+          }),
           const SizedBox(height: 16),
           AppButton(
             label: '답변하러 가기',

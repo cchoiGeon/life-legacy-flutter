@@ -34,4 +34,23 @@ abstract final class AppRoutes {
   // F 하위
   static const settingsProfile = '/settings/profile'; // F3
   static const settingsAddress = '/settings/address'; // F4
+  static const settingsCredentials = '/settings/credentials';
+
+  /// 소개 · 사용설명서 (로그인 후 메뉴)
+  static const about = '/about';
+  static const guide = '/guide';
+
+  /// 아이디·비밀번호 로그인
+  static const passwordLogin = '/login/password';
+
+  /// 카카오 신규 가입 직후 약관·마케팅 동의
+  static const consents = '/login/consents';
+
+  /// T1~T4 플랜 구매 안내
+  static const purchase = '/purchase';
+  static const purchaseDetail = '/purchase/detail';
+  static const purchaseCoupon = '/purchase/coupon';
+
+  /// 약관·개인정보·환불정책 본문 (DB)
+  static const legal = '/legal';
 }

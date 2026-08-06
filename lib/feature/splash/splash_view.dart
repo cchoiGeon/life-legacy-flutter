@@ -22,11 +22,11 @@ class SplashView extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             AppBrandMark(),
-            SizedBox(height: 30),
-            AppWordmark(fontSize: 34, letterSpacing: 0.4),
-            SizedBox(height: 16),
+            SizedBox(height: 28),
+            AppWordmark(fontSize: 28, letterSpacing: 0.4),
+            SizedBox(height: 14),
             Text(
-              '말로 이야기하면\n자서전이 됩니다',
+              '말로 작성하는 AI 자서전 기록 플랫폼',
               textAlign: TextAlign.center,
               style: AppTypography.brandTagline,
             ),

@@ -9,10 +9,7 @@ import 'package:life_legacy/data/data_manager.dart';
 
 import 'profile_controller.dart';
 
-/// F3 내 정보 (보기 전용) — Figma 368:901.
-///
-/// 자기소개 답변까지 같이 보여준다. 그 답에 따라 물어볼 질문이 정해졌다는
-/// 걸 알려 줘야 "왜 이런 걸 물었지"가 풀린다.
+/// F3 내 정보 — 프로필 사진 업로드 가능.
 class ProfileView extends GetView<ProfileController> {
   const ProfileView({super.key});
 
@@ -39,7 +36,55 @@ class ProfileView extends GetView<ProfileController> {
                 ),
                 children: [
                   Center(
-                    child: AppAvatar(initial: user?.initial ?? '?', size: 72),
+                    child: GestureDetector(
+                      onTap: controller.isUploadingAvatar.value
+                          ? null
+                          : controller.pickAndUploadAvatar,
+                      child: Stack(
+                        alignment: Alignment.bottomRight,
+                        children: [
+                          AppAvatar(
+                            initial: user?.initial ?? '?',
+                            size: 88,
+                            imageBytes: controller.avatarBytes,
+                          ),
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: AppColors.brand,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppColors.background,
+                                width: 2,
+                              ),
+                            ),
+                            child: controller.isUploadingAvatar.value
+                                ? const Padding(
+                                    padding: EdgeInsets.all(6),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.camera_alt_rounded,
+                                    size: 16,
+                                    color: Colors.white,
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      '사진을 눌러 변경',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
                   ),
                   const AppSettingSection('기본 정보'),
                   AppSettingGroup(
@@ -49,6 +94,11 @@ class ProfileView extends GetView<ProfileController> {
                         title: '전화번호',
                         value: Address.formatPhone(user?.phone ?? ''),
                       ),
+                      if (user?.loginId != null)
+                        AppSettingRow(
+                          title: '로그인 아이디',
+                          value: user!.loginId!,
+                        ),
                     ],
                   ),
 

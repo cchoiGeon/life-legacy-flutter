@@ -5,4 +5,12 @@ class IndexController extends GetxController {
   void goToLogin() {
     Get.toNamed(AppRoutes.login);
   }
+
+  void goToAbout() {
+    Get.toNamed(AppRoutes.about);
+  }
+
+  void goToGuide() {
+    Get.toNamed(AppRoutes.guide);
+  }
 }

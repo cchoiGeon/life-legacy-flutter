@@ -23,10 +23,32 @@ abstract interface class ApiClient {
   /// 코드가 틀리면 [ApiException]을 던진다(화면이 에러 상태를 그린다).
   Future<AuthSession> verifyCode({required String phone, required String code});
 
-  /// 카카오로 시작하기.
-  Future<AuthSession> loginWithKakao();
+  /// 카카오로 시작하기. [kakaoAccessToken]은 카카오 SDK 로그인으로 얻은 토큰.
+  Future<AuthSession> loginWithKakao(String kakaoAccessToken);
+
+  /// 아이디·비밀번호 로그인 (웹 가입 또는 설정에서 만든 계정).
+  Future<AuthSession> loginWithCredentials({
+    required String loginId,
+    required String password,
+  });
+
+  /// 카카오/전화 사용자가 설정에서 아이디·비밀번호를 처음 만든다.
+  Future<User> setCredentials({
+    required String loginId,
+    required String password,
+  });
 
   Future<User> me();
+
+  /// 프로필 사진 업로드. 성공 시 갱신된 사용자 정보.
+  Future<User> uploadAvatar({
+    required List<int> bytes,
+    required String filename,
+    String contentType = 'image/jpeg',
+  });
+
+  /// 프로필 사진 바이너리. 없으면 null.
+  Future<List<int>?> fetchAvatarBytes();
 
   /// 만료된 액세스 토큰을 새것으로 바꾼다.
   ///
@@ -61,7 +83,11 @@ abstract interface class ApiClient {
   });
 
   /// 현재 시행 중인 약관 문서 목록.
-  Future<List<ConsentDocument>> consentDocuments();
+  /// [consentOnly]면 가입 동의 체크 대상만.
+  Future<List<ConsentDocument>> consentDocuments({bool consentOnly = false});
+
+  /// 약관 문서 단건 (`terms_of_service` · `privacy_policy` · `refund_policy` 등).
+  Future<ConsentDocument> consentDocument(String key);
 
   // ══════════════════════════════════════════════════════════
   // 자기소개 → 목차 생성
@@ -193,11 +219,44 @@ abstract interface class ApiClient {
   /// 종합 원고 생성(또는 재생성).
   Future<ChapterReview> synthesizeReview(String bookId, String chapterId);
 
-  /// 리뷰 저장(앱은 body 미전송 — status만 reviewed).
+  /// 리뷰 저장 (본문 편집 시 body 포함).
   Future<ChapterReview> saveReview({
     required String bookId,
     required String chapterId,
     required int version,
+    String? body,
+    String status = 'reviewed',
+  });
+
+  /// 문단 뒤 수동 사진 업로드.
+  Future<ReviewMedia> uploadReviewMedia({
+    required String bookId,
+    required String chapterId,
+    required int paragraphIndex,
+    required List<int> bytes,
+    required String filename,
+    String contentType = 'image/jpeg',
+  });
+
+  /// 사진 배치 삭제.
+  Future<void> deleteReviewMedia({
+    required String bookId,
+    required String chapterId,
+    required String placementId,
+  });
+
+  /// 사진 바이트 (인증 필요).
+  Future<List<int>> fetchReviewMediaBytes({
+    required String bookId,
+    required String chapterId,
+    required String placementId,
+  });
+
+  /// AI 챕터 사진 생성/재생성 (1:1).
+  Future<AiPhotoResult> generateReviewAiPhoto({
+    required String bookId,
+    required String chapterId,
+    bool regenerate = false,
   });
 
   /// 챕터 완료 화면. 이탈 후 재진입 시에도 같은 화면을 그린다.
@@ -247,6 +306,9 @@ abstract interface class ApiClient {
 
   /// 기능별 권한 안내 (잠금 UI용 — 접근 통제 아님).
   Future<PlanEntitlements> entitlements(String bookId);
+
+  /// 쿠폰 코드 교환 → T1~T4 플랜 부여.
+  Future<CouponRedeemResult> redeemCoupon(String code);
 
   /// 전자책 자격 (reviewed 장 기준).
   Future<EbookEligibility> ebookEligibility(String bookId);
@@ -445,21 +507,33 @@ class OctomoVerifyResult {
   }
 }
 
-/// 약관 문서 정보.
+/// 약관 문서 정보. 본문(`content`)은 DB 마크다운.
 class ConsentDocument {
   const ConsentDocument({
     required this.key,
     required this.version,
     required this.title,
     this.url,
+    this.content,
     required this.required,
+    this.consentItem = true,
   });
 
   final String key;
   final String version;
   final String title;
   final String? url;
+
+  /// 마크다운 본문. 없으면 체크만 하거나 URL로 연다.
+  final String? content;
   final bool required;
+
+  /// 가입 동의 체크리스트 대상 여부.
+  final bool consentItem;
+
+  bool get hasBody =>
+      (content != null && content!.trim().isNotEmpty) ||
+      (url != null && url!.trim().isNotEmpty);
 
   factory ConsentDocument.fromJson(Map<String, dynamic> json) =>
       ConsentDocument(
@@ -467,7 +541,9 @@ class ConsentDocument {
         version: json['version'] as String? ?? '1.0',
         title: json['title'] as String,
         url: json['url'] as String?,
+        content: json['content'] as String?,
         required: json['required'] as bool? ?? true,
+        consentItem: json['consent_item'] as bool? ?? true,
       );
 }
 
@@ -630,6 +706,33 @@ class VoiceAudio {
   final int? nextParagraph;
 
   bool get hasMore => nextParagraph != null && nextParagraph! >= 0;
+}
+
+/// POST …/review/images/generate
+class AiPhotoResult {
+  const AiPhotoResult({
+    required this.media,
+    this.regenRemaining = 0,
+    this.canRegenerate = false,
+  });
+
+  final ReviewMedia media;
+  final int regenRemaining;
+  final bool canRegenerate;
+
+  factory AiPhotoResult.fromJson(Map<String, dynamic> json) {
+    final mediaJson = json['media'];
+    final ai = json['ai_photo'] as Map<String, dynamic>? ?? const {};
+    return AiPhotoResult(
+      media: ReviewMedia.fromJson(
+        mediaJson is Map<String, dynamic> ? mediaJson : const {},
+      ),
+      regenRemaining: ai['regen_remaining'] as int? ??
+          json['remaining_generations'] as int? ??
+          0,
+      canRegenerate: ai['can_regenerate'] as bool? ?? false,
+    );
+  }
 }
 
 class SttResult {

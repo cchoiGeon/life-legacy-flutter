@@ -41,12 +41,38 @@ class RealApiClient implements ApiClient {
   }
 
   @override
-  Future<AuthSession> loginWithKakao() async {
-    // 카카오 SDK를 아직 붙이지 않아 빈 토큰을 보낸다. 서버도 스텁이라
-    // 검증하지 않는다 — SDK가 붙으면 여기에 실제 토큰이 들어간다.
-    final body = await _post('/auth/kakao', {'kakao_access_token': 'stub'});
+  Future<AuthSession> loginWithKakao(String kakaoAccessToken) async {
+    final body = await _post('/auth/kakao', {
+      'kakao_access_token': kakaoAccessToken,
+    });
 
     return AuthSession.fromJson(body!);
+  }
+
+  @override
+  Future<AuthSession> loginWithCredentials({
+    required String loginId,
+    required String password,
+  }) async {
+    final body = await _post('/auth/login', {
+      'login_id': loginId,
+      'password': password,
+    });
+
+    return AuthSession.fromJson(body!);
+  }
+
+  @override
+  Future<User> setCredentials({
+    required String loginId,
+    required String password,
+  }) async {
+    final body = await _post('/auth/credentials', {
+      'login_id': loginId,
+      'password': password,
+    });
+
+    return User.fromJson(body!);
   }
 
   @override
@@ -61,6 +87,44 @@ class RealApiClient implements ApiClient {
     final body = await _get('/users/me');
 
     return User.fromJson(body!);
+  }
+
+  @override
+  Future<User> uploadAvatar({
+    required List<int> bytes,
+    required String filename,
+    String contentType = 'image/jpeg',
+  }) async {
+    try {
+      final form = FormData.fromMap({
+        'avatar': MultipartFile.fromBytes(bytes, filename: filename),
+      });
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/users/me/avatar',
+        data: form,
+      );
+      return User.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  @override
+  Future<List<int>?> fetchAvatarBytes() async {
+    try {
+      final response = await _dio.get<List<int>>(
+        '/users/me/avatar',
+        options: Options(
+          responseType: ResponseType.bytes,
+          validateStatus: (s) => s != null && (s == 200 || s == 404),
+        ),
+      );
+      if (response.statusCode == 404) return null;
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw _toApiException(e);
+    }
   }
 
   @override
@@ -103,9 +167,18 @@ class RealApiClient implements ApiClient {
   }
 
   @override
-  Future<List<ConsentDocument>> consentDocuments() async {
-    final items = await _getItems('/consents/documents');
+  Future<List<ConsentDocument>> consentDocuments({
+    bool consentOnly = false,
+  }) async {
+    final q = consentOnly ? '?consent_only=1' : '';
+    final items = await _getItems('/consents/documents$q');
     return items.map(ConsentDocument.fromJson).toList();
+  }
+
+  @override
+  Future<ConsentDocument> consentDocument(String key) async {
+    final body = await _get('/consents/documents/$key');
+    return ConsentDocument.fromJson(body!);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -314,12 +387,86 @@ class RealApiClient implements ApiClient {
     required String bookId,
     required String chapterId,
     required int version,
+    String? body,
+    String status = 'reviewed',
   }) async {
-    final body = await _patch('/books/$bookId/chapters/$chapterId/review', {
+    final response = await _patch('/books/$bookId/chapters/$chapterId/review', {
       'version': version,
-      'status': 'reviewed',
+      'status': status,
+      if (body != null) 'body': body,
     });
-    return ChapterReview.fromJson(body!);
+    return ChapterReview.fromJson(response!);
+  }
+
+  @override
+  Future<ReviewMedia> uploadReviewMedia({
+    required String bookId,
+    required String chapterId,
+    required int paragraphIndex,
+    required List<int> bytes,
+    required String filename,
+    String contentType = 'image/jpeg',
+  }) async {
+    try {
+      final form = FormData.fromMap({
+        'image': MultipartFile.fromBytes(bytes, filename: filename),
+        'paragraph_index': paragraphIndex,
+      });
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/books/$bookId/chapters/$chapterId/review/media',
+        data: form,
+      );
+      final media = response.data?['media'];
+      if (media is! Map<String, dynamic>) {
+        throw const ApiException('사진을 올리지 못했어요');
+      }
+      return ReviewMedia.fromJson(media);
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  @override
+  Future<void> deleteReviewMedia({
+    required String bookId,
+    required String chapterId,
+    required String placementId,
+  }) async {
+    await _send(
+      () => _dio.delete<dynamic>(
+        '/books/$bookId/chapters/$chapterId/review/media/$placementId',
+      ),
+    );
+  }
+
+  @override
+  Future<List<int>> fetchReviewMediaBytes({
+    required String bookId,
+    required String chapterId,
+    required String placementId,
+  }) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        '/books/$bookId/chapters/$chapterId/review/media/$placementId/file',
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return response.data ?? const [];
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  @override
+  Future<AiPhotoResult> generateReviewAiPhoto({
+    required String bookId,
+    required String chapterId,
+    bool regenerate = false,
+  }) async {
+    final body = await _post(
+      '/books/$bookId/chapters/$chapterId/review/images/generate',
+      {'regenerate': regenerate},
+    );
+    return AiPhotoResult.fromJson(body ?? const {});
   }
 
   @override
@@ -461,6 +608,12 @@ class RealApiClient implements ApiClient {
   Future<PlanEntitlements> entitlements(String bookId) async {
     final body = await _get('/books/$bookId/entitlements');
     return PlanEntitlements.fromJson(body!);
+  }
+
+  @override
+  Future<CouponRedeemResult> redeemCoupon(String code) async {
+    final body = await _post('/coupons/redeem', {'code': code.trim()});
+    return CouponRedeemResult.fromJson(body!);
   }
 
   @override

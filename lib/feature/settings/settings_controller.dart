@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/feature/legal/legal_document_view.dart';
 import 'package:life_legacy/service/services.dart';
 
 /// 22 설정 — Figma 155:318.
@@ -55,10 +56,21 @@ class SettingsController extends GetxController {
   /// F3 내 정보 (보기 전용)
   void openProfile() => Get.toNamed(AppRoutes.settingsProfile);
 
-  /// 약관 문서는 시안에 화면이 없다. 자리만 만들어 뒀다.
-  void openTerms() => _toast.show('이용약관은 준비 중이에요');
+  void openCreateCredentials() => Get.toNamed(AppRoutes.settingsCredentials);
 
-  void openPrivacy() => _toast.show('개인정보 처리방침은 준비 중이에요');
+  void openAbout() => Get.toNamed(AppRoutes.about);
+
+  void openGuide() => Get.toNamed(AppRoutes.guide);
+
+  void openPurchase() => Get.toNamed(AppRoutes.purchase);
+
+  void openCoupon() => Get.toNamed(AppRoutes.purchaseCoupon);
+
+  void openTerms() => LegalDocumentView.open('terms_of_service');
+
+  void openPrivacy() => LegalDocumentView.open('privacy_policy');
+
+  void openRefund() => LegalDocumentView.open('refund_policy');
 
   Future<void> logout() async {
     await _auth.logout();

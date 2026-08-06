@@ -160,6 +160,28 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(tryPrefillPhone());
+  }
+
+  /// 저장된 번호 → (Android) 전화 권한 + SIM/Hint 순으로 입력란을 채운다.
+  ///
+  /// [forceDevice]가 true면 저장된 번호를 건너뛰고 기기에서 다시 읽는다
+  /// ("내 번호 불러오기").
+  Future<void> tryPrefillPhone({bool forceDevice = false}) async {
+    if (!forceDevice && phoneDigits.value.isNotEmpty) return;
+
+    if (!forceDevice) {
+      final saved = Storage.phone;
+      if (saved != null && saved.length == _phoneLength) {
+        _setPhone(saved);
+        return;
+      }
+    }
+
+    final device = await DevicePhoneService().resolveKoreanMobile();
+    if (device == null) return;
+    if (!forceDevice && phoneDigits.value.isNotEmpty) return;
+    _setPhone(device);
   }
 
   @override
@@ -310,7 +332,7 @@ class AuthController extends GetxController with WidgetsBindingObserver {
       isChecking.value = false;
 
       if (result.isExisting && result.session != null) {
-        await _auth.applySession(result.session!);
+        await _auth.applySession(result.session!, loginProvider: 'phone');
         Get.offAllNamed(
           result.session!.needsIntro ? AppRoutes.intro : AppRoutes.home,
         );
@@ -365,7 +387,7 @@ class AuthController extends GetxController with WidgetsBindingObserver {
             ),
         ],
       );
-      await _auth.applySession(session);
+      await _auth.applySession(session, loginProvider: 'phone');
       _goToStep(AuthStep.success);
     } on ApiException catch (e) {
       _toast.showError(e);

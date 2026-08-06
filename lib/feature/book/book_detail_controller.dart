@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/feature/purchase/purchase_flow.dart';
 import 'package:life_legacy/service/services.dart';
 
 /// 6-1 책 상세 허브 — GET /books/{id} §6.2.
@@ -72,26 +73,46 @@ class BookDetailController extends GetxController {
   void answerCurrentQuestion() {
     final q = book.value?.currentQuestion;
     final id = _requireBookId();
-    Get.offNamed(
-      AppRoutes.write,
-      arguments: {
-        'bookId': id,
-        if (q != null) 'questionId': q.id,
-      },
-    );
+    _openWrite(bookId: id, questionId: q?.id, chapterOrder: null);
   }
 
   void onCtaPressed() =>
       currentChapter == null ? openPreview() : continueWriting();
 
-  void continueWriting() {
+  Future<void> continueWriting() async {
     final q = book.value?.currentQuestion;
+    final chapter = currentChapter;
     final id = _requireBookId();
+    await _openWrite(
+      bookId: id,
+      questionId: q?.id,
+      chapterOrder: chapter?.order,
+    );
+  }
+
+  Future<void> _openWrite({
+    required String bookId,
+    String? questionId,
+    int? chapterOrder,
+  }) async {
+    final order = chapterOrder ??
+        chapters
+            .where((c) => c.status == ChapterStatus.writing)
+            .map((c) => c.order)
+            .firstOrNull;
+    if (order != null &&
+        !await PurchaseFlow.allowChapter(
+          api: _api,
+          bookId: bookId,
+          chapterOrder: order,
+        )) {
+      return;
+    }
     Get.offNamed(
       AppRoutes.write,
       arguments: {
-        'bookId': id,
-        if (q != null) 'questionId': q.id,
+        'bookId': bookId,
+        if (questionId != null) 'questionId': questionId,
       },
     );
   }
@@ -148,16 +169,26 @@ class BookDetailController extends GetxController {
   void openStorybook() {
     final flag = book.value?.entitlements.storybook;
     if (flag == null || !flag.allowed) {
-      _toast.show(
-        'AI 영상 그림책은 웹에서 이용할 수 있어요',
-      );
+      PurchaseFlow.openPlan('T2');
       return;
     }
   }
 
-  void openChapter(Chapter chapter) {
+  Future<void> openChapter(Chapter chapter) async {
     switch (chapter.status) {
       case ChapterStatus.locked:
+        // 1장을 이미 마쳤는데 다음 장이 잠긴 것처럼 보이면 구매 유도.
+        final prevDone = chapters.any(
+          (c) => c.order == chapter.order - 1 && c.status == ChapterStatus.done,
+        );
+        if (prevDone && chapter.order > 1) {
+          final ok = await PurchaseFlow.allowChapter(
+            api: _api,
+            bookId: _requireBookId(),
+            chapterOrder: chapter.order,
+          );
+          if (!ok) return;
+        }
         _toast.show('${chapter.order - 1}장을 마치면 열려요');
       case ChapterStatus.done:
         Get.toNamed(
@@ -168,6 +199,12 @@ class BookDetailController extends GetxController {
           },
         );
       case ChapterStatus.writing:
+        final ok = await PurchaseFlow.allowChapter(
+          api: _api,
+          bookId: _requireBookId(),
+          chapterOrder: chapter.order,
+        );
+        if (!ok) return;
         continueWriting();
     }
   }

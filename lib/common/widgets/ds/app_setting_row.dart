@@ -4,11 +4,14 @@
 /// 배송지 수정(F4)이 생기면서 세 화면이 같은 모양을 쓰게 돼 DS로 올렸다.
 library;
 
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 
 import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
+import 'package:life_legacy/common/widgets/ds/app_card.dart';
 
 /// 섹션 라벨 — 앞에 7px 점이 붙는다 (시안 366:901).
 ///
@@ -264,12 +267,14 @@ class AppProfileCard extends StatelessWidget {
     required this.initial,
     required this.name,
     required this.phone,
+    this.imageBytes,
     this.onTap,
   });
 
   final String initial;
   final String name;
   final String phone;
+  final Uint8List? imageBytes;
   final VoidCallback? onTap;
 
   @override
@@ -287,22 +292,7 @@ class AppProfileCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 18),
           child: Row(
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: AppColors.brand,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  initial,
-                  style: AppTypography.weight(
-                    AppTypography.headingXl,
-                    AppTypography.bold,
-                  ).copyWith(color: AppColors.brandFg, height: 1.2),
-                ),
-              ),
+              AppAvatar(initial: initial, size: 52, imageBytes: imageBytes),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(

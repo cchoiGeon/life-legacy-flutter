@@ -5,6 +5,7 @@ import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
+import 'package:life_legacy/feature/shared/tab_scaffold.dart';
 
 import 'stages/ai_loading_stage.dart';
 import 'stages/ask_stage.dart';
@@ -12,13 +13,13 @@ import 'stages/confirm_stage.dart';
 import 'stages/followup_failed_stage.dart';
 import 'stages/keyboard_stage.dart';
 import 'stages/recording_stage.dart';
+import 'voice_check_overlay.dart';
 import 'write_controller.dart';
 
 /// D1~D5 작성 — Figma 341:646 · 350:875 · 351:874 · 351:964 · 354:1035.
 ///
-/// ⚠️ **탭바가 없다.** 작성은 탭 중 하나지만 시안의 다섯 프레임 어디에도
-///    탭바가 그려져 있지 않다. 말하거나 적는 동안 다른 탭이 눈에 들어오면
-///    하던 이야기를 놓치기 때문이다. 나가는 길은 상단 `←` 하나다.
+/// 대기(ask)·로딩·완료에서는 하단 탭바를 보여 주고, 말하거나 적는 중에는
+/// 숨긴다 — 답하는 동안 다른 탭이 눈에 들어오면 이야기를 놓치기 쉽다.
 class WriteView extends GetView<WriteController> {
   const WriteView({super.key});
 
@@ -26,8 +27,8 @@ class WriteView extends GetView<WriteController> {
   Widget build(BuildContext context) {
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Scaffold(
-          backgroundColor: AppColors.background,
+        return const TabScaffold(
+          tab: AppTab.write,
           body: Center(child: AppSpinner()),
         );
       }
@@ -40,9 +41,45 @@ class WriteView extends GetView<WriteController> {
       }
 
       if (controller.isAllDone.value) {
-        return const Scaffold(
-          backgroundColor: AppColors.background,
+        return const TabScaffold(
+          tab: AppTab.write,
           body: _AllDone(),
+        );
+      }
+
+      final stage = controller.stage.value;
+      final showTabs = stage == WriteStage.ask;
+
+      final stack = Stack(
+        children: [
+          Positioned.fill(
+            child: switch (stage) {
+              WriteStage.ask => const AskStage(),
+              WriteStage.recording => const RecordingStage(),
+              WriteStage.keyboard => const KeyboardStage(),
+              // 정상 흐름에서는 확인 화면을 건너뛴다. 저장 실패(D5) 시에만 진입.
+              WriteStage.confirm => const ConfirmStage(),
+              WriteStage.generatingFollowup ||
+              WriteStage.saving =>
+                const AiLoadingStage(),
+              WriteStage.followupFailed => const FollowupFailedStage(),
+            },
+          ),
+          if (controller.showTutorial.value) const _TutorialOverlay(),
+          if (controller.showVoiceCheck.value) const VoiceCheckOverlay(),
+        ],
+      );
+
+      if (showTabs) {
+        return TabScaffold(
+          tab: AppTab.write,
+          body: PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) controller.requestLeave();
+            },
+            child: stack,
+          ),
         );
       }
 
@@ -53,25 +90,8 @@ class WriteView extends GetView<WriteController> {
         },
         child: Scaffold(
           backgroundColor: AppColors.background,
-          resizeToAvoidBottomInset:
-              controller.stage.value == WriteStage.keyboard,
-          body: Stack(
-            children: [
-              Positioned.fill(
-                child: switch (controller.stage.value) {
-                  WriteStage.ask => const AskStage(),
-                  WriteStage.recording => const RecordingStage(),
-                  WriteStage.keyboard => const KeyboardStage(),
-                  // 정상 흐름에서는 확인 화면을 건너뛴다. 저장 실패(D5) 시에만 진입.
-                  WriteStage.confirm => const ConfirmStage(),
-                  WriteStage.generatingFollowup ||
-                  WriteStage.saving => const AiLoadingStage(),
-                  WriteStage.followupFailed => const FollowupFailedStage(),
-                },
-              ),
-              if (controller.showTutorial.value) const _TutorialOverlay(),
-            ],
-          ),
+          resizeToAvoidBottomInset: stage == WriteStage.keyboard,
+          body: stack,
         ),
       );
     });

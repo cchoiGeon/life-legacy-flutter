@@ -231,7 +231,7 @@ abstract final class AppTypography {
     fontVariations: _serifBold,
   );
 
-  /// 로고 워드마크 "Life Legacy" — 명조 Bold.
+  /// 로고 워드마크 "기로기" — 명조 Bold.
   ///
   /// ⚠️ 예전에는 대문자 "LIFE LEGACY"에 자간 2.4를 줬다. 새 시안(341:727)은
   ///    **대소문자 그대로** 쓰고 자간도 0.4로 좁다. 대문자로 늘려 놓으면

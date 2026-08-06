@@ -26,7 +26,7 @@ class IntroView extends GetView<IntroController> {
         if (controller.isWritingPlan) {
           return const _IntroScaffold(
             title: '자서전 작성하는 데\n예상 시간은?',
-            subtitle: '알림 여부 맞춰서 드릴게요. 나중에 변경 가능해요.',
+            subtitle: '가능 시간에 맞춰 추천해 드릴게요. 나중에 변경 가능해요.',
             body: _WritingPlanBody(),
             showSkip: false,
           );
@@ -38,14 +38,25 @@ class IntroView extends GetView<IntroController> {
         }
 
         return _IntroScaffold(
-          title: question.text,
-          subtitle: question.subtitle,
-          body: switch (question.type) {
-            IntroAnswerType.choice => _Choices(question: question),
-            IntroAnswerType.date => const _DatePickers(),
-            IntroAnswerType.text => _Field(question: question),
-            IntroAnswerType.multiChoice => const SizedBox.shrink(),
-          },
+          title: controller.isGenderBirthStep
+              ? '성별과 생년월일을\n알려주세요'
+              : question.text,
+          subtitle: controller.isGenderBirthStep
+              ? '책에서 부르는 말과 나이 맞춤 질문에 써요'
+              : question.subtitle,
+          body: controller.isGenderBirthStep
+              ? _GenderBirthBody(question: question)
+              : switch (question.type) {
+                  IntroAnswerType.choice => _Choices(question: question),
+                  IntroAnswerType.date => Obx(
+                      () => AppBirthDateField(
+                        value: controller.birthDate,
+                        onChanged: controller.setBirthDate,
+                      ),
+                    ),
+                  IntroAnswerType.text => _Field(question: question),
+                  IntroAnswerType.multiChoice => const SizedBox.shrink(),
+                },
           showSkip: question.skippable,
         );
       }),
@@ -141,6 +152,45 @@ class _IntroScaffold extends GetView<IntroController> {
   }
 }
 
+class _GenderBirthBody extends GetView<IntroController> {
+  const _GenderBirthBody({required this.question});
+
+  final IntroQuestion question;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '성별',
+          style: AppTypography.weight(
+            AppTypography.bodyBase,
+            AppTypography.semibold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _Choices(question: question),
+        const SizedBox(height: 28),
+        Text(
+          '생년월일',
+          style: AppTypography.weight(
+            AppTypography.bodyBase,
+            AppTypography.semibold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Obx(
+          () => AppBirthDateField(
+            value: controller.birthDate,
+            onChanged: controller.setBirthDate,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _Choices extends GetView<IntroController> {
   const _Choices({required this.question});
 
@@ -148,7 +198,10 @@ class _Choices extends GetView<IntroController> {
 
   @override
   Widget build(BuildContext context) {
-    final height = AppChoiceTile.heightFor(question.choices.length);
+    // 성별+생년월일 합친 화면은 타일을 조금 낮춰 한 화면에 맞춘다.
+    final height = controller.isGenderBirthStep
+        ? 74.0
+        : AppChoiceTile.heightFor(question.choices.length);
 
     return Obx(() {
       final selected = controller.selectedChoice;
@@ -192,101 +245,6 @@ class _Choices extends GetView<IntroController> {
   }
 }
 
-class _DatePickers extends GetView<IntroController> {
-  const _DatePickers();
-
-  static final _years = [
-    for (var y = DateTime.now().year; y >= 1920; y--) y,
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final maxDay = controller.daysInSelectedMonth();
-      return Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: _DropdownInt(
-              hint: '연',
-              value: controller.birthYear.value,
-              items: _years,
-              labelOf: (y) => '$y년',
-              onChanged: controller.setBirthYear,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _DropdownInt(
-              hint: '월',
-              value: controller.birthMonth.value,
-              items: [for (var m = 1; m <= 12; m++) m],
-              labelOf: (m) => '$m월',
-              onChanged: controller.setBirthMonth,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _DropdownInt(
-              hint: '일',
-              value: controller.birthDay.value,
-              items: [for (var d = 1; d <= maxDay; d++) d],
-              labelOf: (d) => '$d일',
-              onChanged: controller.setBirthDay,
-            ),
-          ),
-        ],
-      );
-    });
-  }
-}
-
-class _DropdownInt extends StatelessWidget {
-  const _DropdownInt({
-    required this.hint,
-    required this.value,
-    required this.items,
-    required this.labelOf,
-    required this.onChanged,
-  });
-
-  final String hint;
-  final int? value;
-  final List<int> items;
-  final String Function(int) labelOf;
-  final ValueChanged<int?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: AppDimens.fieldHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int>(
-          isExpanded: true,
-          value: value != null && items.contains(value) ? value : null,
-          hint: Text(
-            hint,
-            style: AppTypography.bodyBase.copyWith(
-              color: AppColors.textTertiary,
-            ),
-          ),
-          items: [
-            for (final v in items)
-              DropdownMenuItem(value: v, child: Text(labelOf(v))),
-          ],
-          onChanged: onChanged,
-        ),
-      ),
-    );
-  }
-}
-
 class _Field extends GetView<IntroController> {
   const _Field({required this.question});
 
@@ -308,6 +266,8 @@ class _Field extends GetView<IntroController> {
 class _WritingPlanBody extends GetView<IntroController> {
   const _WritingPlanBody();
 
+  static const _averageMinutes = 30;
+
   @override
   Widget build(BuildContext context) {
     return Obx(
@@ -316,14 +276,14 @@ class _WritingPlanBody extends GetView<IntroController> {
         children: [
           const _SectionLabel('하루 가능 시간'),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          _OptionGrid(
+            crossAxisCount: 3,
             children: [
               for (final m in IntroController.dailyMinuteOptions)
-                _Chip(
+                _PlanChip(
                   label: _minutesLabel(m),
                   selected: controller.dailyMinutes.value == m,
+                  emphasized: m == _averageMinutes,
                   onTap: () => controller.selectDailyMinutes(m),
                 ),
             ],
@@ -331,29 +291,25 @@ class _WritingPlanBody extends GetView<IntroController> {
           const SizedBox(height: 28),
           const _SectionLabel('가능 요일'),
           const SizedBox(height: 12),
-          Row(
+          _OptionGrid(
+            crossAxisCount: 2,
             children: [
-              Expanded(
-                child: _Chip(
-                  label: '평일',
-                  selected: controller.weekdayPresetSelected(
-                    IntroController.weekdayPreset,
-                  ),
-                  onTap: () => controller.toggleWeekdayPreset(
-                    IntroController.weekdayPreset,
-                  ),
+              _PlanChip(
+                label: '평일',
+                selected: controller.weekdayPresetSelected(
+                  IntroController.weekdayPreset,
+                ),
+                onTap: () => controller.toggleWeekdayPreset(
+                  IntroController.weekdayPreset,
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _Chip(
-                  label: '주말',
-                  selected: controller.weekdayPresetSelected(
-                    IntroController.weekendPreset,
-                  ),
-                  onTap: () => controller.toggleWeekdayPreset(
-                    IntroController.weekendPreset,
-                  ),
+              _PlanChip(
+                label: '주말',
+                selected: controller.weekdayPresetSelected(
+                  IntroController.weekendPreset,
+                ),
+                onTap: () => controller.toggleWeekdayPreset(
+                  IntroController.weekendPreset,
                 ),
               ),
             ],
@@ -361,22 +317,18 @@ class _WritingPlanBody extends GetView<IntroController> {
           const SizedBox(height: 28),
           const _SectionLabel('시간대'),
           const SizedBox(height: 12),
-          Row(
+          _OptionGrid(
+            crossAxisCount: 2,
             children: [
-              Expanded(
-                child: _Chip(
-                  label: '오전',
-                  selected: controller.availablePeriods.contains('am'),
-                  onTap: () => controller.togglePeriod('am'),
-                ),
+              _PlanChip(
+                label: '오전',
+                selected: controller.availablePeriods.contains('am'),
+                onTap: () => controller.togglePeriod('am'),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _Chip(
-                  label: '오후',
-                  selected: controller.availablePeriods.contains('pm'),
-                  onTap: () => controller.togglePeriod('pm'),
-                ),
+              _PlanChip(
+                label: '오후',
+                selected: controller.availablePeriods.contains('pm'),
+                onTap: () => controller.togglePeriod('pm'),
               ),
             ],
           ),
@@ -384,45 +336,25 @@ class _WritingPlanBody extends GetView<IntroController> {
           const _SectionLabel('예상 기간'),
           const SizedBox(height: 8),
           Text(
-            '평균 2~3주 정도 걸려요. 추천 ${controller.recommendedWeeks.value}주',
+            '평균 2~3주 정도 걸려요',
             style: AppTypography.caption.copyWith(
               color: AppColors.textTertiary,
             ),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          _OptionGrid(
+            crossAxisCount: 4,
             children: [
               for (final w in IntroController.durationWeekOptions)
-                _Chip(
-                  label: w == controller.recommendedWeeks.value
-                      ? '$w주 (추천)'
-                      : '$w주',
+                _PlanChip(
+                  label: '$w주',
                   selected: controller.durationWeeks.value == w,
+                  emphasized: w == controller.recommendedWeeks.value,
                   onTap: () => controller.selectDurationWeeks(
                     w,
                     recommended: w == controller.recommendedWeeks.value,
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 28),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '작성 알림 받기',
-                  style: AppTypography.weight(
-                    AppTypography.bodyBase,
-                    AppTypography.medium,
-                  ),
-                ),
-              ),
-              Switch(
-                value: controller.alarmEnabled.value,
-                onChanged: (v) => controller.alarmEnabled.value = v,
-              ),
             ],
           ),
         ],
@@ -432,10 +364,10 @@ class _WritingPlanBody extends GetView<IntroController> {
 
   static String _minutesLabel(int m) => switch (m) {
         10 => '10분',
-        30 => '평균 30분',
+        30 => '30분',
         60 => '1시간',
         90 => '1시간 반',
-        120 => '2시간 이상',
+        120 => '2시간+',
         _ => '$m분',
       };
 }
@@ -455,37 +387,85 @@ class _SectionLabel extends StatelessWidget {
       );
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip({
+class _OptionGrid extends StatelessWidget {
+  const _OptionGrid({
+    required this.crossAxisCount,
+    required this.children,
+  });
+
+  final int crossAxisCount;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: crossAxisCount,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: crossAxisCount >= 4 ? 1.7 : 2.4,
+      children: children,
+    );
+  }
+}
+
+/// 작은 선택 칩. [emphasized]는 평균·추천 안내용 테두리 하이라이트.
+class _PlanChip extends StatelessWidget {
+  const _PlanChip({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.emphasized = false,
   });
 
   final String label;
   final bool selected;
+  final bool emphasized;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final borderColor = selected
+        ? AppColors.primary
+        : emphasized
+            ? AppColors.warm
+            : AppColors.border;
+    final borderWidth = selected || emphasized ? 1.5 : 1.0;
+
     return Material(
       color: selected ? AppColors.primary : AppColors.surfaceCard,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Container(
           alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border,
-            ),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor, width: borderWidth),
+            boxShadow: emphasized && !selected
+                ? [
+                    BoxShadow(
+                      color: AppColors.warm.withValues(alpha: 0.35),
+                      blurRadius: 6,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                : null,
           ),
           child: Text(
             label,
-            style: AppTypography.bodyBase.copyWith(
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.weight(
+              AppTypography.bodySm,
+              selected || emphasized
+                  ? AppTypography.semibold
+                  : AppTypography.regular,
+            ).copyWith(
               color: selected ? Colors.white : AppColors.textPrimary,
             ),
           ),

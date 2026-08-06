@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
-import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
-import 'package:life_legacy/core/route/app_pages.dart';
-import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/feature/shared/app_shell.dart';
 
-/// 탭 4개가 공유하는 껍데기.
+export 'app_shell.dart' show AppMenuButton, AppShell, AppShellScope;
+
+/// 탭 4개가 공유하는 껍데기 — 하단 탭바 + 오른쪽 메뉴.
 ///
 /// 탭은 각각 독립 라우트다(IndexedStack이 아니다). 시안의 탭 화면들이
 /// 서로 다른 배경색·상단바를 쓰고, 탭을 옮길 때 목록을 새로 불러오는 게
@@ -23,31 +22,12 @@ class TabScaffold extends StatelessWidget {
   final Widget body;
   final Color? backgroundColor;
 
-  static const _routes = {
-    AppTab.home: AppRoutes.home,
-    AppTab.write: AppRoutes.write,
-    AppTab.book: AppRoutes.book,
-    AppTab.settings: AppRoutes.settings,
-  };
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: backgroundColor ?? AppColors.background,
+    return AppShell(
+      tab: tab,
+      backgroundColor: backgroundColor,
       body: body,
-      bottomNavigationBar: AppTabBar(
-        current: tab,
-        onSelect: (next) {
-          if (next == tab) return;
-          // `offNamed` — 탭끼리는 쌓이지 않게 한다. 뒤로가기를 눌렀을 때
-          // 지나온 탭을 되짚는 건 이 앱의 흐름과 맞지 않는다.
-          final bookId = Storage.currentBookId;
-          Get.offNamed(
-            _routes[next]!,
-            arguments: bookId == null ? null : {'bookId': bookId},
-          );
-        },
-      ),
     );
   }
 }

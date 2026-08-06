@@ -30,7 +30,9 @@ class KeyboardStage extends GetView<WriteController> {
         const SizedBox(height: 14), // 시안: 질문 영역이 y148에서 시작
         Obx(
           () => QuestionPanel(
-            question: controller.displayQuestion,
+            question: controller.revealedQuestion.value.isEmpty
+                ? controller.displayQuestion
+                : controller.revealedQuestion.value,
             isFollowup: controller.isFollowup.value,
             tall: false,
           ),

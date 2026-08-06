@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:get/get.dart';
 
 import 'package:life_legacy/core/network/api_client.dart';
@@ -14,6 +16,9 @@ class AuthService extends GetxService {
 
   final Rxn<User> user = Rxn<User>();
 
+  /// 프로필 사진 바이트. 없으면 null → 이니셜 아바타.
+  final Rxn<Uint8List> avatarBytes = Rxn<Uint8List>();
+
   bool get isLoggedIn => Storage.isLoggedIn;
 
   /// 표시용 이름. 아직 못 불러왔으면 빈 문자열.
@@ -25,15 +30,33 @@ class AuthService extends GetxService {
   ///    때마다 로컬 표시를 그 값에 맞춘다 — 앱을 지웠다 다시 깔면 로컬
   ///    표시가 사라지는데, 그대로 두면 이미 확정한 목차를 또 만들라고 하고
   ///    확정에서 409로 막혀 갇힌다.
-  Future<void> applySession(AuthSession session) async {
+  ///
+  /// [loginProvider]는 `kakao` | `phone` | `credentials`. 웹 구매 안내에서
+  /// 카카오 로그인 가능 여부를 알려 줄 때 쓴다.
+  Future<void> applySession(
+    AuthSession session, {
+    String? loginProvider,
+  }) async {
     await Storage.saveTokens(
       session.tokens.accessToken,
       session.tokens.refreshToken,
     );
+    if (loginProvider != null) {
+      await Storage.saveLoginProvider(loginProvider);
+    }
     if (!session.needsIntro) {
       await Storage.markIntroDone();
     }
     user.value = session.user;
+    await _loadAvatarIfNeeded();
+  }
+
+  /// 카카오로 로그인한 세션이면 true. 없으면 전화번호 없는 계정으로 추정.
+  bool get isKakaoLogin {
+    if (Storage.loginProvider == 'kakao') return true;
+    final u = user.value;
+    if (u == null) return false;
+    return u.phone.isEmpty;
   }
 
   /// 앱 시작 시 저장된 토큰으로 사용자 정보를 복구한다.
@@ -47,12 +70,14 @@ class AuthService extends GetxService {
     if (!Storage.isLoggedIn) return false;
     try {
       user.value = await _api.me();
+      await _loadAvatarIfNeeded();
       return true;
     } on ApiException catch (e) {
       if (e.code == 'TOKEN_EXPIRED' && await _refresh()) {
         return restore();
       }
       await Storage.clearSession();
+      avatarBytes.value = null;
       return false;
     }
   }
@@ -81,9 +106,33 @@ class AuthService extends GetxService {
   Future<void> reload() async {
     try {
       user.value = await _api.me();
+      await _loadAvatarIfNeeded();
     } on ApiException {
       // 이름을 못 읽어도 화면은 계속 쓸 수 있어야 한다. 다음 앱 시작 때
       // restore()가 다시 시도한다.
+    }
+  }
+
+  /// 로컬에 이미 알고 있는 [User]를 갱신한다 (credentials/avatar 업로드 직후).
+  void updateUser(User next) {
+    user.value = next;
+  }
+
+  Future<void> setAvatarBytes(Uint8List? bytes) async {
+    avatarBytes.value = bytes;
+  }
+
+  Future<void> _loadAvatarIfNeeded() async {
+    final u = user.value;
+    if (u == null || !u.hasAvatar) {
+      avatarBytes.value = null;
+      return;
+    }
+    try {
+      final bytes = await _api.fetchAvatarBytes();
+      avatarBytes.value = bytes == null ? null : Uint8List.fromList(bytes);
+    } on ApiException {
+      avatarBytes.value = null;
     }
   }
 
@@ -96,5 +145,6 @@ class AuthService extends GetxService {
     }
     await Storage.clearSession();
     user.value = null;
+    avatarBytes.value = null;
   }
 }

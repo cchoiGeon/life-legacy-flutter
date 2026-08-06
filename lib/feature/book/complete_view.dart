@@ -6,7 +6,7 @@ import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/data/data_manager.dart';
-import 'package:life_legacy/feature/shared/tab_scaffold.dart';
+import 'package:life_legacy/feature/shared/app_shell.dart';
 
 import 'preview_controller.dart';
 
@@ -19,8 +19,7 @@ class BookCompleteView extends GetView<BookPreviewController> {
 
   @override
   Widget build(BuildContext context) {
-    return TabScaffold(
-      tab: AppTab.book,
+    return AppShell(
       body: SafeArea(
         bottom: false,
         child: Obx(() {

@@ -37,7 +37,7 @@ class RecordingStage extends GetView<WriteController> {
                 alignment: Alignment.topCenter,
                 child: Obx(
                   () => QuestionPanel(
-                    question: controller.displayQuestion,
+                    question: controller.revealedQuestion.value,
                     isFollowup: controller.isFollowup.value,
                     onReplay: controller.replayQuestion,
                   ),
@@ -85,7 +85,13 @@ class RecordingStage extends GetView<WriteController> {
         ),
         // 파문은 자리를 차지하지 않으므로 닿는 만큼 비워 준다.
         const SizedBox(height: AppMicButton.bloom),
-        AppMicButton(recording: true, onTap: controller.stopRecording),
+        Obx(
+          () => AppMicButton(
+            recording: true,
+            paused: controller.isPaused.value,
+            onTap: controller.stopRecording,
+          ),
+        ),
         const SizedBox(height: 22),
         Text(
           '눌러서 끝내기',
@@ -94,7 +100,18 @@ class RecordingStage extends GetView<WriteController> {
             AppTypography.bold,
           ).copyWith(color: AppColors.textSecondary, letterSpacing: -0.1),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 16),
+        Obx(
+          () => AppButton(
+            label: controller.isPaused.value ? '이어하기' : '일시정지',
+            variant: AppButtonVariant.outline,
+            size: AppButtonSize.assist,
+            onPressed: controller.isPaused.value
+                ? controller.resumeRecording
+                : controller.pauseRecording,
+          ),
+        ),
+        const SizedBox(height: 12),
         AppButton(
           label: '글로 답하기',
           variant: AppButtonVariant.neutral,

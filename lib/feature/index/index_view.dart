@@ -29,13 +29,28 @@ class IndexView extends GetView<IndexController> {
                 AppBrandMark(),
                 SizedBox(height: 30),
                 AppWordmark(fontSize: 34, letterSpacing: 0.4),
-                SizedBox(height: 16),
+                SizedBox(height: 14),
                 Text(
-                  '말로 이야기하면\n자서전이 됩니다',
+                  '말로 작성하는 AI 자서전 기록 플랫폼',
                   textAlign: TextAlign.center,
                   style: AppTypography.brandTagline,
                 ),
               ],
+            ),
+            const SizedBox(height: 40),
+
+            // 핵심 가치 — 음성 · 무료 · 제작 형태
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 36),
+              child: Column(
+                children: [
+                  _BenefitLine('타자 없이, 말로 대답하면 알아서 써드려요'),
+                  SizedBox(height: 12),
+                  _BenefitLine('무료로 바로 시작할 수 있어요'),
+                  SizedBox(height: 12),
+                  _BenefitLine('전자책 · 오디오북 · 인쇄본까지 제작할 수 있어요'),
+                ],
+              ),
             ),
             const Spacer(flex: 2),
 
@@ -43,12 +58,37 @@ class IndexView extends GetView<IndexController> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: AppButton(
-                label: '시작하기',
+                label: '무료로 시작하기',
                 onPressed: controller.goToLogin,
                 variant: AppButtonVariant.primary,
                 size: AppButtonSize.lg,
                 block: true,
               ),
+            ),
+            const SizedBox(height: 16),
+
+            // 소개 · 사용설명서
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _TextLink(
+                  label: '소개',
+                  onTap: controller.goToAbout,
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text(
+                    '·',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ),
+                _TextLink(
+                  label: '사용설명서',
+                  onTap: controller.goToGuide,
+                ),
+              ],
             ),
             const SizedBox(height: 16),
 
@@ -67,6 +107,69 @@ class IndexView extends GetView<IndexController> {
 
             const Spacer(flex: 1),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BenefitLine extends StatelessWidget {
+  const _BenefitLine(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 7),
+          child: Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.warm,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: AppTypography.bodyBase.copyWith(
+              color: AppColors.textSecondary,
+              height: 1.45,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TextLink extends StatelessWidget {
+  const _TextLink({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+        child: Text(
+          label,
+          style: AppTypography.caption.copyWith(
+            color: AppColors.textSecondary,
+            decoration: TextDecoration.underline,
+            decorationColor: AppColors.textTertiary,
+            height: 1.3,
+          ),
         ),
       ),
     );

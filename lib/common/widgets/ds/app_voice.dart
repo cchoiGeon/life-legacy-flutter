@@ -22,6 +22,7 @@ class AppMicButton extends StatelessWidget {
     super.key,
     required this.recording,
     required this.onTap,
+    this.paused = false,
     this.size = 160,
   });
 
@@ -30,6 +31,9 @@ class AppMicButton extends StatelessWidget {
 
   final bool recording;
   final VoidCallback onTap;
+
+  /// 일시정지 중이면 파문을 끈다. 메인 버튼은 여전히 "끝내기"다.
+  final bool paused;
 
   /// 시안 실측 160. 이 화면의 유일한 조작이라 크게 잡는다.
   final double size;
@@ -42,6 +46,7 @@ class AppMicButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final listening = recording && !paused;
     final button = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -81,7 +86,7 @@ class AppMicButton extends StatelessWidget {
           // ⚠️ 파문은 버튼 밖으로 번지지만 **자리는 차지하지 않는다.**
           //    `Positioned.fill` + `OverflowBox`라 Stack 크기는 버튼이 정한다 —
           //    자리를 먹으면 녹음을 시작하는 순간 마이크가 손 밑에서 밀려난다.
-          if (recording)
+          if (listening)
             Positioned.fill(
               child: IgnorePointer(
                 child: OverflowBox(

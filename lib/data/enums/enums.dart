@@ -48,7 +48,7 @@ enum IntroAnswerType {
   /// 단일 선택
   choice('choice'),
 
-  /// 연·월·일 드롭다운
+  /// 연·월·일 휠 피커
   date('date'),
 
   /// 복수 선택

@@ -11,6 +11,8 @@ abstract final class Storage {
   static const _keyPhone = 'll.phone';
   static const _keyCurrentBookId = 'll.current_book_id';
   static const _keyWriteTutorialDone = 'll.write_tutorial_done';
+  static const _keyLoginProvider = 'll.login_provider';
+  static const _keyQuestionFontLevel = 'll.question_font_level';
 
   static late final GetStorage _box;
 
@@ -36,11 +38,18 @@ abstract final class Storage {
   static bool get writeTutorialDone =>
       _box.read<bool>(_keyWriteTutorialDone) ?? false;
 
+  /// 질문 글자 크기 단계 (0=작게 … 기본 1=보통 … 3=더 크게).
+  static int get questionFontLevel =>
+      _box.read<int>(_keyQuestionFontLevel) ?? 1;
+
   /// 마지막으로 인증에 사용한 전화번호.
   static String? get phone => _box.read<String>(_keyPhone);
 
   /// 현재 작업 중인 책. `/books/{id}/…` 호출에 쓴다.
   static String? get currentBookId => _box.read<String>(_keyCurrentBookId);
+
+  /// 마지막 로그인 수단 — `kakao` | `phone` | `credentials`.
+  static String? get loginProvider => _box.read<String>(_keyLoginProvider);
 
   static bool get isLoggedIn => accessToken != null;
 
@@ -57,14 +66,21 @@ abstract final class Storage {
   static Future<void> markWriteTutorialDone() =>
       _box.write(_keyWriteTutorialDone, true);
 
+  static Future<void> saveQuestionFontLevel(int level) =>
+      _box.write(_keyQuestionFontLevel, level);
+
   static Future<void> saveCurrentBookId(String bookId) =>
       _box.write(_keyCurrentBookId, bookId);
+
+  static Future<void> saveLoginProvider(String provider) =>
+      _box.write(_keyLoginProvider, provider);
 
   static Future<void> clearSession() async {
     await _box.remove(_keyAccessToken);
     await _box.remove(_keyRefreshToken);
     await _box.remove(_keyIntroDone);
-    await _box.remove(_keyPhone);
+    // 전화번호는 유지 — 재로그인 시 입력란에 자동으로 채운다.
     await _box.remove(_keyCurrentBookId);
+    await _box.remove(_keyLoginProvider);
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 
 import 'package:life_legacy/common/constants/colors.dart';
@@ -249,11 +251,18 @@ class _RingPainter extends CustomPainter {
 }
 
 /// 브랜드 원 안에 이름 첫 글자 — Figma `avatar`(130:2238).
+/// [imageBytes]가 있으면 사진을 우선 보여 준다.
 class AppAvatar extends StatelessWidget {
-  const AppAvatar({super.key, required this.initial, this.size = 34});
+  const AppAvatar({
+    super.key,
+    required this.initial,
+    this.size = 34,
+    this.imageBytes,
+  });
 
   final String initial;
   final double size;
+  final Uint8List? imageBytes;
 
   @override
   Widget build(BuildContext context) {
@@ -261,36 +270,53 @@ class AppAvatar extends StatelessWidget {
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.brand,
         shape: BoxShape.circle,
+        image: imageBytes == null
+            ? null
+            : DecorationImage(
+                image: MemoryImage(imageBytes!),
+                fit: BoxFit.cover,
+              ),
       ),
-      child: Text(
-        initial,
-        style: AppTypography.weight(
-          AppTypography.bodyChat,
-          AppTypography.medium,
-        ).copyWith(color: AppColors.brandFg, fontSize: size * 0.44),
-      ),
+      child: imageBytes != null
+          ? null
+          : Text(
+              initial,
+              style: AppTypography.weight(
+                AppTypography.bodyChat,
+                AppTypography.medium,
+              ).copyWith(color: AppColors.brandFg, fontSize: size * 0.44),
+            ),
     );
   }
 }
 
-/// "Life Legacy" 워드마크 — 명조 Bold (시안 A1 · A2 · C1).
+/// "기로기" 워드마크 — 명조 Bold.
+///
+/// ⚠️ 코드·URL(`life_legacy` · `lifelegacy.co.kr`)은 그대로 둔다. 화면에
+///    보이는 이름만 "기록하다"에서 따온 "기로기"로 바꾼 것이다.
 class AppWordmark extends StatelessWidget {
-  const AppWordmark({super.key, this.fontSize = 30, this.letterSpacing = 0.3});
+  const AppWordmark({
+    super.key,
+    this.fontSize = 30,
+    this.letterSpacing = 0.3,
+  });
 
   final double fontSize;
   final double letterSpacing;
 
   @override
-  Widget build(BuildContext context) => Text(
-    'Life Legacy',
-    style: AppTypography.wordmark.copyWith(
-      fontSize: fontSize,
-      letterSpacing: letterSpacing,
-    ),
-  );
+  Widget build(BuildContext context) {
+    return Text(
+      '기로기',
+      style: AppTypography.wordmark.copyWith(
+        fontSize: fontSize,
+        letterSpacing: letterSpacing,
+      ),
+    );
+  }
 }
 
 /// 브랜드 마크 — 브랜드색 원 안에 펼친 책 두 쪽 (시안 341:723).

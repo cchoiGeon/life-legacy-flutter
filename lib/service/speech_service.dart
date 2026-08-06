@@ -19,6 +19,7 @@ class SpeechService extends GetxService {
   final RxBool isListening = false.obs;
 
   /// 말하는 도중 계속 갱신되는 부분 인식 결과.
+  /// 일시정지 후 이어 말하면, 멈춘 전까지의 글도 앞에 붙는다.
   final RxString partial = ''.obs;
 
   /// 마지막 오류 메시지(사용자에게 보여줄 한국어 문장). 없으면 null.
@@ -26,6 +27,12 @@ class SpeechService extends GetxService {
 
   /// 한국어 고정. 기기에 ko_KR이 없으면 [init]에서 기본 로케일로 물러난다.
   String _localeId = 'ko_KR';
+
+  /// 일시정지 전까지 확정된 글. resume 시 새 인식 앞에 붙인다.
+  String _committed = '';
+
+  /// pause 직후 stop()이 보내는 finalResult로 답을 확정하지 않게 막는다.
+  bool _suppressFinal = false;
 
   /// 앱 시작 시 한 번 부른다. 권한 요청도 여기서 일어난다.
   ///
@@ -57,27 +64,40 @@ class SpeechService extends GetxService {
 
   /// 듣기 시작. [onFinal]은 사용자가 말을 마쳤을 때 한 번 호출된다.
   ///
+  /// [append]가 true면 이전 일시정지 분량을 지우지 않고 이어 받는다.
   /// 반환값이 false면 시작하지 못한 것이다(권한 거부·인식기 없음).
-  Future<bool> start({required void Function(String text) onFinal}) async {
+  Future<bool> start({
+    required void Function(String text) onFinal,
+    bool append = false,
+  }) async {
     if (available.value != true) {
       error.value = '이 기기에서는 음성 인식을 쓸 수 없어요';
       return false;
     }
     if (isListening.value) return true;
 
-    partial.value = '';
+    if (!append) {
+      _committed = '';
+      partial.value = '';
+    }
+    _suppressFinal = false;
     error.value = null;
 
     try {
       await _speech.listen(
         onResult: (result) {
-          partial.value = result.recognizedWords;
-          if (result.finalResult) {
-            isListening.value = false;
-            if (result.recognizedWords.trim().isNotEmpty) {
-              onFinal(result.recognizedWords.trim());
-            }
+          final chunk = result.recognizedWords.trim();
+          partial.value = _join(_committed, chunk);
+          if (!result.finalResult) return;
+
+          isListening.value = false;
+          if (_suppressFinal) {
+            if (chunk.isNotEmpty) _committed = _join(_committed, chunk);
+            partial.value = _committed;
+            return;
           }
+          final full = partial.value.trim();
+          if (full.isNotEmpty) onFinal(full);
         },
         listenOptions: stt.SpeechListenOptions(
           localeId: _localeId,
@@ -102,8 +122,29 @@ class SpeechService extends GetxService {
     }
   }
 
-  /// 사용자가 "멈춤"을 눌렀을 때. 지금까지 인식된 내용이 최종 결과로 온다.
+  /// 일시정지 — 지금까지 글은 유지하고 듣기만 멈춘다.
+  Future<void> pause() async {
+    if (!isListening.value) return;
+    _suppressFinal = true;
+    await _speech.stop();
+    isListening.value = false;
+    // stop 직후 finalResult가 늦게 올 수 있어 잠깐 기다린다.
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    final heard = partial.value.trim();
+    if (heard.isNotEmpty) {
+      _committed = heard;
+      partial.value = _committed;
+    }
+    _suppressFinal = false;
+  }
+
+  /// 일시정지 후 이어서 듣기.
+  Future<bool> resume({required void Function(String text) onFinal}) =>
+      start(onFinal: onFinal, append: true);
+
+  /// 사용자가 "끝내기"를 눌렀을 때. 지금까지 인식된 내용이 최종 결과로 온다.
   Future<void> stop() async {
+    _suppressFinal = false;
     if (!isListening.value) return;
     await _speech.stop();
     isListening.value = false;
@@ -111,10 +152,12 @@ class SpeechService extends GetxService {
 
   /// 화면을 벗어날 때. 결과를 버린다.
   Future<void> cancel() async {
-    if (!_speech.isListening) return;
-    await _speech.cancel();
+    _suppressFinal = true;
+    _committed = '';
+    if (_speech.isListening) await _speech.cancel();
     isListening.value = false;
     partial.value = '';
+    _suppressFinal = false;
   }
 
   void _onStatus(String status) {
@@ -126,7 +169,15 @@ class SpeechService extends GetxService {
 
   void _onError(SpeechRecognitionError e) {
     isListening.value = false;
+    // 일시정지용 suppress 중이면 오류 토스트로 작성 흐름을 깨지 않는다.
+    if (_suppressFinal) return;
     error.value = _message(e.errorMsg);
+  }
+
+  static String _join(String a, String b) {
+    if (a.isEmpty) return b;
+    if (b.isEmpty) return a;
+    return '$a $b';
   }
 
   /// 플러그인이 주는 오류 코드를 사용자가 읽을 문장으로 바꾼다.

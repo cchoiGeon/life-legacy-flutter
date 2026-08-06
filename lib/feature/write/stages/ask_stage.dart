@@ -37,7 +37,7 @@ class AskStage extends GetView<WriteController> {
               () => KeyedSubtree(
                 key: controller.tutorialQuestionKey,
                 child: QuestionPanel(
-                  question: controller.displayQuestion,
+                  question: controller.revealedQuestion.value,
                   isFollowup: controller.isFollowup.value,
                   onReplay: controller.replayQuestion,
                 ),

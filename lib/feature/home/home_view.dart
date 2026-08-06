@@ -7,6 +7,7 @@ import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/feature/shared/tab_scaffold.dart';
+import 'package:life_legacy/service/services.dart';
 
 import 'home_controller.dart';
 
@@ -60,7 +61,7 @@ class HomeView extends GetView<HomeController> {
   }
 }
 
-/// 워드마크 · 알림 벨 · 아바타 (시안 341:585).
+/// 워드마크 · 알림 벨 · 햄버거 메뉴.
 class _Header extends GetView<HomeController> {
   const _Header();
 
@@ -73,10 +74,6 @@ class _Header extends GetView<HomeController> {
         AppDimens.gutter,
         0,
       ),
-      // ⚠️ 높이를 36(시안의 아바타 크기)으로 **고정하지 않는다.**
-      //    벨은 손가락이 닿게 48(touchMin)을 차지해서 줄 높이가 48이다.
-      //    36으로 자르면 벨이 위아래로 잘린다.
-      //    대신 위 여백을 14 → 7로 줄여 카드 위치를 시안과 맞췄다.
       child: Row(
         children: [
           const AppWordmark(fontSize: 19, letterSpacing: 0.2),
@@ -87,9 +84,7 @@ class _Header extends GetView<HomeController> {
               onTap: controller.toggleNotifications,
             ),
           ),
-          // ⚠️ 벨과 아바타 사이에 SizedBox를 두지 않는다. 벨의 48 탭 영역이
-          //    이미 오른쪽에 12를 남기고, 그게 시안의 간격 12다.
-          Obx(() => AppAvatar(initial: controller.initial, size: 36)),
+          const AppMenuButton(),
         ],
       ),
     );
@@ -115,6 +110,8 @@ class _Body extends GetView<HomeController> {
           AppDimens.space8,
         ),
         children: [
+          const _FreeTrialBanner(),
+          const SizedBox(height: 16),
           if (summary.isEmpty)
             const _StartCard()
           else
@@ -123,6 +120,53 @@ class _Body extends GetView<HomeController> {
           _ProgressCard(summary: summary),
           const SizedBox(height: 20),
           const _ChapterList(),
+        ],
+      ),
+    );
+  }
+}
+
+/// 홈 상단 — 결제 없이 무료 체험 가능 홍보.
+class _FreeTrialBanner extends StatelessWidget {
+  const _FreeTrialBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF2F4A3A), Color(0xFF4A6B55)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '결제 없이 무료 체험',
+            style: AppTypography.weight(
+              AppTypography.titlePage,
+              AppTypography.bold,
+            ).copyWith(
+              color: Colors.white,
+              fontSize: 26,
+              height: 1.25,
+              letterSpacing: -0.4,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '첫 장까지 결제 없이\n바로 써 보실 수 있어요.',
+            style: AppTypography.bodyBase.copyWith(
+              color: Colors.white.withValues(alpha: 0.92),
+              height: 1.45,
+              fontSize: 16,
+            ),
+          ),
         ],
       ),
     );
@@ -174,11 +218,18 @@ class _TodayCard extends GetView<HomeController> {
             ],
           ),
           const SizedBox(height: 12),
-          // 질문은 명조 26 — 카드 안에서 가장 먼저 읽혀야 하는 글이다.
-          Text(
-            question,
-            style: AppTypography.titleSerifSm.copyWith(height: 38 / 26),
-          ),
+          // 질문은 명조 — 카드 안에서 가장 먼저 읽혀야 하는 글이다.
+          // 크기는 설정의 질문 글자 크기를 따른다.
+          Obx(() {
+            final size = Get.find<PrefsService>().questionCardSize;
+            return Text(
+              question,
+              style: AppTypography.titleSerifSm.copyWith(
+                fontSize: size,
+                height: 1.45,
+              ),
+            );
+          }),
           const SizedBox(height: 18),
           AppButton(
             label: '말로 답하기',

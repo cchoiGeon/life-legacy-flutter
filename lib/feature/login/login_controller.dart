@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/feature/legal/legal_document_view.dart';
 import 'package:life_legacy/service/services.dart';
 
 /// A2·A3·A4·A5·A6 — 로그인 · 전화번호 · 인증번호.
@@ -61,7 +64,17 @@ class LoginController extends GetxController {
     if (isSubmitting.value) return;
     isSubmitting.value = true;
     try {
-      await _applySession(await _api.loginWithKakao());
+      final accessToken = await _kakaoLogin();
+      // null이면 사용자가 카카오 로그인 화면에서 뒤로 가기 등으로 취소한
+      // 것이다 — 별도 에러 토스트 없이 조용히 돌아간다.
+      if (accessToken == null) return;
+
+      // 신규(needsIntro)면 세션 적용 후 약관·마케팅 동의 화면으로 보낸다.
+      await _applySession(
+        await _api.loginWithKakao(accessToken),
+        collectConsentsIfNew: true,
+        loginProvider: 'kakao',
+      );
     } on ApiException catch (e) {
       _toast.showError(e);
     } finally {
@@ -69,10 +82,49 @@ class LoginController extends GetxController {
     }
   }
 
+  /// 카카오톡이 깔려 있으면 톡으로, 아니면 카카오계정(웹)으로 로그인해
+  /// 액세스 토큰을 받는다. 사용자가 취소하면 null.
+  Future<String?> _kakaoLogin() async {
+    if (await isKakaoTalkInstalled()) {
+      try {
+        final token = await UserApi.instance.loginWithKakaoTalk();
+        return token.accessToken;
+      } catch (error) {
+        // 사용자가 카카오톡 권한 화면에서 뒤로 가기로 취소한 경우 — 계정
+        // 로그인으로 넘어가지 않고 그대로 취소 처리한다.
+        if (error is PlatformException && error.code == 'CANCELED') {
+          return null;
+        }
+        // 카카오톡에 연결된 카카오계정이 없는 등 — 계정 로그인으로 이어간다.
+      }
+    }
+
+    try {
+      final token = await UserApi.instance.loginWithKakaoAccount();
+      return token.accessToken;
+    } catch (error) {
+      if (error is PlatformException && error.code == 'CANCELED') {
+        return null;
+      }
+      _toast.show('카카오 로그인에 실패했어요');
+      return null;
+    }
+  }
+
   void goPhone() => Get.toNamed(AppRoutes.phone);
 
   /// OCTOMO 인증 흐름으로 이동한다.
+  /// 신규 가입 시 전화 인증 이후 [SignupStep]에서 약관·마케팅 동의를 받는다.
   void goAuth() => Get.toNamed(AppRoutes.auth);
+
+  void goPasswordLogin() => Get.toNamed(AppRoutes.passwordLogin);
+
+  /// 로그인 화면 하단 열람 링크 — 실제 동의 체크는 가입 직후에 한다.
+  void openTerms() => LegalDocumentView.open('terms_of_service');
+
+  void openPrivacy() => LegalDocumentView.open('privacy_policy');
+
+  // 인증번호 입력 화면으로.
 
   // ── A3·A4 전화번호 ────────────────────────────────────────
 
@@ -176,6 +228,7 @@ class LoginController extends GetxController {
     try {
       await _applySession(
         await _api.verifyCode(phone: phoneDigits.value, code: code.value),
+        loginProvider: 'phone',
       );
     } on ApiException catch (e) {
       // 코드 오류는 토스트가 아니라 칸 위 문구로 보여준다(시안 343:819).
@@ -204,9 +257,17 @@ class LoginController extends GetxController {
 
   // ── 공통 ──────────────────────────────────────────────────
 
-  Future<void> _applySession(AuthSession session) async {
+  Future<void> _applySession(
+    AuthSession session, {
+    bool collectConsentsIfNew = false,
+    String? loginProvider,
+  }) async {
     _tick?.cancel();
-    await _auth.applySession(session);
+    await _auth.applySession(session, loginProvider: loginProvider);
+    if (collectConsentsIfNew && session.needsIntro) {
+      Get.offAllNamed(AppRoutes.consents);
+      return;
+    }
     Get.offAllNamed(session.needsIntro ? AppRoutes.intro : AppRoutes.home);
   }
 

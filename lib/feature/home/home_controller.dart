@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/feature/purchase/purchase_flow.dart';
 import 'package:life_legacy/service/services.dart';
 
 /// C1 홈 대시보드 · C2 빈 상태.
@@ -128,11 +129,23 @@ class HomeController extends GetxController {
   }
 
   /// "말로 답하기" · "1장 시작하기" 둘 다 작성 탭으로 간다.
-  void continueWriting() {
+  Future<void> continueWriting() async {
     final stored = Storage.currentBookId;
     if (stored == null) {
       _toast.show('아직 만든 자서전이 없어요');
       Get.offNamed(AppRoutes.intro);
+      return;
+    }
+    final writing = chapters
+        .where((c) => c.status == ChapterStatus.writing)
+        .firstOrNull;
+    final order = writing?.order ??
+        (chapters.isEmpty ? 1 : chapters.first.order);
+    if (!await PurchaseFlow.allowChapter(
+      api: _api,
+      bookId: stored,
+      chapterOrder: order,
+    )) {
       return;
     }
     final qid = summary.value?.todayQuestionId;
@@ -155,9 +168,32 @@ class HomeController extends GetxController {
   }
 
   /// 목차 한 줄을 눌렀을 때. 잠긴 장은 눌리지 않는다.
-  void openChapter(Chapter chapter) {
+  Future<void> openChapter(Chapter chapter) async {
     if (chapter.status == ChapterStatus.locked) {
+      final prevDone = chapters.any(
+        (c) => c.order == chapter.order - 1 && c.status == ChapterStatus.done,
+      );
+      if (prevDone && chapter.order > 1) {
+        final stored = Storage.currentBookId;
+        if (stored != null) {
+          await PurchaseFlow.allowChapter(
+            api: _api,
+            bookId: stored,
+            chapterOrder: chapter.order,
+          );
+          return;
+        }
+      }
       _toast.show('${chapter.order - 1}장을 마치면 열려요');
+      return;
+    }
+    final stored = Storage.currentBookId;
+    if (stored != null &&
+        !await PurchaseFlow.allowChapter(
+          api: _api,
+          bookId: stored,
+          chapterOrder: chapter.order,
+        )) {
       return;
     }
     continueWriting();

@@ -5,13 +5,15 @@ import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
+import 'package:life_legacy/core/network/api_client.dart';
+import 'package:life_legacy/feature/legal/legal_document_view.dart';
 
 import '../auth_controller.dart';
 
-/// 4단계: 신규 사용자 — 이름 입력 + 약관 동의.
+/// 4단계: 신규 사용자 — 이름 입력 + 약관·마케팅 동의.
 ///
-/// 화면 문서 02의 "이용약관을 확인해 주세요" 화면에 대응한다.
-/// 이름 입력 필드와 필수/선택 약관 체크박스를 제공한다.
+/// 전화 인증이 끝난 뒤에만 도달한다. 카카오 신규는 [ConsentsView]에서
+/// 같은 동의를 받는다.
 class SignupStep extends GetView<AuthController> {
   const SignupStep({super.key});
 
@@ -29,7 +31,7 @@ class SignupStep extends GetView<AuthController> {
         children: [
           const AppScreenHeading(
             title: '이용약관을\n확인해 주세요',
-            subtitle: '라이프로그는 선생님의 소중한 기억을 안전하게 보호합니다.',
+            subtitle: '선생님의 소중한 기억을 안전하게 보호합니다.',
           ),
           const SizedBox(height: 32),
 
@@ -74,7 +76,7 @@ class SignupStep extends GetView<AuthController> {
                     isRequired: controller.consents[i].document.required,
                     agreed: controller.consents[i].agreed,
                     onTap: () => controller.toggleConsent(i),
-                    url: controller.consents[i].document.url,
+                    document: controller.consents[i].document,
                   ),
               ],
             ),
@@ -106,7 +108,7 @@ class _ConsentTile extends StatelessWidget {
     this.isAllAgree = false,
     required this.agreed,
     required this.onTap,
-    this.url,
+    this.document,
   });
 
   final String title;
@@ -115,7 +117,7 @@ class _ConsentTile extends StatelessWidget {
   final bool isAllAgree;
   final bool agreed;
   final VoidCallback onTap;
-  final String? url;
+  final ConsentDocument? document;
 
   @override
   Widget build(BuildContext context) {
@@ -128,7 +130,6 @@ class _ConsentTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // 체크 박스
             Container(
               width: 24,
               height: 24,
@@ -178,16 +179,16 @@ class _ConsentTile extends StatelessWidget {
                 ],
               ),
             ),
-            // 약관 원문 링크
-            if (url != null)
+            if (document != null && document!.hasBody)
               GestureDetector(
-                onTap: () {
-                  // TODO: URL 런치
-                },
+                onTap: () => LegalDocumentView.open(
+                  document!.key,
+                  initial: document,
+                ),
                 child: const Padding(
                   padding: EdgeInsets.only(left: 8),
                   child: Icon(
-                    Icons.open_in_new_rounded,
+                    Icons.description_outlined,
                     size: 18,
                     color: AppColors.textTertiary,
                   ),

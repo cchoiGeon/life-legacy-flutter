@@ -12,6 +12,9 @@ import 'login_controller.dart';
 ///
 /// 뒤로가기가 없다. 스플래시가 `offAllNamed`로 들어오는 첫 화면이라 돌아갈
 /// 곳이 없다.
+///
+/// 약관·마케팅 동의 체크는 여기가 아니다. 카카오 가입 직후 또는 전화 인증
+/// 직후([ConsentsView] · [SignupStep])에서 받는다. 여기 링크는 열람용이다.
 class LoginView extends GetView<LoginController> {
   const LoginView({super.key});
 
@@ -61,15 +64,35 @@ class LoginView extends GetView<LoginController> {
                     onPressed: controller.goAuth,
                   ),
                   const SizedBox(height: 22),
+                  _ConsentNotice(
+                    onTerms: controller.openTerms,
+                    onPrivacy: controller.openPrivacy,
+                  ),
+                  const SizedBox(height: 8),
                   Text(
-                    '시작하면 이용약관과 개인정보 처리방침에 동의합니다',
+                    '아이디 회원가입은 웹에서 가능합니다',
                     textAlign: TextAlign.center,
-                    // 시안 341:753 — 12px 한 줄이 높이 14다(토큰 기본 17이면
-                    // 3px이 더 붙어 위 블록 전체가 그만큼 밀려 올라간다).
                     style: AppTypography.label.copyWith(
                       color: AppColors.textTertiary,
                       letterSpacing: 0,
-                      height: 14 / 12,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: controller.goPasswordLogin,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        '아이디로 로그인',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.textSecondary,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppColors.textTertiary,
+                          height: 1.3,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -79,6 +102,56 @@ class LoginView extends GetView<LoginController> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "시작하면 이용약관과 개인정보 동의" — 약관·개인정보만 밑줄 링크.
+class _ConsentNotice extends StatelessWidget {
+  const _ConsentNotice({required this.onTerms, required this.onPrivacy});
+
+  final VoidCallback onTerms;
+  final VoidCallback onPrivacy;
+
+  TextStyle get _base => AppTypography.label.copyWith(
+        color: AppColors.textTertiary,
+        letterSpacing: 0,
+        height: 1.4,
+      );
+
+  TextStyle get _link => _base.copyWith(
+        decoration: TextDecoration.underline,
+        decorationColor: AppColors.textTertiary,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Text.rich(
+      TextSpan(
+        style: _base,
+        children: [
+          const TextSpan(text: '시작하면 '),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: GestureDetector(
+              onTap: onTerms,
+              child: Text('이용약관', style: _link),
+            ),
+          ),
+          const TextSpan(text: '과 '),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: GestureDetector(
+              onTap: onPrivacy,
+              child: Text('개인정보', style: _link),
+            ),
+          ),
+          const TextSpan(text: ' 동의'),
+        ],
+      ),
+      textAlign: TextAlign.center,
     );
   }
 }

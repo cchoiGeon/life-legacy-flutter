@@ -50,6 +50,15 @@ import 'package:life_legacy/feature/settings/binding.dart';
 import 'package:life_legacy/feature/settings/settings_view.dart';
 import 'package:life_legacy/feature/settings/profile_view.dart';
 import 'package:life_legacy/feature/settings/address_view.dart';
+import 'package:life_legacy/feature/settings/credentials_view.dart';
+import 'package:life_legacy/feature/about/about_view.dart';
+import 'package:life_legacy/feature/about/guide_view.dart';
+import 'package:life_legacy/feature/login/password_login_view.dart';
+import 'package:life_legacy/feature/login/consents_view.dart';
+import 'package:life_legacy/feature/purchase/purchase_view.dart';
+import 'package:life_legacy/feature/purchase/purchase_detail_view.dart';
+import 'package:life_legacy/feature/purchase/coupon_view.dart';
+import 'package:life_legacy/feature/legal/legal_document_view.dart';
 
 part 'app_routes.dart';
 
@@ -182,6 +191,46 @@ abstract final class AppPages {
       name: AppRoutes.settingsAddress,
       page: () => const AddressView(),
       binding: AddressBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.settingsCredentials,
+      page: () => const CredentialsView(),
+      binding: CredentialsBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.passwordLogin,
+      page: () => const PasswordLoginView(),
+      binding: PasswordLoginBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.consents,
+      page: () => const ConsentsView(),
+      binding: ConsentsBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.about,
+      page: () => const AboutView(),
+    ),
+    GetPage(
+      name: AppRoutes.guide,
+      page: () => const GuideView(),
+    ),
+    GetPage(
+      name: AppRoutes.purchase,
+      page: () => const PurchaseView(),
+    ),
+    GetPage(
+      name: AppRoutes.purchaseDetail,
+      page: () => const PurchaseDetailView(),
+    ),
+    GetPage(
+      name: AppRoutes.purchaseCoupon,
+      page: () => const CouponView(),
+      binding: CouponBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.legal,
+      page: () => const LegalDocumentView(),
     ),
   ];
 }

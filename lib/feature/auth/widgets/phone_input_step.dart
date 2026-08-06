@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
+import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
@@ -27,8 +28,9 @@ class PhoneInputStep extends GetView<AuthController> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const AppScreenHeading(
-            title: '전화번호를\n알려주세요',
-            subtitle: 'OCTOMO 인증을 위해 전화번호가 필요해요',
+            title: '전화번호를\n입력해주세요',
+            subtitle:
+                '기로기는 문자 인증으로 로그인 및 회원가입을 진행합니다. 가입된 번호면 로그인, 없으면 회원가입으로 이어집니다.',
           ),
           const SizedBox(height: 33),
           AppField(
@@ -46,6 +48,25 @@ class PhoneInputStep extends GetView<AuthController> {
               AppTypography.medium,
             ).copyWith(fontSize: 24, height: 1.2),
             onChanged: controller.onPhoneChanged,
+          ),
+          const SizedBox(height: AppDimens.space3),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => controller.tryPrefillPhone(forceDevice: true),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  '내 번호 불러오기',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.textTertiary,
+                  ),
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: AppDimens.space6),
           Obx(() {

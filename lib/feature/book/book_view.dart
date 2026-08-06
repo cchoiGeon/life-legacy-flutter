@@ -34,23 +34,31 @@ class BookView extends GetView<BookController> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                   AppDimens.gutter,
-                  20,
-                  AppDimens.gutter,
+                  12,
+                  8,
                   8,
                 ),
-                child: Column(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('내 책', style: AppTypography.titleScreen),
-                    const SizedBox(height: 6),
-                    Text(
-                      controller.books.isEmpty
-                          ? '아직 만든 자서전이 없어요'
-                          : '제작 중 ${controller.writingCount}권 · 완료 ${controller.completedCount}권',
-                      style: AppTypography.bodyChat.copyWith(
-                        color: AppColors.textTertiary,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('내 책', style: AppTypography.titleScreen),
+                          const SizedBox(height: 6),
+                          Text(
+                            controller.books.isEmpty
+                                ? '아직 만든 자서전이 없어요'
+                                : '제작 중 ${controller.writingCount}권 · 완료 ${controller.completedCount}권',
+                            style: AppTypography.bodyChat.copyWith(
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    const AppMenuButton(),
                   ],
                 ),
               ),

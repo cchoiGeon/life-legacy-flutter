@@ -295,7 +295,9 @@ class ChapterReview {
     required this.status,
     required this.version,
     required this.paragraphs,
-    this.editHint = '웹에서 수정할 수 있어요',
+    this.media = const [],
+    this.permissions = const ReviewPermissions(),
+    this.editHint = '문장을 고칠 수 있어요',
     this.message,
     this.nextChapterId,
   });
@@ -308,30 +310,49 @@ class ChapterReview {
   final String status;
   final int version;
   final List<String> paragraphs;
+  final List<ReviewMedia> media;
+  final ReviewPermissions permissions;
   final String editHint;
 
   /// PATCH 저장 응답 메시지 (예: 챕터1 저장 완료)
   final String? message;
   final String? nextChapterId;
 
-  factory ChapterReview.fromJson(Map<String, dynamic> json) => ChapterReview(
-    chapterId: json['chapter_id'] as String,
-    chapterOrder: json['chapter_order'] as int? ?? 0,
-    chapterTitle: json['chapter_title'] as String? ?? '',
-    status: json['status'] as String? ?? 'draft',
-    version: json['version'] as int? ?? 1,
-    paragraphs: (json['paragraphs'] as List?)
-            ?.map((e) => e as String)
-            .toList() ??
-        const [],
-    editHint: json['edit_hint'] as String? ?? '웹에서 수정할 수 있어요',
-    message: json['message'] as String?,
-    nextChapterId: json['next_chapter_id'] as String?,
-  );
+  String get bodyText => paragraphs.join('\n\n');
+
+  factory ChapterReview.fromJson(Map<String, dynamic> json) {
+    final perms = json['permissions'];
+    return ChapterReview(
+      chapterId: json['chapter_id'] as String,
+      chapterOrder: json['chapter_order'] as int? ?? 0,
+      chapterTitle: json['chapter_title'] as String? ?? '',
+      status: json['status'] as String? ?? 'draft',
+      version: json['version'] as int? ?? 1,
+      paragraphs: (json['paragraphs'] as List?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      media: (json['media'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(ReviewMedia.fromJson)
+              .toList() ??
+          const [],
+      permissions: perms is Map<String, dynamic>
+          ? ReviewPermissions.fromJson(perms)
+          : const ReviewPermissions(),
+      editHint: json['edit_hint'] as String? ?? '문장을 고칠 수 있어요',
+      message: json['message'] as String?,
+      nextChapterId: json['next_chapter_id'] as String?,
+    );
+  }
 
   ChapterReview copyWith({
     String? status,
     int? version,
+    List<String>? paragraphs,
+    List<ReviewMedia>? media,
+    ReviewPermissions? permissions,
+    String? editHint,
     String? message,
     String? nextChapterId,
   }) =>
@@ -341,10 +362,70 @@ class ChapterReview {
         chapterTitle: chapterTitle,
         status: status ?? this.status,
         version: version ?? this.version,
-        paragraphs: paragraphs,
-        editHint: editHint,
+        paragraphs: paragraphs ?? this.paragraphs,
+        media: media ?? this.media,
+        permissions: permissions ?? this.permissions,
+        editHint: editHint ?? this.editHint,
         message: message ?? this.message,
         nextChapterId: nextChapterId ?? this.nextChapterId,
+      );
+}
+
+class ReviewMedia {
+  const ReviewMedia({
+    required this.id,
+    required this.url,
+    required this.paragraphIndex,
+    required this.source,
+  });
+
+  final String id;
+
+  /// 상대 경로 — Dio로 바이트 조회
+  final String url;
+  final int paragraphIndex;
+
+  /// user_upload | ai_generated | system
+  final String source;
+
+  factory ReviewMedia.fromJson(Map<String, dynamic> json) => ReviewMedia(
+        id: json['id'] as String,
+        url: json['url'] as String? ?? '',
+        paragraphIndex: json['paragraph_index'] as int? ?? 0,
+        source: json['source'] as String? ?? 'user_upload',
+      );
+}
+
+class ReviewPermissions {
+  const ReviewPermissions({
+    this.manualPhoto = false,
+    this.aiPhoto = true,
+    this.aiPhotoRegen = false,
+    this.aiPhotoRegenRemaining = 0,
+    this.aiRewrite = false,
+    this.editBody = true,
+  });
+
+  final bool manualPhoto;
+
+  /// 챕터 AI 사진 첫 생성 가능
+  final bool aiPhoto;
+
+  /// T3/T4 재생성 가능
+  final bool aiPhotoRegen;
+  final int aiPhotoRegenRemaining;
+  final bool aiRewrite;
+  final bool editBody;
+
+  factory ReviewPermissions.fromJson(Map<String, dynamic> json) =>
+      ReviewPermissions(
+        manualPhoto: json['manual_photo'] as bool? ?? false,
+        aiPhoto: json['ai_photo'] as bool? ?? true,
+        aiPhotoRegen: json['ai_photo_regen'] as bool? ?? false,
+        aiPhotoRegenRemaining:
+            json['ai_photo_regen_remaining'] as int? ?? 0,
+        aiRewrite: json['ai_rewrite'] as bool? ?? false,
+        editBody: json['edit_body'] as bool? ?? true,
       );
 }
 

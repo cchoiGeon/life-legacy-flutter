@@ -7,6 +7,7 @@ import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/feature/purchase/purchase_flow.dart';
 import 'package:life_legacy/service/services.dart';
 
 /// 작성 화면의 단계.
@@ -94,6 +95,9 @@ class WriteController extends GetxController {
   /// 녹음 경과 초. 시안 D2의 "0:23".
   final RxInt elapsed = 0.obs;
 
+  /// 일시정지 중인지. 메인 원형 버튼은 여전히 "끝내기"다.
+  final RxBool isPaused = false.obs;
+
   /// 확인 화면에 보여줄 "말한 시간". 저장이 끝나면 0으로 돌아간다.
   final RxInt spokenSeconds = 0.obs;
 
@@ -111,6 +115,17 @@ class WriteController extends GetxController {
   final Rxn<Chapter> completedChapter = Rxn<Chapter>();
   final Rxn<ChapterCompletion> chapterCompletion = Rxn<ChapterCompletion>();
 
+  /// 작성 진입마다 보이는 보이스·마이크 점검 오버레이 (§5.8).
+  final RxBool showVoiceCheck = false.obs;
+  final RxBool isPlayingSample = false.obs;
+  final RxnString voiceSampleError = RxnString();
+  final RxBool voiceHeardOk = false.obs;
+
+  final RxBool isMicTesting = false.obs;
+  final RxnBool micPermissionOk = RxnBool();
+  final RxnString micTestResult = RxnString();
+  final RxnString micTestError = RxnString();
+
   /// 작성 튜토리얼 오버레이.
   final RxBool showTutorial = false.obs;
   final RxInt tutorialStep = 0.obs;
@@ -123,6 +138,12 @@ class WriteController extends GetxController {
 
   /// 현재 단계 타깃의 화면 좌표. 오버레이가 하이라이트·다이얼로그 위치를 잡는다.
   final Rxn<Rect> tutorialTargetRect = Rxn<Rect>();
+
+  /// 질문판에 지금 보이는 글 — 첫 표시 때 한글자씩 채워진다.
+  final RxString revealedQuestion = ''.obs;
+
+  /// TTS+타이핑 진행 중인지. 녹음/키보드로 넘어가면 전문을 바로 연다.
+  final RxBool isRevealingQuestion = false.obs;
 
   static const tutorialSteps = [
     ('질문을 읽어요', '화면의 질문을 소리로도 들을 수 있어요'),
@@ -148,6 +169,14 @@ class WriteController extends GetxController {
 
   Question? _pendingNext;
   Timer? _tick;
+  Timer? _revealTick;
+  Completer<void>? _revealDone;
+
+  /// 같은 질문에 대해 TTS+타이핑을 이미 돌렸는지.
+  String? _presentedKey;
+
+  /// 타이핑 세대 — 새 present가 오면 이전 타이머/비동기를 무시한다.
+  int _revealGen = 0;
 
   bool get hasPendingNext => _pendingNext != null;
 
@@ -164,8 +193,18 @@ class WriteController extends GetxController {
   void _onSpeechError(String? message) {
     if (message == null) return;
     _speech.error.value = null;
+
+    // 진입 점검 중이면 작성 흐름을 건드리지 않는다.
+    if (showVoiceCheck.value) {
+      isMicTesting.value = false;
+      micTestError.value = message;
+      if (message.contains('권한')) micPermissionOk.value = false;
+      return;
+    }
+
     if (stage.value != WriteStage.recording) return;
     _tick?.cancel();
+    isPaused.value = false;
 
     // 오류 전까지 알아들은 게 있으면 버리지 않고 확인 화면으로 넘긴다.
     final heard = _speech.partial.value.trim();
@@ -180,7 +219,9 @@ class WriteController extends GetxController {
   @override
   void onClose() {
     _tick?.cancel();
+    _cancelReveal();
     _speech.cancel();
+    _voice.stop();
     answerController.removeListener(_onDraftChanged);
     answerController.dispose();
     super.onClose();
@@ -207,20 +248,130 @@ class WriteController extends GetxController {
         final chapters = await _api.chapters(bookId);
         chapter.value = chapters.firstWhereOrNull((c) => c.id == q!.chapterId);
         await _restoreDraft(q.id);
-      }
-      if (!Storage.writeTutorialDone &&
-          q != null &&
-          !isFollowup.value &&
-          stage.value == WriteStage.ask) {
-        showTutorial.value = true;
-        tutorialStep.value = 0;
-        scheduleTutorialTargetRefresh();
+        // 작성에 들어올 때마다 소리·마이크를 먼저 확인한다.
+        // 튜토리얼은 점검을 닫은 뒤에 이어서 연다.
+        _resetVoiceCheck();
+        showVoiceCheck.value = true;
       }
     } on ApiException catch (e) {
       _toast.showError(e);
     } finally {
       isLoading.value = false;
     }
+  }
+
+  void _resetVoiceCheck() {
+    isPlayingSample.value = false;
+    voiceSampleError.value = null;
+    voiceHeardOk.value = false;
+    isMicTesting.value = false;
+    micPermissionOk.value = null;
+    micTestResult.value = null;
+    micTestError.value = null;
+  }
+
+  /// 스피커 볼륨(0~1). 점검·질문 TTS에 공통 적용.
+  RxDouble get voiceVolume => _voice.volume;
+
+  Future<void> setVoiceVolume(double value) => _voice.setVolume(value);
+
+  /// 보이스 샘플 재생 — 소리가 나는지·볼륨이 맞는지 확인한다.
+  Future<void> playVoiceSample() async {
+    if (isPlayingSample.value) return;
+    isPlayingSample.value = true;
+    voiceSampleError.value = null;
+    try {
+      await _voice.setVolume(voiceVolume.value);
+      final audio = await _api.voiceSample();
+      if (audio.bytes.isEmpty) {
+        voiceSampleError.value = '샘플 음성을 받지 못했어요. 음량을 확인해 주세요';
+        return;
+      }
+      await _voice.playMpeg(audio.bytes);
+      voiceHeardOk.value = true;
+    } on ApiException catch (e) {
+      voiceSampleError.value = e.message;
+    } on Exception {
+      voiceSampleError.value = '재생에 실패했어요. 음량·출력 장치를 확인해 주세요';
+    } finally {
+      isPlayingSample.value = false;
+    }
+  }
+
+  Future<void> stopVoiceSample() => _voice.stop();
+
+  /// 마이크 권한 + 짧은 로컬 STT 테스트.
+  Future<void> startMicTest() async {
+    if (isMicTesting.value) return;
+    micTestError.value = null;
+    micTestResult.value = null;
+
+    if (_speech.available.value != true) {
+      await _speech.init();
+    }
+    if (_speech.available.value != true) {
+      micPermissionOk.value = false;
+      micTestError.value =
+          _speech.error.value ?? '이 기기에서는 음성 인식을 쓸 수 없어요';
+      _speech.error.value = null;
+      return;
+    }
+
+    micPermissionOk.value = true;
+    isMicTesting.value = true;
+    final started = await _speech.start(
+      onFinal: (text) {
+        isMicTesting.value = false;
+        micTestResult.value = text;
+      },
+    );
+    if (!started) {
+      isMicTesting.value = false;
+      micPermissionOk.value = false;
+      micTestError.value =
+          _speech.error.value ?? '마이크를 켤 수 없어요';
+      _speech.error.value = null;
+    }
+  }
+
+  Future<void> stopMicTest() async {
+    if (!isMicTesting.value && !showVoiceCheck.value) return;
+    await _speech.stop();
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    isMicTesting.value = false;
+    final heard = _speech.partial.value.trim();
+    if (heard.isNotEmpty) micTestResult.value = heard;
+  }
+
+  /// 점검 중 화면에 보여줄 실시간 인식 글.
+  String get micTestLive =>
+      micTestResult.value ?? _speech.partial.value;
+
+  /// 점검 종료 후 작성(또는 타이핑)으로 넘어간다.
+  Future<void> dismissVoiceCheck({bool preferTyping = false}) async {
+    await stopMicTest();
+    await stopVoiceSample();
+    showVoiceCheck.value = false;
+
+    if (preferTyping) {
+      showFullQuestion();
+      useKeyboard();
+      return;
+    }
+
+    if (!Storage.writeTutorialDone &&
+        question.value != null &&
+        !isFollowup.value &&
+        stage.value == WriteStage.ask) {
+      // 튜토리얼 동안은 전문을 보여 주고, 끝나면 TTS+타이핑을 돌린다.
+      showFullQuestion();
+      showTutorial.value = true;
+      tutorialStep.value = 0;
+      scheduleTutorialTargetRefresh();
+      return;
+    }
+
+    await presentQuestion();
   }
 
   Future<void> _restoreDraft(String questionId) async {
@@ -276,6 +427,7 @@ class WriteController extends GetxController {
     isFollowup.value = false;
     _clearInput();
     stage.value = WriteStage.ask;
+    await presentQuestion();
   }
 
   /// 꼬리질문 단계에서 1차 원문을 이어 쓰기.
@@ -290,6 +442,7 @@ class WriteController extends GetxController {
     }
     followup.value = null;
     isFollowup.value = false;
+    showFullQuestion();
     answerController.text = prior.isEmpty ? '' : '$prior\n';
     draft.value = answerController.text;
     answerSource.value = WriteStage.keyboard;
@@ -332,23 +485,21 @@ class WriteController extends GetxController {
 
   Future<void> requestLeave() async {
     FocusManager.instance.primaryFocus?.unfocus();
-    if (!hasUnsavedInput) {
-      _leaveToHome();
-      return;
-    }
     final ctx = Get.context;
     if (ctx == null) {
       _leaveToHome();
       return;
     }
-    // 스펙: 왼쪽 `나가기`, 오른쪽 강조 `취소`(계속 작성).
-    // AppDialog는 왼쪽=cancel·오른쪽=confirm 이므로 취소를 confirm으로 둔다.
+    // 왼쪽 `홈으로 가기`, 오른쪽 강조 `계속하기`.
+    // AppDialog는 왼쪽=cancel·오른쪽=confirm.
     final stay = await AppDialog.confirm(
       ctx,
       title: '작성을 나갈까요?',
-      message: '입력된 내용이 지워질 수 있습니다',
-      cancelLabel: '나가기',
-      confirmLabel: '취소',
+      message: hasUnsavedInput
+          ? '입력된 내용이 지워질 수 있습니다'
+          : '작성 화면을 떠나면 홈으로 이동합니다',
+      cancelLabel: '홈으로 가기',
+      confirmLabel: '계속하기',
     );
     if (!stay) _leaveToHome();
   }
@@ -380,6 +531,7 @@ class WriteController extends GetxController {
     showTutorial.value = false;
     tutorialTargetRect.value = null;
     await Storage.markWriteTutorialDone();
+    await presentQuestion();
   }
 
   /// 레이아웃이 끝난 뒤 타깃 위젯의 화면 Rect를 갱신한다.
@@ -401,6 +553,127 @@ class WriteController extends GetxController {
   String get displayQuestion => isFollowup.value
       ? followup.value?.text ?? ''
       : question.value?.text ?? '';
+
+  String get _presentationKey {
+    if (isFollowup.value) {
+      final id = followup.value?.id;
+      return id != null ? 'f:$id' : 'f:${followup.value?.text.hashCode}';
+    }
+    return 'q:${question.value?.id ?? ''}';
+  }
+
+  /// 새 소질문·꼬리질문의 **첫 표시** — TTS와 한글 타이핑을 맞춘다.
+  ///
+  /// `다시 들려주기`는 [replayQuestion]만 쓰고 여기를 부르지 않는다.
+  Future<void> presentQuestion({bool animate = true}) async {
+    final full = displayQuestion;
+    if (full.trim().isEmpty) {
+      _cancelReveal();
+      revealedQuestion.value = '';
+      return;
+    }
+
+    final key = _presentationKey;
+    if (!animate) {
+      _presentedKey = key;
+      showFullQuestion();
+      return;
+    }
+
+    // 같은 키로 이미 한 번 돌렸고 전문이 보이면 다시 돌리지 않는다.
+    if (_presentedKey == key &&
+        revealedQuestion.value == full &&
+        !isRevealingQuestion.value) {
+      return;
+    }
+    _presentedKey = key;
+    await _revealWithTts(full);
+  }
+
+  /// 타이핑을 끊고 전문을 바로 연다 (녹음·키보드·다시듣기).
+  void showFullQuestion() {
+    _cancelReveal();
+    revealedQuestion.value = displayQuestion;
+  }
+
+  void _cancelReveal() {
+    _revealTick?.cancel();
+    _revealTick = null;
+    isRevealingQuestion.value = false;
+    _revealGen++;
+    final done = _revealDone;
+    _revealDone = null;
+    if (done != null && !done.isCompleted) done.complete();
+  }
+
+  Future<void> _revealWithTts(String full) async {
+    // 이전 타이핑 대기를 풀어 주고 새 세대로 시작한다.
+    final prevDone = _revealDone;
+    _revealDone = null;
+    if (prevDone != null && !prevDone.isCompleted) prevDone.complete();
+    _revealTick?.cancel();
+    _revealTick = null;
+
+    final gen = ++_revealGen;
+    revealedQuestion.value = '';
+    isRevealingQuestion.value = true;
+
+    final graphemes = full.characters.toList();
+    if (graphemes.isEmpty) {
+      isRevealingQuestion.value = false;
+      return;
+    }
+
+    List<int>? bytes;
+    int? headerMs;
+    try {
+      final audio = await _api.synthesizeSpeech(text: full);
+      if (gen != _revealGen) return;
+      bytes = audio.bytes;
+      headerMs = audio.durationMs;
+    } on Object {
+      // TTS가 없어도 타이핑은 진행한다.
+    }
+
+    if (gen != _revealGen) return;
+
+    // 헤더가 없으면 한글 낭독 속도(~7자/초)로 근사한다.
+    final totalMs = (headerMs != null && headerMs > 0)
+        ? headerMs
+        : (graphemes.length * 140).clamp(900, 16000);
+
+    final ttsFuture = (bytes != null && bytes.isNotEmpty)
+        ? _voice.playMpeg(bytes).then((_) {}, onError: (_, __) {})
+        : Future<void>.value();
+
+    final started = DateTime.now();
+    final done = Completer<void>();
+    _revealDone = done;
+    _revealTick = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      if (gen != _revealGen) {
+        timer.cancel();
+        if (!done.isCompleted) done.complete();
+        return;
+      }
+      final elapsed = DateTime.now().difference(started).inMilliseconds;
+      final count = ((elapsed / totalMs) * graphemes.length)
+          .ceil()
+          .clamp(0, graphemes.length);
+      revealedQuestion.value = graphemes.take(count).join();
+      if (count >= graphemes.length) {
+        timer.cancel();
+        _revealTick = null;
+        isRevealingQuestion.value = false;
+        if (!done.isCompleted) done.complete();
+      }
+    });
+
+    await Future.wait<void>([done.future, ttsFuture]);
+    if (_revealDone == done) _revealDone = null;
+    if (gen != _revealGen) return;
+    revealedQuestion.value = full;
+    isRevealingQuestion.value = false;
+  }
 
   /// 로딩 화면(D6·D7) 제목.
   ///
@@ -456,9 +729,15 @@ class WriteController extends GetxController {
 
   /// 단말 로컬 STT(speech_to_text)를 시작한다.
   Future<void> startRecording() async {
+    showFullQuestion();
+    await _voice.stop();
     stage.value = WriteStage.recording;
+    isPaused.value = false;
     elapsed.value = 0;
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) => elapsed.value++);
+    _tick?.cancel();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!isPaused.value) elapsed.value++;
+    });
 
     final started = await _speech.start(onFinal: _onTranscribed);
     if (!started) {
@@ -475,6 +754,7 @@ class WriteController extends GetxController {
   /// 인식이 끝났다. 확인 화면(이렇게 정리했어요)은 일시 생략하고 바로 저장/다음.
   void _onTranscribed(String text) {
     _tick?.cancel();
+    isPaused.value = false;
     answerSource.value = WriteStage.recording;
     transcript.value = text;
     spokenSeconds.value = elapsed.value;
@@ -484,16 +764,42 @@ class WriteController extends GetxController {
     _save(text);
   }
 
-  /// "멈춤" — 지금까지 단말에서 인식된 내용으로 마무리한다.
+  /// 일시정지 — 메인 "끝내기"와 별도. 글은 유지하고 듣기만 멈춘다.
+  Future<void> pauseRecording() async {
+    if (stage.value != WriteStage.recording || isPaused.value) return;
+    await _speech.pause();
+    isPaused.value = true;
+  }
+
+  /// 일시정지 후 이어서 말하기.
+  Future<void> resumeRecording() async {
+    if (stage.value != WriteStage.recording || !isPaused.value) return;
+    isPaused.value = false;
+    final started = await _speech.resume(onFinal: _onTranscribed);
+    if (!started) {
+      isPaused.value = true;
+      _toast.show(
+        _speech.error.value ?? '이어서 듣지 못했어요',
+        description: '다시 시도하거나 끝내기를 눌러 주세요',
+      );
+      _speech.error.value = null;
+    }
+  }
+
+  /// "끝내기" — 지금까지 단말에서 인식된 내용으로 마무리한다.
   Future<void> stopRecording() async {
     if (stage.value != WriteStage.recording) return;
     _tick?.cancel();
-    await _speech.stop();
+    final wasPaused = isPaused.value;
+    isPaused.value = false;
 
-    // stop() 뒤에도 최종 결과가 곧 도착하는 게 정상이다. 다만 한 마디도
-    // 못 알아들은 경우엔 콜백이 오지 않으므로 여기서 되돌린다.
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    if (stage.value != WriteStage.recording) return;
+    if (!wasPaused) {
+      await _speech.stop();
+      // stop() 뒤에도 최종 결과가 곧 도착하는 게 정상이다. 다만 한 마디도
+      // 못 알아들은 경우엔 콜백이 오지 않으므로 여기서 되돌린다.
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      if (stage.value != WriteStage.recording) return;
+    }
 
     final heard = _speech.partial.value.trim();
     if (heard.isEmpty) {
@@ -530,10 +836,11 @@ class WriteController extends GetxController {
   /// 녹음 화면에 뜨는 안내/부분 결과.
   String get liveTranscript => _speech.partial.value;
 
-  /// "🔊 다시 들려줘" — 서버 Clova TTS로 질문을 읽어 준다.
+  /// "🔊 다시 들려줘" — TTS만 다시 재생한다. 타이핑 애니는 돌리지 않는다.
   Future<void> replayQuestion() async {
     final text = displayQuestion.trim();
     if (text.isEmpty) return;
+    showFullQuestion();
     try {
       final audio = await _api.synthesizeSpeech(text: text);
       await _voice.playMpeg(audio.bytes);
@@ -548,6 +855,10 @@ class WriteController extends GetxController {
 
   /// "키보드로 입력할게요" — 자기소개(08)와 같은 화면으로 넘어간다.
   void useKeyboard() {
+    showFullQuestion();
+    _tick?.cancel();
+    isPaused.value = false;
+    _speech.cancel();
     answerController.clear();
     stage.value = WriteStage.keyboard;
   }
@@ -560,6 +871,8 @@ class WriteController extends GetxController {
   void micFromKeyboard() {
     answerController.clear();
     stage.value = WriteStage.ask;
+    // 이미 본 질문이므로 애니는 생략하고 전문만 연다.
+    presentQuestion(animate: false);
   }
 
   bool get canSubmitTyped => draft.value.trim().isNotEmpty;
@@ -645,6 +958,8 @@ class WriteController extends GetxController {
     stage.value = wasFollowup
         ? WriteStage.saving
         : WriteStage.generatingFollowup;
+    await _voice.stop();
+    _cancelReveal();
     try {
       if (!wasFollowup) {
         followup.value = await _api.submitAnswer(
@@ -657,6 +972,8 @@ class WriteController extends GetxController {
         isFollowup.value = true;
         _clearInput();
         stage.value = WriteStage.ask;
+        isBusy.value = false;
+        await presentQuestion();
         return;
       }
 
@@ -675,6 +992,8 @@ class WriteController extends GetxController {
         isFollowup.value = true;
         _clearInput();
         stage.value = WriteStage.ask;
+        isBusy.value = false;
+        await presentQuestion();
         return;
       }
 
@@ -725,6 +1044,8 @@ class WriteController extends GetxController {
         questionId: q.id,
         text: next,
       );
+      _presentedKey = null;
+      await presentQuestion();
       _toast.show('질문을 고쳤어요');
     } on ApiException catch (e) {
       _toast.showError(e);
@@ -739,6 +1060,8 @@ class WriteController extends GetxController {
     followup.value = null;
     isFollowup.value = false;
     stage.value = WriteStage.ask;
+    _presentedKey = null;
+    presentQuestion();
   }
 
   /// 입력 흔적을 지운다. 질문은 건드리지 않는다.
@@ -794,8 +1117,21 @@ class WriteController extends GetxController {
   }
 
   Future<void> proceedAfterChapterComplete() async {
-    isChapterComplete.value = false;
     final next = _pendingNext;
+    final nextOrder = chapterCompletion.value?.nextChapter?.order ??
+        (completedChapter.value != null
+            ? completedChapter.value!.order + 1
+            : null);
+    if (next != null && nextOrder != null) {
+      final allowed = await PurchaseFlow.allowChapter(
+        api: _api,
+        bookId: _requireBookId(),
+        chapterOrder: nextOrder,
+      );
+      if (!allowed) return;
+    }
+
+    isChapterComplete.value = false;
     _pendingNext = null;
     completedChapter.value = null;
     chapterCompletion.value = null;
@@ -806,9 +1142,14 @@ class WriteController extends GetxController {
     question.value = next;
     isAllDone.value = next == null;
     _firstAnswerText = null;
-    if (next == null) return;
+    _presentedKey = null;
+    if (next == null) {
+      revealedQuestion.value = '';
+      return;
+    }
     final chapters = await _api.chapters(bookId);
     chapter.value = chapters.firstWhereOrNull((c) => c.id == next.chapterId);
+    await presentQuestion();
   }
 
   void goBookHub() {

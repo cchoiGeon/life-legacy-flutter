@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/feature/purchase/purchase_flow.dart';
 import 'package:life_legacy/service/services.dart';
 
 /// 06-1-2 오디오북 — CLOVA TTS 생성은 서버에서 처리.
@@ -280,8 +281,5 @@ class AudiobookController extends GetxController {
 
   Future<void> stopPlayback() => _player.stop();
 
-  void onUpgradeTap() => _toast.show(
-        '플랜 안내는 준비 중이에요',
-        description: 'T1 이상에서 음성책을 이용할 수 있어요',
-      );
+  void onUpgradeTap() => PurchaseFlow.openList(paywall: true);
 }

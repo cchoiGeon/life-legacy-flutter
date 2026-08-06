@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:life_legacy/common/text/korean_wrap.dart';
 import 'package:life_legacy/feature/write/stages/question_panel.dart';
+import 'package:life_legacy/service/prefs_service.dart';
 
 /// 질문판이 1차 질문과 꼬리질문을 다르게 그리는 규칙 (시안 341:654).
 ///
@@ -21,6 +23,13 @@ void main() {
   const long =
       '말씀해 주신 장면이 눈에 그려집니다. 그 시간이 지금까지도 마음에 남아 계신 것 같아요.\n\n'
       '$question';
+
+  setUp(() {
+    Get.testMode = true;
+    Get.put(PrefsService());
+  });
+
+  tearDown(Get.reset);
 
   Future<void> pump(
     WidgetTester tester, {

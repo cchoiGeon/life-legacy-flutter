@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/text/korean_wrap.dart';
+import 'package:life_legacy/service/services.dart';
 
 /// 크림 바탕의 질문판 — Figma 341:654 (D1·D2) · 351:881 (D3).
 ///
@@ -11,7 +13,10 @@ import 'package:life_legacy/common/text/korean_wrap.dart';
 ///
 /// 음성 화면([tall])은 질문을 가운데 크게(명조 28) 놓고 "다시 들려주기"를
 /// 붙이지만, 글자 입력 화면은 입력칸에 자리를 내주려고 작게(명조 20) 왼쪽
-/// 정렬로 줄인다.
+/// 정렬로 줄인다. 크기는 설정의 질문 글자 크기를 따른다.
+///
+/// [question]은 이미 타이핑 애니가 반영된 글일 수 있다
+/// ([WriteController.revealedQuestion]). 전문은 컨트롤러의 displayQuestion.
 class QuestionPanel extends StatelessWidget {
   const QuestionPanel({
     super.key,
@@ -52,30 +57,37 @@ class QuestionPanel extends StatelessWidget {
     return question.substring(split + 2).trim();
   }
 
+  TextStyle _questionStyle(double size) => AppTypography.titleScreen.copyWith(
+        fontSize: size,
+        height: (size * 1.5) / size,
+        letterSpacing: size >= 28 ? -0.5 : -0.3,
+      );
+
   @override
   Widget build(BuildContext context) {
+    final prefs = Get.find<PrefsService>();
+
     if (!tall) {
-      return Container(
-        width: double.infinity,
-        color: AppColors.cream,
-        padding: const EdgeInsets.fromLTRB(26, 20, 26, 22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 빈 줄이 없어 잘라 낼 수 없는 꼬리질문은 통째로 두되 4줄로 막는다.
-            Text(
-              keepAll(_compactQuestion),
-              maxLines: _isLong ? 4 : null,
-              overflow: _isLong ? TextOverflow.ellipsis : null,
-              style: AppTypography.titleScreen.copyWith(
-                fontSize: 20,
-                height: 31 / 20,
-                letterSpacing: -0.3,
+      return Obx(() {
+        final size = prefs.questionCompactSize;
+        return Container(
+          width: double.infinity,
+          color: AppColors.cream,
+          padding: const EdgeInsets.fromLTRB(26, 20, 26, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 빈 줄이 없어 잘라 낼 수 없는 꼬리질문은 통째로 두되 4줄로 막는다.
+              Text(
+                keepAll(_compactQuestion),
+                maxLines: _isLong ? 4 : null,
+                overflow: _isLong ? TextOverflow.ellipsis : null,
+                style: _questionStyle(size),
               ),
-            ),
-          ],
-        ),
-      );
+            ],
+          ),
+        );
+      });
     }
 
     return Container(
@@ -108,27 +120,18 @@ class QuestionPanel extends StatelessWidget {
           //    차지하고, 길면 남은 높이까지만 쓰고 안에서 스크롤한다.
           Flexible(
             child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    keepAll(question),
-                    textAlign: TextAlign.center,
-                    style: _isLong
-                        // 꼬리질문은 원래 질문의 서너 배라 28을 그대로 쓰면
-                        // 마지막 줄이 판 밖으로 밀린다. 20까지 줄이면 흔한
-                        // 길이(대여섯 줄)가 스크롤 없이 다 보인다.
-                        ? AppTypography.titleScreen.copyWith(
-                            fontSize: 20,
-                            height: 31 / 20,
-                            letterSpacing: -0.3,
-                          )
-                        : AppTypography.titleScreen.copyWith(
-                            letterSpacing: -0.5,
-                          ),
-                  ),
-                ],
-              ),
+              child: Obx(() {
+                // 꼬리질문은 원래 질문의 서너 배라 기본 크기를 그대로 쓰면
+                // 마지막 줄이 판 밖으로 밀린다. compact 단계를 쓴다.
+                final size = _isLong
+                    ? prefs.questionCompactSize
+                    : prefs.questionPrimarySize;
+                return Text(
+                  keepAll(question),
+                  textAlign: TextAlign.center,
+                  style: _questionStyle(size),
+                );
+              }),
             ),
           ),
           if (onReplay != null) ...[

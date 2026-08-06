@@ -53,4 +53,22 @@ void main() {
     // 애니메이션이 계속 돌면 테스트가 끝나지 않는다.
     await pump(tester, recording: false);
   });
+
+  testWidgets('일시정지 중에는 파문이 없다', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: AppMicButton(
+              recording: true,
+              paused: true,
+              onTap: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(AppMicButton.rippleKey), findsNothing);
+  });
 }
