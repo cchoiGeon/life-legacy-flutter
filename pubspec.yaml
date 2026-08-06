@@ -1,5 +1,5 @@
 name: life_legacy
-description: "Life Legacy — 말씀만 하시면 AI가 한 권의 자서전으로 써 드려요."
+description: "기로기 — 말씀만 하시면 AI가 한 권의 자서전으로 써 드려요."
 
 publish_to: 'none'
 
@@ -31,6 +31,11 @@ dependencies:
   just_audio: ^0.10.6
   record: ^7.1.1
   url_launcher: ^6.3.2
+  image_picker: ^1.2.3
+  permission_handler: ^11.4.0
+
+  # 카카오 로그인. UserApi(로그인·사용자 조회)만 쓴다.
+  kakao_flutter_sdk_user: ^2.0.0+1
 
   # dio — RealApiClient(Nest /v1) HTTP.
 

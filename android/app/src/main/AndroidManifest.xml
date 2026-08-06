@@ -1,7 +1,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 서버 API·카카오 로그인 등 네트워크 호출. debug/profile 빌드는
+         Flutter 툴이 자동으로 넣어주지만 release는 명시해야 한다. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- 음성 인식(SpeechService). 런타임 요청은 speech_to_text 플러그인이
          initialize() 안에서 처리한다. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- 프로필 사진 (image_picker). Android 13+ -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <!-- Android 12 이하 -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+    <!-- 전화번호 자동 입력 (Android 11+ / 이하) -->
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS"/>
+    <uses-permission
+        android:name="android.permission.READ_PHONE_STATE"
+        android:maxSdkVersion="29"/>
 
     <!-- ⚠️ Android 11(API 30)+ 패키지 가시성. 이게 없으면 시스템에
          음성 인식기가 깔려 있어도 조회되지 않아 initialize()가 항상
@@ -22,7 +36,7 @@
     </queries>
 
     <application
-        android:label="life_legacy"
+        android:label="기로기"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -52,6 +66,20 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 카카오 로그인 리다이렉트 URI 수신.
+             ⚠️ scheme의 값은 lib/core/kakao/kakao_env.dart의 nativeAppKey와
+                반드시 같아야 한다. -->
+        <activity
+            android:name="com.kakao.sdk.flutter.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter android:label="flutter_web_auth">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="kakaoa69208d65071366167d0c2041ebbcdc9" android:host="oauth"/>
+            </intent-filter>
+        </activity>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

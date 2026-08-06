@@ -18,29 +18,101 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="기로기 — 말씀만 하시면 AI가 한 권의 자서전으로 써 드려요.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="life_legacy">
+  <meta name="apple-mobile-web-app-title" content="기로기">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>life_legacy</title>
+  <title>기로기</title>
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    /* Flutter 엔진이 뜨기 전 — 앱 스플래시와 같은 크림 배경 + 브랜드 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #F5F0E8;
+    }
+
+    #app-loading {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #F5F0E8;
+      transition: opacity 0.28s ease;
+    }
+
+    #app-loading.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #app-loading .brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+    }
+
+    #app-loading .mark {
+      width: 84px;
+      height: 84px;
+    }
+
+    #app-loading .title {
+      margin: 0;
+      font-family: "Noto Serif KR", "Apple SD Gothic Neo", "Malgun Gothic", serif;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: #6B5344;
+    }
+
+    #app-loading .tagline {
+      margin: 0;
+      font-family: "Noto Serif KR", "Apple SD Gothic Neo", "Malgun Gothic", serif;
+      font-size: 16px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      color: #8A7A6B;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+  <!-- Flutter 첫 프레임 전까지 보이는 로딩 스플래시 -->
+  <div id="app-loading" aria-label="기로기 로딩 중">
+    <div class="brand">
+      <!-- AppBrandMark와 같은 책 로고 -->
+      <svg class="mark" viewBox="0 0 84 84" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="42" cy="42" r="42" fill="#6B5344"/>
+        <rect x="18" y="27" width="22" height="30" rx="3" fill="#FDFCFB"/>
+        <rect x="44" y="27" width="22" height="30" rx="3" fill="#FDFCFB" opacity="0.72"/>
+      </svg>
+      <p class="title">기로기</p>
+      <p class="tagline">말로 작성하는 AI 자서전 기록 플랫폼</p>
+    </div>
+  </div>
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('app-loading');
+      if (!el) return;
+      el.classList.add('fade-out');
+      setTimeout(function () { el.remove(); }, 300);
+    });
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

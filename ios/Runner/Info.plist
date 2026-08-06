@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Life Legacy</string>
+	<string>기로기</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -53,12 +53,36 @@
 	<string>말씀하신 내용을 글로 옮기기 위해 마이크를 사용합니다.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>말씀하신 내용을 자서전 원고로 옮기기 위해 음성 인식을 사용합니다.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>프로필 사진을 등록하기 위해 사진 보관함에 접근합니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>프로필 사진을 저장하기 위해 사진 보관함에 접근합니다.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<!-- 카카오 로그인 리다이렉트 수신.
+	     ⚠️ 아래 scheme 값은 lib/core/kakao/kakao_env.dart의 nativeAppKey와
+	        반드시 같아야 한다. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>kakaoa69208d65071366167d0c2041ebbcdc9</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>kakaoa69208d65071366167d0c2041ebbcdc9</string>
+		<string>kakaokompassauth</string>
+		<string>storykompassauth</string>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'package:life_legacy/common/constants/colors.dart';
 import 'package:life_legacy/common/constants/dimens.dart';
@@ -8,6 +9,7 @@ import 'package:life_legacy/common/constants/typography.dart';
 import 'package:life_legacy/common/widgets/ds/ds.dart';
 import 'package:dio/dio.dart';
 
+import 'package:life_legacy/core/kakao/kakao_env.dart';
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/network/api_env.dart';
 import 'package:life_legacy/core/network/auth_interceptor.dart';
@@ -18,6 +20,9 @@ import 'package:life_legacy/service/services.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 카카오 로그인 버튼을 그리기 전에 반드시 끝나 있어야 한다.
+  await KakaoSdk.init(nativeAppKey: KakaoEnv.nativeAppKey);
 
   // 세로 고정 — 시안이 390×844 세로 한 가지뿐이다.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -78,6 +83,7 @@ void _registerGlobals() {
   Get.put(AuthService(api), permanent: true);
   Get.put(ToastService(), permanent: true);
   Get.put(VoicePlayerService(), permanent: true);
+  Get.put(PrefsService(), permanent: true).init();
 
   // 마이크 권한·녹음. 전사는 서버 Clova STT.
   Get.put(SpeechService(), permanent: true).init();
@@ -89,10 +95,14 @@ class LifeLegacyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
-      title: 'Life Legacy',
+      title: '기로기',
       debugShowCheckedModeBanner: false,
       initialRoute: AppRoutes.splash,
       getPages: AppPages.pages,
+      // 페이지 전환은 슬라이드 대신 fade. 탭 라우트는 GetPage에서
+      // noTransition으로 덮어써서 탭바 고정 레이아웃을 유지한다.
+      defaultTransition: Transition.fade,
+      transitionDuration: const Duration(milliseconds: 480),
       theme: _theme,
       locale: const Locale('ko', 'KR'),
       fallbackLocale: const Locale('ko', 'KR'),

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 앱 크림 배경(AppColors.cream) — 네이티브 런치 스플래시와 맞춤 -->
+    <color name="launch_background">#F5F0E8</color>
+</resources>
