@@ -3,7 +3,8 @@ import { Column, Entity, Index } from 'typeorm';
 import { BaseModel } from 'src/common/entities/base.entity';
 
 /**
- * 전화번호 SMS 인증 또는 카카오로 로그인한다. **비밀번호가 없다.**
+ * 전화(OTP/OCTOMO)·카카오·아이디/비밀번호로 로그인한다.
+ * 비밀번호는 bcrypt 해시로만 저장하며, 카카오/전화만 쓴 사용자는 null일 수 있다.
  *
  * `name`은 표시 전용 비정규화 값이다 — 원본은 user_intro_answer에 있다.
  */
@@ -17,6 +18,22 @@ export class AppUserModel extends BaseModel {
   /** 자기소개 i1에서 채워진다. 가입 직후엔 빈 문자열 */
   @Column({ type: 'varchar', length: 50, default: '' })
   name: string;
+
+  /**
+   * 아이디/비밀번호 로그인용 식별자.
+   * 웹에서 가입했거나 설정에서 만든 경우만 채워진다.
+   */
+  @Index('ux_app_user_login_id', { unique: true })
+  @Column({ name: 'login_id', type: 'varchar', length: 50, nullable: true })
+  loginId: string | null;
+
+  /** bcrypt 해시. login_id가 있어도 아직 비밀번호를 안 만든 경우는 없다(둘 다 함께 설정). */
+  @Column({ name: 'password_hash', type: 'text', nullable: true })
+  passwordHash: string | null;
+
+  /** `storage/avatars/...` 상대 경로. null이면 이니셜 아바타. */
+  @Column({ name: 'avatar_object_key', type: 'varchar', length: 255, nullable: true })
+  avatarObjectKey: string | null;
 
   /** 자녀 계정 연결. 흐름은 2차 */
   @Column({ name: 'child_linked', type: 'boolean', default: false })

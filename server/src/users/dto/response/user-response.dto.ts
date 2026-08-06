@@ -15,12 +15,34 @@ export class UserResponseDto {
   @ApiProperty({ example: false })
   child_linked: boolean;
 
+  @ApiProperty({
+    example: 'kimyounghee',
+    nullable: true,
+    description: '아이디/비밀번호 로그인용 아이디. 없으면 null',
+  })
+  login_id: string | null;
+
+  @ApiProperty({
+    example: false,
+    description: '아이디·비밀번호가 설정돼 있으면 true',
+  })
+  has_password: boolean;
+
+  @ApiProperty({
+    example: true,
+    description: '프로필 사진이 있으면 true. 이미지는 GET /users/me/avatar',
+  })
+  has_avatar: boolean;
+
   static from(user: AppUserModel): UserResponseDto {
     return {
       id: user.id,
       name: user.name,
       phone: user.phone,
       child_linked: user.childLinked,
+      login_id: user.loginId,
+      has_password: Boolean(user.passwordHash),
+      has_avatar: Boolean(user.avatarObjectKey),
     };
   }
 }

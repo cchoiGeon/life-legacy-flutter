@@ -40,18 +40,20 @@ export class SignupService {
     private readonly consentDocumentRepository: Repository<ConsentDocumentModel>,
   ) {}
 
-  /** api-spec §1.9 — 신규 계정 verify 응답용 약관 목록 */
+  /** api-spec §1.9 — 신규 계정 verify 응답용 약관 목록(동의 체크 대상만) */
   async listRequiredConsents(): Promise<
     {
       key: string;
       version: string;
       title: string;
       url: string | null;
+      content: string | null;
       required: boolean;
     }[]
   > {
     const now = new Date();
     const docs = await this.consentDocumentRepository.find({
+      where: { isConsentItem: true },
       order: { createdAt: 'ASC' },
     });
     return docs
@@ -61,6 +63,7 @@ export class SignupService {
         version: d.version,
         title: d.title,
         url: d.url || null,
+        content: d.content?.trim() ? d.content : null,
         required: d.isRequired,
       }));
   }
@@ -100,7 +103,7 @@ export class SignupService {
     }
 
     const requiredDocs = await this.consentDocumentRepository.find({
-      where: { isRequired: true },
+      where: { isRequired: true, isConsentItem: true },
     });
     const requiredKeys = new Set(requiredDocs.map((d) => d.consentKey));
 

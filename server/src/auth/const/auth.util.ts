@@ -1,5 +1,7 @@
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 
+import * as bcrypt from 'bcryptjs';
+
 /**
  * 인증번호·리프레시 토큰은 **원문을 저장하지 않는다.**
  *
@@ -24,4 +26,18 @@ export function matchesSecret(value: string, hash: string): boolean {
 /** 000000~999999 */
 export function generateVerificationCode(): string {
   return randomInt(0, 1_000_000).toString().padStart(6, '0');
+}
+
+/** 로그인 비밀번호 — 웹(lifelegacy)과 동일하게 bcrypt cost 10 */
+const PASSWORD_BCRYPT_ROUNDS = 10;
+
+export async function hashPassword(plain: string): Promise<string> {
+  return await bcrypt.hash(plain, PASSWORD_BCRYPT_ROUNDS);
+}
+
+export async function matchesPassword(
+  plain: string,
+  hash: string,
+): Promise<boolean> {
+  return await bcrypt.compare(plain, hash);
 }

@@ -48,6 +48,14 @@ function buildService() {
   const octomoService = {
     consumeSession: jest.fn(),
   };
+  const httpService = {
+    get: jest.fn(),
+  };
+  const socialAccountRepository = {
+    findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+  };
 
   const service = new AuthService(
     dataSource as never,
@@ -58,6 +66,8 @@ function buildService() {
     jwtService as never,
     configService as never,
     octomoService as never,
+    httpService as never,
+    socialAccountRepository as never,
   );
 
   return {
@@ -67,6 +77,8 @@ function buildService() {
     refreshTokenRepository,
     jwtService,
     octomoService,
+    httpService,
+    socialAccountRepository,
   };
 }
 

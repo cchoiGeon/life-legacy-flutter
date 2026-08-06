@@ -23,6 +23,12 @@ export class AppUserRepository {
     });
   }
 
+  async findByLoginId(loginId: string): Promise<AppUserModel | null> {
+    return await this.repository.findOne({
+      where: { loginId, deletedAt: IsNull() },
+    });
+  }
+
   async create(phone: string | null): Promise<AppUserModel> {
     return await this.repository.save(this.repository.create({ phone }));
   }

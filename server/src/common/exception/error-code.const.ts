@@ -76,6 +76,27 @@ export const ERROR_CODE = {
       code: 'CONSENT_REQUIRED',
       message: '필수 약관에 동의해 주세요',
     },
+    INVALID_CREDENTIALS: {
+      status: 401,
+      code: 'INVALID_CREDENTIALS',
+      message: '아이디 또는 비밀번호가 맞지 않아요',
+    },
+    LOGIN_ID_TAKEN: {
+      status: 409,
+      code: 'LOGIN_ID_TAKEN',
+      message: '이미 사용 중인 아이디예요',
+    },
+    CREDENTIALS_ALREADY_SET: {
+      status: 409,
+      code: 'CREDENTIALS_ALREADY_SET',
+      message: '이미 아이디와 비밀번호가 있어요',
+    },
+    /** 카카오 액세스 토큰 검증(kapi.kakao.com/v2/user/me) 실패 */
+    KAKAO_LOGIN_FAILED: {
+      status: 401,
+      code: 'KAKAO_LOGIN_FAILED',
+      message: '카카오 로그인에 실패했어요. 다시 시도해 주세요',
+    },
   },
 
   INTRO: {
@@ -130,6 +151,11 @@ export const ERROR_CODE = {
       code: 'VERSION_CONFLICT',
       message: '다른 곳에서 먼저 고친 원고가 있어요. 다시 불러와 주세요',
     },
+    IMAGE_FAILED: {
+      status: 422,
+      code: 'IMAGE_FAILED',
+      message: '사진을 만들지 못했어요. 잠시 후 다시 시도해 주세요',
+    },
     TTS_FAILED: {
       status: 502,
       code: 'TTS_FAILED',
@@ -175,6 +201,39 @@ export const ERROR_CODE = {
       status: 429,
       code: 'QUOTA_EXCEEDED',
       message: '생성 횟수를 모두 썼어요',
+    },
+  },
+
+  COUPON: {
+    NOT_FOUND: {
+      status: 404,
+      code: 'COUPON_NOT_FOUND',
+      message: '쿠폰 코드를 확인할 수 없어요',
+    },
+    INACTIVE: {
+      status: 410,
+      code: 'COUPON_INACTIVE',
+      message: '사용할 수 없는 쿠폰이에요',
+    },
+    EXPIRED: {
+      status: 410,
+      code: 'COUPON_EXPIRED',
+      message: '유효기간이 지난 쿠폰이에요',
+    },
+    EXHAUSTED: {
+      status: 410,
+      code: 'COUPON_EXHAUSTED',
+      message: '이미 모두 사용된 쿠폰이에요',
+    },
+    ALREADY_REDEEMED: {
+      status: 409,
+      code: 'COUPON_ALREADY_REDEEMED',
+      message: '이미 사용한 쿠폰이에요',
+    },
+    CODE_TAKEN: {
+      status: 409,
+      code: 'COUPON_CODE_TAKEN',
+      message: '이미 있는 쿠폰 코드예요',
     },
   },
 

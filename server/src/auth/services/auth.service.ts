@@ -1,19 +1,25 @@
-import { DataSource } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 import { randomUUID } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { firstValueFrom } from 'rxjs';
 
 import { ApiException } from 'src/common/exception/api.exception';
 import { ERROR_CODE } from 'src/common/exception/error-code.const';
 import { AppUserModel } from 'src/users/entities/app-user.entity';
 import { AppUserRepository } from 'src/users/repositories/app-user.repository';
+import { SocialAccountModel } from 'src/users/entities/social-account.entity';
 import { UserResponseDto } from 'src/users/dto/response/user-response.dto';
 import {
   generateVerificationCode,
+  hashPassword,
   hashSecret,
+  matchesPassword,
   matchesSecret,
 } from '../const/auth.util';
 import {
@@ -36,6 +42,8 @@ const ISSUE_LIMIT_PER_HOUR = 5;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly appUserRepository: AppUserRepository,
@@ -45,6 +53,9 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly octomoService: OctomoService,
+    private readonly httpService: HttpService,
+    @InjectRepository(SocialAccountModel)
+    private readonly socialAccountRepository: Repository<SocialAccountModel>,
   ) {}
 
   /** api-spec §1.1 */
@@ -135,21 +146,70 @@ export class AuthService {
   /**
    * api-spec §1.3.
    *
-   * 카카오 SDK가 아직 붙지 않아 **스텁**이다 — 토큰을 검증하지 않고 그
-   * 문자열을 provider_user_id 삼아 계정을 찾거나 만든다.
+   * `KAKAO_PROVIDER=stub`(기본, 로컬 개발용)이면 토큰을 검증하지 않고
+   * 그 자리에서 새 계정을 만든다.
+   *
+   * 그 외 값이면 카카오 액세스 토큰으로 `kapi.kakao.com/v2/user/me`를 불러
+   * 카카오 사용자 ID를 얻는다 — 토큰 자체가 카카오 서버에서 검증되므로
+   * 서버는 별도 앱 키 없이 `Authorization: Bearer {token}`만 실어 보낸다.
+   * `social_account(provider='kakao')`로 기존 계정을 찾거나, 없으면
+   * 전화번호 없는 계정을 새로 만들고 연결한다.
    */
   async loginWithKakao(
-    // 스텁이라 토큰을 검증하지 않는다. 제공자가 붙으면 이 값으로 카카오에
-    // 사용자 정보를 물어본다.
-    _kakaoAccessToken: string,
+    kakaoAccessToken: string,
   ): Promise<AuthSessionResponseDto> {
     const provider = this.configService.get<string>('KAKAO_PROVIDER', 'stub');
-    if (provider !== 'stub') {
-      throw new Error('카카오 SDK가 아직 연결되지 않았습니다');
+    if (provider === 'stub') {
+      const user = await this.appUserRepository.create(null);
+      return await this.issueSession(user);
+    }
+
+    const kakaoUserId = await this.fetchKakaoUserId(kakaoAccessToken);
+
+    const existingLink = await this.socialAccountRepository.findOne({
+      where: { provider: 'kakao', providerUserId: kakaoUserId },
+      relations: { user: true },
+    });
+    if (existingLink) {
+      return await this.issueSession(existingLink.user);
     }
 
     const user = await this.appUserRepository.create(null);
+    await this.socialAccountRepository.save(
+      this.socialAccountRepository.create({
+        user,
+        provider: 'kakao',
+        providerUserId: kakaoUserId,
+      }),
+    );
+
     return await this.issueSession(user);
+  }
+
+  /** 카카오 액세스 토큰 → 카카오 사용자 ID(문자열). 토큰 검증은 카카오 서버가 한다 */
+  private async fetchKakaoUserId(accessToken: string): Promise<string> {
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.get<{ id?: number }>(
+          'https://kapi.kakao.com/v2/user/me',
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+            },
+            timeout: 10_000,
+          },
+        ),
+      );
+
+      if (data.id === undefined || data.id === null) {
+        throw new Error('카카오 응답에 사용자 ID가 없습니다');
+      }
+      return String(data.id);
+    } catch (err) {
+      this.logger.warn(`카카오 사용자 조회 실패: ${(err as Error).message}`);
+      throw new ApiException(ERROR_CODE.AUTH.KAKAO_LOGIN_FAILED);
+    }
   }
 
   /** api-spec §1.4 — 리프레시 토큰도 함께 회전시킨다 */
@@ -177,6 +237,54 @@ export class AuthService {
    * api-spec §1.9 — OCTOMO 인증 완료 후 기존 사용자면 세션을 발급한다.
    * 신규 사용자면 null을 반환한다.
    */
+  /** 아이디·비밀번호 로그인 (웹에서 가입했거나 설정에서 만든 계정) */
+  async loginWithCredentials(
+    loginId: string,
+    password: string,
+  ): Promise<AuthSessionResponseDto> {
+    const user = await this.appUserRepository.findByLoginId(loginId.trim());
+    if (!user?.passwordHash) {
+      throw new ApiException(ERROR_CODE.AUTH.INVALID_CREDENTIALS);
+    }
+
+    const ok = await matchesPassword(password, user.passwordHash);
+    if (!ok) {
+      throw new ApiException(ERROR_CODE.AUTH.INVALID_CREDENTIALS);
+    }
+
+    return await this.issueSession(user);
+  }
+
+  /**
+   * 카카오/전화 사용자가 설정에서 아이디·비밀번호를 처음 만든다.
+   * 이미 있으면 거부한다.
+   */
+  async setCredentials(
+    userId: string,
+    loginId: string,
+    password: string,
+  ): Promise<UserResponseDto> {
+    const user = await this.appUserRepository.findById(userId);
+    if (!user) {
+      throw new ApiException(ERROR_CODE.AUTH.UNAUTHORIZED);
+    }
+    if (user.passwordHash || user.loginId) {
+      throw new ApiException(ERROR_CODE.AUTH.CREDENTIALS_ALREADY_SET);
+    }
+
+    const normalized = loginId.trim();
+    const taken = await this.appUserRepository.findByLoginId(normalized);
+    if (taken) {
+      throw new ApiException(ERROR_CODE.AUTH.LOGIN_ID_TAKEN);
+    }
+
+    user.loginId = normalized;
+    user.passwordHash = await hashPassword(password);
+    await this.appUserRepository.save(user);
+
+    return UserResponseDto.from(user);
+  }
+
   async loginViaOctomo(
     sessionId: string,
   ): Promise<{

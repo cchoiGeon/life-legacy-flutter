@@ -14,7 +14,10 @@ import { INTRO_QUESTION_SEED } from 'src/intro/seed/intro-question.seed';
 import { ChapterTemplateModel } from '../entities/chapter-template.entity';
 import { QuestionTemplateModel } from '../entities/question-template.entity';
 import { ConsentDocumentModel } from 'src/auth/entities/consent-document.entity';
-import { CONSENT_SEED } from 'src/auth/seed/consent.seed';
+import {
+  CONSENT_SEED,
+  resolveConsentContent,
+} from 'src/auth/seed/consent.seed';
 import { CHAPTER_SEED } from './catalog.seed';
 
 /**
@@ -208,13 +211,25 @@ export class SeedService {
 
   private async seedConsents(): Promise<void> {
     const docs = this.dataSource.getRepository(ConsentDocumentModel);
-    const effectiveAt = new Date('2026-08-01T00:00:00Z');
+    const effectiveAt = new Date('2026-08-06T00:00:00Z');
 
     for (const seed of CONSENT_SEED) {
-      const exists = await docs.findOne({
+      const content = resolveConsentContent(seed.content);
+      const existing = await docs.findOne({
         where: { consentKey: seed.consentKey, version: seed.version },
       });
-      if (exists) continue;
+
+      if (existing) {
+        // md·카피를 고치면 재시드로 본문·메타가 갱신된다.
+        existing.title = seed.title;
+        existing.url = seed.url;
+        existing.content = content;
+        existing.isRequired = seed.isRequired;
+        existing.isConsentItem = seed.isConsentItem;
+        existing.effectiveAt = effectiveAt;
+        await docs.save(existing);
+        continue;
+      }
 
       await docs.save(
         docs.create({
@@ -222,13 +237,15 @@ export class SeedService {
           version: seed.version,
           title: seed.title,
           url: seed.url,
+          content,
           isRequired: seed.isRequired,
+          isConsentItem: seed.isConsentItem,
           effectiveAt,
         }),
       );
     }
 
-    this.logger.log(`약관 ${CONSENT_SEED.length}종 확인`);
+    this.logger.log(`약관 ${CONSENT_SEED.length}종 upsert`);
   }
 
   /** CC0 BGM 1곡 — lifelegacy catalog soothing-song */

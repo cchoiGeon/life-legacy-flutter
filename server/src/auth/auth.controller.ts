@@ -1,4 +1,13 @@
-import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -9,6 +18,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { LessThanOrEqual, Repository } from 'typeorm';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
+import { ApiException } from 'src/common/exception/api.exception';
+import { ERROR_CODE } from 'src/common/exception/error-code.const';
 import { UserId } from './decorator/user.decorator';
 import { KakaoLoginDto } from './dto/request/kakao-login.dto';
 import { RefreshTokenDto } from './dto/request/refresh-token.dto';
@@ -25,9 +36,12 @@ import { PhoneLookupDto } from './dto/request/phone-lookup.dto';
 import { OctomoChallengeDto } from './dto/request/octomo-challenge.dto';
 import { OctomoVerifyDto } from './dto/request/octomo-verify.dto';
 import { SignupDto } from './dto/request/signup.dto';
+import { CredentialsLoginDto } from './dto/request/credentials-login.dto';
+import { SetCredentialsDto } from './dto/request/set-credentials.dto';
 import { PhoneLookupResponseDto } from './dto/response/phone-lookup-response.dto';
 import { OctomoChallengeResponseDto } from './dto/response/octomo-challenge-response.dto';
 import { ConsentDocumentModel } from './entities/consent-document.entity';
+import { UserResponseDto } from 'src/users/dto/response/user-response.dto';
 
 @ApiTags('Auth API')
 @Controller('auth')
@@ -64,6 +78,33 @@ export class AuthController {
   @Post('kakao')
   loginWithKakao(@Body() dto: KakaoLoginDto) {
     return this.authService.loginWithKakao(dto.kakao_access_token);
+  }
+
+  @ApiOperation({ summary: '아이디·비밀번호 로그인' })
+  @ApiResponse({ status: 200, type: AuthSessionResponseDto })
+  @UseGuards(ThrottlerGuard)
+  @HttpCode(200)
+  @Post('login')
+  loginWithCredentials(@Body() dto: CredentialsLoginDto) {
+    return this.authService.loginWithCredentials(dto.login_id, dto.password);
+  }
+
+  @ApiOperation({
+    summary: '아이디·비밀번호 만들기',
+    description:
+      '카카오/전화로 가입한 사용자가 설정에서 아이디·비밀번호를 처음 등록한다',
+  })
+  @ApiResponse({ status: 200, type: UserResponseDto })
+  @ApiBearerAuth('access-token')
+  @UseGuards(AccessTokenGuard)
+  @HttpCode(200)
+  @Post('credentials')
+  setCredentials(@UserId() userId: string, @Body() dto: SetCredentialsDto) {
+    return this.authService.setCredentials(
+      userId,
+      dto.login_id,
+      dto.password,
+    );
   }
 
   @ApiOperation({ summary: '토큰 갱신' })
@@ -173,26 +214,61 @@ export class ConsentsController {
     private readonly consentDocumentRepository: Repository<ConsentDocumentModel>,
   ) {}
 
-  @ApiOperation({ summary: '약관 문서 목록 (현재 시행 중인 버전)' })
+  @ApiOperation({
+    summary: '약관 문서 목록 (현재 시행 중인 버전, 마크다운 본문 포함)',
+  })
   @HttpCode(200)
   @Get('documents')
-  async getDocuments() {
+  async getDocuments(
+    @Query('consent_only') consentOnly?: string,
+  ) {
     const now = new Date();
     const docs = await this.consentDocumentRepository.find({
-      where: { effectiveAt: LessThanOrEqual(now) },
+      where: {
+        effectiveAt: LessThanOrEqual(now),
+        ...(consentOnly === '1' || consentOnly === 'true'
+          ? { isConsentItem: true }
+          : {}),
+      },
       order: { createdAt: 'ASC' },
     });
 
-    // api-spec §1.11 — key / required (consent_key·is_required 아님)
+    // api-spec §1.11 — key / required / content
     return {
-      items: docs.map((d) => ({
-        key: d.consentKey,
-        version: d.version,
-        title: d.title,
-        url: d.url || null,
-        required: d.isRequired,
-        effective_at: d.effectiveAt.toISOString(),
-      })),
+      items: docs.map((d) => this.toDocumentDto(d)),
+    };
+  }
+
+  @ApiOperation({ summary: '약관 문서 단건 (key로 조회, 본문 포함)' })
+  @HttpCode(200)
+  @Get('documents/:key')
+  async getDocument(@Param('key') key: string) {
+    const now = new Date();
+    const docs = await this.consentDocumentRepository.find({
+      where: {
+        consentKey: key,
+        effectiveAt: LessThanOrEqual(now),
+      },
+      order: { effectiveAt: 'DESC', createdAt: 'DESC' },
+      take: 1,
+    });
+    const doc = docs[0];
+    if (!doc) {
+      throw new ApiException(ERROR_CODE.COMMON.NOT_FOUND);
+    }
+    return this.toDocumentDto(doc);
+  }
+
+  private toDocumentDto(d: ConsentDocumentModel) {
+    return {
+      key: d.consentKey,
+      version: d.version,
+      title: d.title,
+      url: d.url || null,
+      content: d.content?.trim() ? d.content : null,
+      required: d.isRequired,
+      consent_item: d.isConsentItem,
+      effective_at: d.effectiveAt.toISOString(),
     };
   }
 }
