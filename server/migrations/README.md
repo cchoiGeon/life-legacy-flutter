@@ -9,6 +9,10 @@
 |---|------|------|
 | 1 | `20260804_01_book_multibook.sql` | 다권 `book.id` · `user_chapter.book_id` · `book_page.book_id` |
 | 2 | `20260804_02_intro_writing_plan.sql` | intro `answer_type`/`is_skippable` · `writing_plan` · i1 비활성 |
+| 3 | `20260806_01_user_credentials_avatar.sql` | `login_id` · `password_hash` · `avatar_object_key` |
+| 4 | `20260806_02_coupon.sql` | `coupon` · `coupon_redemption` (T1~T4 쿠폰 코드) |
+| 5 | `20260806_03_social_account.sql` | `social_account` (카카오 로그인 계정 연결) |
+| 6 | `20260806_04_consent_document_content.sql` | `consent_document.content` · `is_consent_item` (약관 본문) |
 
 ## 실행
 
