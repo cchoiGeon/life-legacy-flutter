@@ -17,7 +17,7 @@ migrate_working_dir/
 *.ipr
 *.iws
 .idea/
-
+test.md
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
 # is commented out by default.
@@ -55,3 +55,9 @@ lifelegacy-web/
 
 # Nest 로컬 전자책 PDF 등
 server/storage/
+
+# Android release signing (절대 커밋 금지)
+android/key.properties
+android/upload-keystore.jks
+*.jks
+*.keystore
