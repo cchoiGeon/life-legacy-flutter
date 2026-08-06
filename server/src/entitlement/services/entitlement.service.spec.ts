@@ -95,13 +95,25 @@ describe('EntitlementService', () => {
     expect(result.features.ai_photo.reason).toBe('LIMIT_REACHED');
   });
 
-  it('dashboard 요약은 storybook을 WEB_ONLY로 고정한다', async () => {
+  it('dashboard 요약은 T2/T4에서 storybook을 연다', async () => {
     const { service } = buildService({
       entitlements: [{ feature: 'audiobook', planCode: 'T2' }],
     });
     const dash = await service.getDashboardEntitlements('u1', 'b1');
 
     expect(dash.audiobook.allowed).toBe(true);
-    expect(dash.storybook).toEqual({ allowed: false, reason: 'WEB_ONLY' });
+    expect(dash.storybook).toEqual({ allowed: true, reason: null });
+  });
+
+  it('dashboard 요약은 T1에서 storybook을 잠근다', async () => {
+    const { service } = buildService({
+      entitlements: [{ feature: 'audiobook', planCode: 'T1' }],
+    });
+    const dash = await service.getDashboardEntitlements('u1', 'b1');
+
+    expect(dash.storybook).toEqual({
+      allowed: false,
+      reason: 'PLAN_REQUIRED',
+    });
   });
 });

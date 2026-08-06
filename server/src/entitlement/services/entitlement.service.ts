@@ -117,9 +117,11 @@ export class EntitlementService {
     return { plan_code: planCode, features: base };
   }
 
-  /** §6.2 dashboard 요약 — storybook은 앱 비범위 */
+  /** §6.2 dashboard 요약 — storybook은 T2/T4만 */
   async getDashboardEntitlements(userId: string, bookId: string) {
     const full = await this.getBookEntitlements(userId, bookId);
+    const planCode = full.plan_code;
+    const storybookAllowed = planCode === 'T2' || planCode === 'T4';
     return {
       ebook: {
         allowed: full.features.ebook.allowed,
@@ -129,7 +131,10 @@ export class EntitlementService {
         allowed: full.features.audiobook.allowed,
         reason: full.features.audiobook.reason,
       },
-      storybook: { allowed: false as const, reason: 'WEB_ONLY' },
+      storybook: {
+        allowed: storybookAllowed,
+        reason: storybookAllowed ? null : 'PLAN_REQUIRED',
+      },
     };
   }
 
@@ -160,16 +165,80 @@ export class EntitlementService {
     /** signup 트랜잭션 안에서는 같은 manager를 써야 FK가 보인다 */
     manager?: EntityManager,
   ): Promise<void> {
+    await this.grantPlan(userId, 'T1', source, manager);
+  }
+
+  /**
+   * T1~T4 플랜 부여. 이미 더 높은 플랜이면 유지한다.
+   * audiobook 행을 플랜 캐리어로 쓰고, T2/T4면 storybook도 연다.
+   */
+  async grantPlan(
+    userId: string,
+    planCode: string,
+    source = 'default',
+    manager?: EntityManager,
+  ): Promise<string> {
     const repo = manager
       ? manager.getRepository(UserEntitlementModel)
       : this.entitlements;
-    const existing = await this.findActiveFeature(userId, 'audiobook', repo);
-    if (existing) return;
+    const nextRank = PLAN_RANK[planCode] ?? 0;
+    if (nextRank <= 0) return this.derivePlanCode(await this.findActive(userId, repo));
+
+    const active = await this.findActive(userId, repo);
+    const currentRank = PLAN_RANK[this.derivePlanCode(active)] ?? 0;
+
+    await this.upsertFeaturePlan(
+      repo,
+      active,
+      userId,
+      'audiobook',
+      planCode,
+      source,
+      nextRank,
+    );
+
+    if (planCode === 'T2' || planCode === 'T4') {
+      await this.upsertFeaturePlan(
+        repo,
+        await this.findActive(userId, repo),
+        userId,
+        'storybook',
+        planCode,
+        source,
+        nextRank,
+      );
+    }
+
+    // 더 낮은 쿠폰이면 기존 플랜을 유지한다.
+    if (nextRank < currentRank) {
+      return this.derivePlanCode(await this.findActive(userId, repo));
+    }
+    return this.derivePlanCode(await this.findActive(userId, repo));
+  }
+
+  private async upsertFeaturePlan(
+    repo: Repository<UserEntitlementModel>,
+    active: UserEntitlementModel[],
+    userId: string,
+    feature: string,
+    planCode: string,
+    source: string,
+    nextRank: number,
+  ): Promise<void> {
+    const existing = active.find((r) => r.feature === feature);
+    if (existing) {
+      const existingRank = PLAN_RANK[existing.planCode] ?? 0;
+      if (nextRank <= existingRank) return;
+      existing.planCode = planCode;
+      existing.source = source;
+      await repo.save(existing);
+      return;
+    }
     await repo.save(
       repo.create({
         userId,
-        feature: 'audiobook',
-        planCode: 'T1',
+        feature,
+        planCode,
         source,
       }),
     );
@@ -223,6 +292,51 @@ export class EntitlementService {
     });
     const sum = rows.reduce((acc, r) => acc + r.delta, 0);
     return Math.max(0, -sum);
+  }
+
+  /** 챕터 단위 사용 횟수 (음수 delta 절대값) */
+  async countChapterUsage(
+    userId: string,
+    userChapterId: string,
+    feature: string,
+  ): Promise<number> {
+    const rows = await this.ledger.find({
+      where: { userId, userChapterId, feature },
+    });
+    const sum = rows.reduce((acc, r) => acc + r.delta, 0);
+    return Math.max(0, -sum);
+  }
+
+  async getPlanCode(userId: string): Promise<string> {
+    const active = await this.findActive(userId);
+    let planCode = this.derivePlanCode(active);
+    if (
+      this.config.get<string>('AUDIOBOOK_AUTO_GRANT') === 'true' &&
+      planCode === 'free'
+    ) {
+      planCode = 'T1';
+    }
+    return planCode;
+  }
+
+  async recordUsage(input: {
+    userId: string;
+    bookId: string;
+    userChapterId: string;
+    feature: string;
+    reason: string;
+    idempotencyKey: string;
+    delta?: number;
+  }): Promise<void> {
+    await this.ledger.insert({
+      userId: input.userId,
+      bookId: input.bookId,
+      userChapterId: input.userChapterId,
+      feature: input.feature,
+      delta: input.delta ?? -1,
+      reason: input.reason,
+      idempotencyKey: input.idempotencyKey,
+    });
   }
 }
 

@@ -12,11 +12,13 @@ import { HomeModule } from './home/home.module';
 import { IntroModule } from './intro/intro.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SettingsModule } from './settings/settings.module';
+import { AiModule } from './ai/ai.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ReviewModule } from './review/review.module';
 import { AudiobookModule } from './audiobook/audiobook.module';
 import { UsersModule } from './users/users.module';
 import { VoiceModule } from './voice/voice.module';
+import { CouponModule } from './coupon/coupon.module';
 
 @Module({
   imports: [
@@ -57,6 +59,7 @@ import { VoiceModule } from './voice/voice.module';
       }),
     }),
 
+    AiModule,
     CatalogModule,
     UsersModule,
     AuthModule,
@@ -70,6 +73,7 @@ import { VoiceModule } from './voice/voice.module';
     VoiceModule,
     NotificationsModule,
     SettingsModule,
+    CouponModule,
   ],
   controllers: [AppController],
 })
