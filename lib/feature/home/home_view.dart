@@ -49,6 +49,7 @@ class HomeView extends GetView<HomeController> {
                       onDismiss: controller.closeNotifications,
                       onMarkAllRead: controller.markAllNotificationsRead,
                       onSeeAll: controller.openAllNotifications,
+                      onItemTap: controller.openNotification,
                     );
                   }),
                 ],

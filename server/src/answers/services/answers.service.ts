@@ -6,8 +6,10 @@ import { AiService } from 'src/ai/services/ai.service';
 import { ChaptersService } from 'src/chapters/services/chapters.service';
 import { QuestionResponseDto } from 'src/chapters/dto/response/question-response.dto';
 import { QuestionStatus } from 'src/chapters/const/question-status.enum';
+import { UserQuestionModel } from 'src/chapters/entities/user-question.entity';
 import { ApiException } from 'src/common/exception/api.exception';
 import { ERROR_CODE } from 'src/common/exception/error-code.const';
+import { NotificationsService } from 'src/notifications/services/notifications.service';
 import { DraftPhase, InputMode } from '../const/answer.enum';
 import { AdvanceResponseDto } from '../dto/response/advance-response.dto';
 import { SubmitAnswerResponseDto } from '../dto/response/followup-response.dto';
@@ -35,6 +37,7 @@ export class AnswersService {
     private readonly chaptersService: ChaptersService,
     private readonly aiService: AiService,
     private readonly config: ConfigService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** 꼬리질문 최대 회차 (기본 2 → 총 답변 3회) */
@@ -201,7 +204,7 @@ export class AnswersService {
 
     return await this.buildAdvance(
       userId,
-      question.userChapter.bookId,
+      question,
       chapterCompleted,
     );
   }
@@ -223,7 +226,7 @@ export class AnswersService {
 
     return await this.buildAdvance(
       userId,
-      question.userChapter.bookId,
+      question,
       chapterCompleted,
     );
   }
@@ -314,10 +317,39 @@ export class AnswersService {
 
   private async buildAdvance(
     userId: string,
-    bookId: string,
+    question: UserQuestionModel,
     chapterCompleted: boolean,
   ): Promise<AdvanceResponseDto> {
+    const bookId = question.userChapter.bookId;
     const next = await this.chaptersService.getCurrentQuestion(userId, bookId);
+
+    if (chapterCompleted) {
+      try {
+        await this.notifications.createChapterDone({
+          userId,
+          bookId,
+          chapterTitle: question.userChapter.title,
+          chapterOrder: question.userChapter.sortOrder,
+          chapterId: question.userChapter.id,
+          linkUserQuestionId: question.id,
+        });
+
+        // 다음 질문이 없으면 책 작성을 모두 끝낸 상태 — 초안 확인 안내.
+        if (!next) {
+          const bookTitle =
+            question.userChapter.book?.title ?? question.userChapter.title;
+          await this.notifications.createBookReady({
+            userId,
+            bookId,
+            bookTitle,
+          });
+        }
+      } catch (error) {
+        this.logger.warn(
+          `인앱 알림 생성 실패 · book=${bookId} · ${String(error)}`,
+        );
+      }
+    }
 
     return {
       followup: null,

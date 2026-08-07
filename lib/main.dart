@@ -49,7 +49,7 @@ Future<void> main() async {
 
   await Storage.init();
 
-  _registerGlobals();
+  await _registerGlobals();
 
   runApp(const LifeLegacyApp());
 }
@@ -76,7 +76,7 @@ ApiClient _buildRealApi() {
 }
 
 /// 앱 생애주기 내내 살아있는 싱글턴. 등록 순서가 곧 의존성 순서다.
-void _registerGlobals() {
+Future<void> _registerGlobals() async {
   // 화면·컨트롤러는 `ApiClient` 추상 타입만 안다. 구현체는 RealApiClient 고정.
   final api = Get.put<ApiClient>(_buildRealApi(), permanent: true);
 
@@ -87,6 +87,9 @@ void _registerGlobals() {
 
   // 마이크 권한·녹음. 전사는 서버 Clova STT.
   Get.put(SpeechService(), permanent: true).init();
+
+  // FCM·OS 알림. Firebase 미설정이면 권한만 가능한 상태로 둔다.
+  await Get.put(PushNotificationService(api), permanent: true).init();
 }
 
 class LifeLegacyApp extends StatelessWidget {

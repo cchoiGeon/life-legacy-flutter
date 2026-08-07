@@ -6,6 +6,7 @@ import { HttpModule } from '@nestjs/axios';
 import { UsersModule } from 'src/users/users.module';
 import { EntitlementModule } from 'src/entitlement/entitlement.module';
 import { SocialAccountModel } from 'src/users/entities/social-account.entity';
+import { DevicePushTokensModule } from 'src/notifications/device-push-tokens.module';
 import { AuthGuardModule } from './auth-guard.module';
 import { AuthController, ConsentsController } from './auth.controller';
 import { PhoneVerificationModel } from './entities/phone-verification.entity';
@@ -35,6 +36,7 @@ import { SignupService } from './services/signup.service';
     AuthGuardModule,
     UsersModule,
     EntitlementModule,
+    DevicePushTokensModule,
   ],
   controllers: [AuthController, ConsentsController],
   providers: [

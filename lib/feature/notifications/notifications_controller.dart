@@ -4,6 +4,8 @@ import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/service/services.dart';
 
+import 'notification_navigation.dart';
+
 /// 13 알림 센터 — Figma `13 알림 센터 · /me/notifications`(169:553).
 ///
 /// 홈 드롭다운의 "전체 보기"에서 들어온다. 목록만 보여주는 화면이라
@@ -46,8 +48,15 @@ class NotificationsController extends GetxController {
     }
   }
 
-  /// 알림을 눌렀을 때. 각 알림이 어디로 가야 하는지는 서버 계약이
-  /// 정해져야 알 수 있다(딥링크 필드 등). 지금은 자리만 만들어 뒀다.
-  void openItem(AppNotification notification) =>
-      _toast.show('알림 바로가기는 준비 중이에요');
+  /// 알림을 누르면 읽음 처리 후 타입별 화면으로 이동한다.
+  Future<void> openItem(AppNotification notification) async {
+    try {
+      if (!notification.isRead) {
+        items.value = await _api.markNotificationRead(notification.id);
+      }
+      await NotificationNavigation.open(notification, toast: _toast);
+    } on ApiException catch (e) {
+      _toast.showError(e);
+    }
+  }
 }

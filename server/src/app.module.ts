@@ -16,6 +16,7 @@ import { AiModule } from './ai/ai.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ReviewModule } from './review/review.module';
 import { AudiobookModule } from './audiobook/audiobook.module';
+import { QnaModule } from './qna/qna.module';
 import { UsersModule } from './users/users.module';
 import { VoiceModule } from './voice/voice.module';
 import { CouponModule } from './coupon/coupon.module';
@@ -74,6 +75,7 @@ import { CouponModule } from './coupon/coupon.module';
     NotificationsModule,
     SettingsModule,
     CouponModule,
+    QnaModule,
   ],
   controllers: [AppController],
 })

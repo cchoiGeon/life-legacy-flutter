@@ -44,6 +44,9 @@ class SettingsController extends GetxController {
     settings.value = before.copyWith(dailyQuestionAlarm: value);
     try {
       settings.value = await _api.updateSettings(settings.value!);
+      if (value && Get.isRegistered<PushNotificationService>()) {
+        await Get.find<PushNotificationService>().onDailyAlarmEnabled();
+      }
     } on ApiException catch (e) {
       settings.value = before;
       _toast.showError(e);
@@ -65,6 +68,10 @@ class SettingsController extends GetxController {
   void openPurchase() => Get.toNamed(AppRoutes.purchase);
 
   void openCoupon() => Get.toNamed(AppRoutes.purchaseCoupon);
+
+  void openFaq() => Get.toNamed(AppRoutes.settingsFaq);
+
+  void openQna() => Get.toNamed(AppRoutes.settingsQna);
 
   void openTerms() => LegalDocumentView.open('terms_of_service');
 

@@ -1,6 +1,7 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 
 import { BaseModel } from 'src/common/entities/base.entity';
+import { BookModel } from 'src/book/entities/book.entity';
 import { AppUserModel } from 'src/users/entities/app-user.entity';
 import { UserQuestionModel } from 'src/chapters/entities/user-question.entity';
 
@@ -15,6 +16,17 @@ export class NotificationModel extends BaseModel {
   @JoinColumn({ name: 'user_id' })
   user: AppUserModel;
 
+  /**
+   * 다권에서 어느 책의 알림인지.
+   * 예전 행은 null일 수 있다 — 그때는 linkUserQuestion → chapter → book으로 보완.
+   */
+  @ManyToOne(() => BookModel, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'book_id' })
+  book: BookModel | null;
+
+  @Column({ name: 'book_id', type: 'uuid', nullable: true })
+  bookId: string | null;
+
   /** daily_question | chapter_done | book_ready */
   @Column({ type: 'varchar', length: 30 })
   type: string;
@@ -22,7 +34,7 @@ export class NotificationModel extends BaseModel {
   @Column({ type: 'varchar', length: 200 })
   title: string;
 
-  /** 눌렀을 때 갈 질문 */
+  /** 눌렀을 때 갈 질문 (daily_question · chapter_done 보조) */
   @ManyToOne(() => UserQuestionModel, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'link_user_question_id' })
   linkUserQuestion: UserQuestionModel | null;

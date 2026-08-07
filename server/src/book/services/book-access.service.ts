@@ -35,4 +35,13 @@ export class BookAccessService {
       order: { createdAt: 'DESC' },
     });
   }
+
+  /** 푸시 스케줄러 — 책이 있는 사용자 id 목록 */
+  async findAllOwnerUserIds(): Promise<string[]> {
+    const rows = await this.books
+      .createQueryBuilder('b')
+      .select('DISTINCT b.owner_user_id', 'ownerUserId')
+      .getRawMany<{ ownerUserId: string }>();
+    return rows.map((r) => r.ownerUserId);
+  }
 }

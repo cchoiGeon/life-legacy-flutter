@@ -273,6 +273,29 @@ class AuthController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  /// 약관 원문 URL을 외부 브라우저로 연다.
+  Future<void> openConsentUrl(String? url) async {
+    final trimmed = url?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      _toast.show('약관 문서를 아직 준비 중이에요');
+      return;
+    }
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || !(uri.isScheme('https') || uri.isScheme('http'))) {
+      _toast.show('약관 문서를 열 수 없어요');
+      return;
+    }
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) _toast.show('약관 문서를 열 수 없어요');
+    } catch (_) {
+      _toast.show('약관 문서를 열 수 없어요');
+    }
+  }
+
   /// "문자를 보냈어요" — 폴링이 꺼져 있으면 다시 시작하고, 즉시 한 번 확인.
   Future<void> confirmSmsSent() async {
     if (isExpired.value) return;

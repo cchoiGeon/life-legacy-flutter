@@ -1,9 +1,16 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import { NotificationModel } from '../../entities/notification.entity';
 
 export class NotificationResponseDto {
   @ApiProperty() id: string;
+
+  @ApiProperty({
+    example: 'daily_question',
+    description: 'daily_question | chapter_done | book_ready',
+  })
+  type: string;
+
   @ApiProperty({ example: '오늘의 질문이 도착했어요 · 학창 시절과 꿈' })
   title: string;
 
@@ -16,15 +23,45 @@ export class NotificationResponseDto {
 
   @ApiProperty() is_read: boolean;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description: '다권 딥링크 — 어느 책으로 갈지',
+  })
+  book_id: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: '작성 화면으로 갈 질문 id (daily_question 등)',
+  })
+  question_id: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: '리뷰 화면으로 갈 장 id (chapter_done)',
+  })
+  chapter_id: string | null;
+
   static from(
     notification: NotificationModel,
     now: Date,
   ): NotificationResponseDto {
+    const linked = notification.linkUserQuestion;
+    const chapter = linked?.userChapter ?? null;
+    const bookId =
+      notification.bookId ??
+      chapter?.bookId ??
+      chapter?.book?.id ??
+      null;
+
     return {
       id: notification.id,
+      type: notification.type,
       title: notification.title,
       time_label: formatTimeLabel(notification.createdAt, now),
       is_read: notification.readAt !== null,
+      book_id: bookId,
+      question_id: linked?.id ?? null,
+      chapter_id: chapter?.id ?? null,
     };
   }
 }

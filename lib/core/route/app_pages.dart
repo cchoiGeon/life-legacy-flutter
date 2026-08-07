@@ -59,6 +59,9 @@ import 'package:life_legacy/feature/purchase/purchase_view.dart';
 import 'package:life_legacy/feature/purchase/purchase_detail_view.dart';
 import 'package:life_legacy/feature/purchase/coupon_view.dart';
 import 'package:life_legacy/feature/legal/legal_document_view.dart';
+import 'package:life_legacy/feature/support/binding.dart';
+import 'package:life_legacy/feature/support/faq_view.dart';
+import 'package:life_legacy/feature/support/qna_view.dart';
 
 part 'app_routes.dart';
 
@@ -231,6 +234,16 @@ abstract final class AppPages {
     GetPage(
       name: AppRoutes.legal,
       page: () => const LegalDocumentView(),
+    ),
+    GetPage(
+      name: AppRoutes.settingsFaq,
+      page: () => const FaqView(),
+      binding: FaqBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.settingsQna,
+      page: () => const QnaView(),
+      binding: QnaBinding(),
     ),
   ];
 }

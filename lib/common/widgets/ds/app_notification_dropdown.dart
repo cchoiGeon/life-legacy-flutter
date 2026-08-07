@@ -131,6 +131,7 @@ class AppNotificationDropdown extends StatelessWidget {
     required this.onDismiss,
     required this.onMarkAllRead,
     required this.onSeeAll,
+    this.onItemTap,
     this.isLoading = false,
     this.visibleCount = 3,
   });
@@ -139,6 +140,7 @@ class AppNotificationDropdown extends StatelessWidget {
   final VoidCallback onDismiss;
   final VoidCallback onMarkAllRead;
   final VoidCallback onSeeAll;
+  final ValueChanged<AppNotification>? onItemTap;
   final bool isLoading;
 
   /// 드롭다운에 보여줄 최대 개수. 나머지는 "알림 모두 보기"로 넘긴다.
@@ -195,7 +197,10 @@ class AppNotificationDropdown extends StatelessWidget {
                     for (final (i, n) in items.take(visibleCount).indexed) ...[
                       if (i > 0)
                         Container(height: 1, color: AppColors.borderSoft),
-                      _DropdownNote(notification: n),
+                      _DropdownNote(
+                        notification: n,
+                        onTap: onItemTap == null ? null : () => onItemTap!(n),
+                      ),
                     ],
                   const SizedBox(height: 10),
                   _SeeAll(onTap: onSeeAll),
@@ -254,15 +259,16 @@ class _Header extends StatelessWidget {
 /// 카드 안이라 배경 없이 구분선으로만 나누고, 센터는 줄마다 카드가 된다.
 /// 안 읽음 표시(굵기·점)의 규칙은 둘이 같다.
 class _DropdownNote extends StatelessWidget {
-  const _DropdownNote({required this.notification});
+  const _DropdownNote({required this.notification, this.onTap});
 
   final AppNotification notification;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final unread = !notification.isRead;
 
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -301,6 +307,13 @@ class _DropdownNote extends StatelessWidget {
           ),
         ],
       ),
+    );
+
+    if (onTap == null) return row;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: row,
     );
   }
 }

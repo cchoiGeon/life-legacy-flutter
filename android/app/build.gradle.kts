@@ -5,6 +5,13 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    // google-services.json 이 있을 때만 FCM 네이티브 플러그인을 켠다.
+    // 파일이 없으면 빌드가 깨지지 않게 플러그인을 생략한다.
+}
+
+val googleServicesJson = file("google-services.json")
+if (googleServicesJson.exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 val keystoreProperties = Properties()
@@ -26,7 +33,7 @@ android {
     defaultConfig {
         applicationId = "kr.lifelegacy.girogi"
         // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // For more information, see the Flutter project setup docs.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

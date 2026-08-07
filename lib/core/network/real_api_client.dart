@@ -776,6 +776,31 @@ class RealApiClient implements ApiClient {
         .toList();
   }
 
+  @override
+  Future<List<AppNotification>> markNotificationRead(String id) async {
+    final body = await _post('/notifications/$id/read', null);
+
+    return (body!['items'] as List)
+        .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<void> registerDevicePushToken({
+    required String platform,
+    required String token,
+  }) async {
+    await _post('/device-push-tokens', {
+      'platform': platform,
+      'token': token,
+    });
+  }
+
+  @override
+  Future<void> revokeDevicePushToken(String token) async {
+    await _delete('/device-push-tokens/${Uri.encodeComponent(token)}');
+  }
+
   // ══════════════════════════════════════════════════════════
   // 설정
   // ══════════════════════════════════════════════════════════
@@ -806,6 +831,44 @@ class RealApiClient implements ApiClient {
     final body = await _put('/shipping-address', next.toJson());
 
     return Address.fromJson(body!);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // FAQ · QnA
+  // ══════════════════════════════════════════════════════════
+
+  @override
+  Future<FaqCatalog> faq() async {
+    final body = await _get('/faq');
+
+    return FaqCatalog.fromJson(body!);
+  }
+
+  @override
+  Future<List<PublishedQna>> publishedQna() async {
+    final items = await _getItems('/qna/published');
+
+    return items.map(PublishedQna.fromJson).toList();
+  }
+
+  @override
+  Future<List<QnaItem>> myQna() async {
+    final items = await _getItems('/qna/me');
+
+    return items.map(QnaItem.fromJson).toList();
+  }
+
+  @override
+  Future<QnaItem> createQna({
+    required String question,
+    String? category,
+  }) async {
+    final body = await _post('/qna', {
+      'question': question,
+      if (category != null) 'category': category,
+    });
+
+    return QnaItem.fromJson(body!);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -843,6 +906,9 @@ class RealApiClient implements ApiClient {
 
   Future<Map<String, dynamic>?> _put(String path, Object? data) =>
       _send(() => _dio.put<dynamic>(path, data: data));
+
+  Future<Map<String, dynamic>?> _delete(String path) =>
+      _send(() => _dio.delete<dynamic>(path));
 
   Future<List<Map<String, dynamic>>> _getItems(String path) async {
     final body = await _get(path);

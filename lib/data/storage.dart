@@ -13,6 +13,8 @@ abstract final class Storage {
   static const _keyWriteTutorialDone = 'll.write_tutorial_done';
   static const _keyLoginProvider = 'll.login_provider';
   static const _keyQuestionFontLevel = 'll.question_font_level';
+  static const _keyFcmToken = 'll.fcm_token';
+  static const _keyPushPermissionAsked = 'll.push_permission_asked';
 
   static late final GetStorage _box;
 
@@ -51,6 +53,13 @@ abstract final class Storage {
   /// 마지막 로그인 수단 — `kakao` | `phone` | `credentials`.
   static String? get loginProvider => _box.read<String>(_keyLoginProvider);
 
+  /// 마지막 등록한 FCM 토큰 (로그아웃 폐기용).
+  static String? get fcmToken => _box.read<String>(_keyFcmToken);
+
+  /// OS 알림 권한을 이미 물어봤는지 (거절 후 반복 프롬프트 방지).
+  static bool get pushPermissionAsked =>
+      _box.read<bool>(_keyPushPermissionAsked) ?? false;
+
   static bool get isLoggedIn => accessToken != null;
 
   static Future<void> saveTokens(String accessToken, String refreshToken) async {
@@ -75,6 +84,14 @@ abstract final class Storage {
   static Future<void> saveLoginProvider(String provider) =>
       _box.write(_keyLoginProvider, provider);
 
+  static Future<void> saveFcmToken(String token) =>
+      _box.write(_keyFcmToken, token);
+
+  static Future<void> clearFcmToken() => _box.remove(_keyFcmToken);
+
+  static Future<void> markPushPermissionAsked() =>
+      _box.write(_keyPushPermissionAsked, true);
+
   static Future<void> clearSession() async {
     await _box.remove(_keyAccessToken);
     await _box.remove(_keyRefreshToken);
@@ -82,5 +99,6 @@ abstract final class Storage {
     // 전화번호는 유지 — 재로그인 시 입력란에 자동으로 채운다.
     await _box.remove(_keyCurrentBookId);
     await _box.remove(_keyLoginProvider);
+    await _box.remove(_keyFcmToken);
   }
 }

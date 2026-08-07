@@ -37,6 +37,7 @@ import { RefreshTokenRepository } from '../repositories/refresh-token.repository
 import { SmsService } from './sms.service';
 import { OctomoService } from './octomo.service';
 import { AuthVerificationSessionModel } from '../entities/auth-verification-session.entity';
+import { DevicePushTokensService } from 'src/notifications/services/device-push-tokens.service';
 
 const ISSUE_LIMIT_PER_HOUR = 5;
 
@@ -56,6 +57,7 @@ export class AuthService {
     private readonly httpService: HttpService,
     @InjectRepository(SocialAccountModel)
     private readonly socialAccountRepository: Repository<SocialAccountModel>,
+    private readonly devicePushTokens: DevicePushTokensService,
   ) {}
 
   /** api-spec §1.1 */
@@ -231,6 +233,7 @@ export class AuthService {
 
   async logout(userId: string): Promise<void> {
     await this.refreshTokenRepository.revokeAllByUser(userId);
+    await this.devicePushTokens.revokeAllByUser(userId);
   }
 
   /**

@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 
 import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/data/data_manager.dart';
+import 'package:life_legacy/service/push_notification_service.dart';
 
 /// 로그인 상태를 앱 전역에서 들고 있는 서비스.
 ///
@@ -138,6 +139,13 @@ class AuthService extends GetxService {
 
   Future<void> logout() async {
     // 서버 로그아웃이 실패해도 로컬 세션은 반드시 지운다.
+    try {
+      if (Get.isRegistered<PushNotificationService>()) {
+        await Get.find<PushNotificationService>().revokeBeforeLogout();
+      }
+    } catch (_) {
+      // 무시 — 아래에서 로컬 정리는 그대로 진행한다.
+    }
     try {
       await _api.logout();
     } on ApiException {

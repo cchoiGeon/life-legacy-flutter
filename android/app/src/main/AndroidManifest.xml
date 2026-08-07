@@ -17,6 +17,9 @@
         android:name="android.permission.READ_PHONE_STATE"
         android:maxSdkVersion="29"/>
 
+    <!-- Android 13+ 알림. 런타임 요청은 PushNotificationService. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <!-- ⚠️ Android 11(API 30)+ 패키지 가시성. 이게 없으면 시스템에
          음성 인식기가 깔려 있어도 조회되지 않아 initialize()가 항상
          false를 돌려준다 — 앱은 "음성 인식을 쓸 수 없어요"만 띄운다. -->
@@ -80,6 +83,10 @@
                 <data android:scheme="kakaoa69208d65071366167d0c2041ebbcdc9" android:host="oauth"/>
             </intent-filter>
         </activity>
+        <!-- FCM 기본 채널 — PushNotificationService가 런타임에 daily_question도 만든다. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="daily_question" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

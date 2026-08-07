@@ -53,4 +53,7 @@ abstract final class AppRoutes {
 
   /// 약관·개인정보·환불정책 본문 (DB)
   static const legal = '/legal';
+
+  static const settingsFaq = '/settings/faq'; // FAQ
+  static const settingsQna = '/settings/qna'; // QnA
 }

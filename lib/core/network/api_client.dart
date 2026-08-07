@@ -369,6 +369,18 @@ abstract interface class ApiClient {
   /// "모두 읽음". 갱신된 목록을 돌려준다.
   Future<List<AppNotification>> markAllNotificationsRead();
 
+  /// 한 건 읽음. 갱신된 목록을 돌려준다.
+  Future<List<AppNotification>> markNotificationRead(String id);
+
+  /// FCM 토큰 등록/갱신 (upsert). 204.
+  Future<void> registerDevicePushToken({
+    required String platform,
+    required String token,
+  });
+
+  /// FCM 토큰 폐기. 204.
+  Future<void> revokeDevicePushToken(String token);
+
   // ══════════════════════════════════════════════════════════
   // 설정
   // ══════════════════════════════════════════════════════════
@@ -386,6 +398,22 @@ abstract interface class ApiClient {
   Future<Address> shippingAddress();
 
   Future<Address> updateShippingAddress(Address next);
+
+  // ══════════════════════════════════════════════════════════
+  // FAQ · QnA
+  // ══════════════════════════════════════════════════════════
+
+  /// 정적 FAQ (인증 불필요).
+  Future<FaqCatalog> faq();
+
+  /// 공개 게시 QnA (인증 불필요).
+  Future<List<PublishedQna>> publishedQna();
+
+  /// 내 문의 목록.
+  Future<List<QnaItem>> myQna();
+
+  /// 문의 등록.
+  Future<QnaItem> createQna({required String question, String? category});
 }
 
 /// API 오류 — 화면은 [message]만 그대로 보여준다.

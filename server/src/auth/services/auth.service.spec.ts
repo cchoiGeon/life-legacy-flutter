@@ -56,6 +56,9 @@ function buildService() {
     create: jest.fn(),
     save: jest.fn(),
   };
+  const devicePushTokens = {
+    revokeAllByUser: jest.fn(),
+  };
 
   const service = new AuthService(
     dataSource as never,
@@ -68,6 +71,7 @@ function buildService() {
     octomoService as never,
     httpService as never,
     socialAccountRepository as never,
+    devicePushTokens as never,
   );
 
   return {
@@ -79,6 +83,7 @@ function buildService() {
     octomoService,
     httpService,
     socialAccountRepository,
+    devicePushTokens,
   };
 }
 

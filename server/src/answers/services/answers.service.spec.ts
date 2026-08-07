@@ -31,6 +31,10 @@ function buildService() {
   const config = {
     get: jest.fn().mockImplementation((_k: string, def?: string) => def ?? '2'),
   };
+  const notifications = {
+    createChapterDone: jest.fn().mockResolvedValue({}),
+    createBookReady: jest.fn().mockResolvedValue({}),
+  };
 
   const service = new AnswersService(
     answersRepository as never,
@@ -38,6 +42,7 @@ function buildService() {
     chaptersService as never,
     aiService as never,
     config as never,
+    notifications as never,
   );
 
   return {
@@ -46,6 +51,7 @@ function buildService() {
     answersTransactionService,
     chaptersService,
     aiService,
+    notifications,
   };
 }
 
@@ -57,6 +63,8 @@ const question = (status = QuestionStatus.PENDING) => ({
     id: 'c1',
     title: '탄생과 유아기 시절',
     bookId: 'b1',
+    sortOrder: 1,
+    book: { title: '나의 이야기' },
   },
 });
 

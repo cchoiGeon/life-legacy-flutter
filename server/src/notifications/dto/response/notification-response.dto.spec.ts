@@ -4,12 +4,34 @@ import { NotificationResponseDto } from './notification-response.dto';
  * time_label은 **서버가** 만든다. 기기 시계가 틀어져 있으면 "2시간 전"이
  * 엉뚱하게 나오기 때문이다. 그래서 이 포맷이 곧 계약이다.
  */
-function notification(createdAt: Date, readAt: Date | null = null) {
+function notification(
+  createdAt: Date,
+  readAt: Date | null = null,
+  extras: {
+    type?: string;
+    bookId?: string | null;
+    questionId?: string;
+    chapterId?: string;
+    chapterBookId?: string;
+  } = {},
+) {
   return {
     id: 'n1',
+    type: extras.type ?? 'daily_question',
     title: '오늘의 질문이 도착했어요',
     createdAt,
     readAt,
+    bookId: extras.bookId ?? null,
+    linkUserQuestion:
+      extras.questionId || extras.chapterId
+        ? {
+            id: extras.questionId ?? 'q1',
+            userChapter: {
+              id: extras.chapterId ?? 'c1',
+              bookId: extras.chapterBookId ?? extras.bookId ?? 'b1',
+            },
+          }
+        : null,
   } as never;
 }
 
@@ -61,5 +83,36 @@ describe('NotificationResponseDto.from · time_label', () => {
     expect(
       NotificationResponseDto.from(notification(now, now), now).is_read,
     ).toBe(true);
+  });
+
+  it('딥링크 id를 type·관계에서 채운다', () => {
+    const dto = NotificationResponseDto.from(
+      notification(now, null, {
+        type: 'chapter_done',
+        bookId: 'b9',
+        questionId: 'q9',
+        chapterId: 'c9',
+      }),
+      now,
+    );
+
+    expect(dto.type).toBe('chapter_done');
+    expect(dto.book_id).toBe('b9');
+    expect(dto.question_id).toBe('q9');
+    expect(dto.chapter_id).toBe('c9');
+  });
+
+  it('book_id가 없으면 연결 질문의 장에서 보완한다', () => {
+    const dto = NotificationResponseDto.from(
+      notification(now, null, {
+        bookId: null,
+        questionId: 'q2',
+        chapterId: 'c2',
+        chapterBookId: 'b2',
+      }),
+      now,
+    );
+
+    expect(dto.book_id).toBe('b2');
   });
 });

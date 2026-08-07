@@ -119,6 +119,8 @@ class SettingsView extends GetView<SettingsController> {
                     title: '사용설명서',
                     onTap: controller.openGuide,
                   ),
+                  AppSettingRow(title: 'FAQ', onTap: controller.openFaq),
+                  AppSettingRow(title: '문의하기', onTap: controller.openQna),
                   AppSettingRow(title: '이용약관', onTap: controller.openTerms),
                   AppSettingRow(
                     title: '개인정보 처리방침',

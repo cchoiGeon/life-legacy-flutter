@@ -1,4 +1,12 @@
-import { Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -31,5 +39,16 @@ export class NotificationsController {
   @Post('read-all')
   async markAllRead(@UserId() userId: string) {
     return { items: await this.notificationsService.markAllRead(userId) };
+  }
+
+  @ApiOperation({ summary: '한 건 읽음' })
+  @ApiResponse({ status: 200, type: NotificationResponseDto, isArray: true })
+  @HttpCode(200)
+  @Post(':id/read')
+  async markOneRead(
+    @UserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return { items: await this.notificationsService.markOneRead(userId, id) };
   }
 }

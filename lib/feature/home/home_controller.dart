@@ -4,6 +4,7 @@ import 'package:life_legacy/core/network/api_client.dart';
 import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/feature/purchase/purchase_flow.dart';
+import 'package:life_legacy/feature/notifications/notification_navigation.dart';
 import 'package:life_legacy/service/services.dart';
 
 /// C1 홈 대시보드 · C2 빈 상태.
@@ -39,6 +40,19 @@ class HomeController extends GetxController {
     super.onInit();
     load();
     loadNotifications();
+    _syncPush();
+  }
+
+  /// 홈 첫 진입에서 알림 권한을 한 번 묻고 FCM 토큰을 등록한다.
+  Future<void> _syncPush() async {
+    if (!Get.isRegistered<PushNotificationService>()) return;
+    try {
+      await Get.find<PushNotificationService>().syncAfterLogin(
+        requestIfNeeded: true,
+      );
+    } catch (_) {
+      // 푸시 실패가 홈을 막으면 안 된다.
+    }
   }
 
   /// 알림은 보조 정보라 실패해도 홈을 막지 않는다 — 조용히 비워 둔다.
@@ -224,5 +238,18 @@ class HomeController extends GetxController {
     closeNotifications();
     await Get.toNamed(AppRoutes.notifications);
     await loadNotifications();
+  }
+
+  /// 드롭다운에서 한 건을 누르면 읽음 처리 후 딥링크로 이동한다.
+  Future<void> openNotification(AppNotification notification) async {
+    closeNotifications();
+    try {
+      if (!notification.isRead) {
+        notifications.value = await _api.markNotificationRead(notification.id);
+      }
+      await NotificationNavigation.open(notification, toast: _toast);
+    } on ApiException catch (e) {
+      _toast.showError(e);
+    }
   }
 }
