@@ -18,6 +18,11 @@ class SpeechService extends GetxService {
 
   final RxBool isListening = false.obs;
 
+  /// 마이크 입력 세기(0..1). 녹음 버튼 EQ 링에 쓴다.
+  ///
+  /// [start] 중에만 갱신되고, 멈추면 0으로 돌아간다.
+  final RxDouble soundLevel = 0.0.obs;
+
   /// 말하는 도중 계속 갱신되는 부분 인식 결과.
   /// 일시정지 후 이어 말하면, 멈춘 전까지의 글도 앞에 붙는다.
   final RxString partial = ''.obs;
@@ -84,6 +89,7 @@ class SpeechService extends GetxService {
     error.value = null;
 
     try {
+      soundLevel.value = 0;
       await _speech.listen(
         onResult: (result) {
           final chunk = result.recognizedWords.trim();
@@ -91,6 +97,7 @@ class SpeechService extends GetxService {
           if (!result.finalResult) return;
 
           isListening.value = false;
+          soundLevel.value = 0;
           if (_suppressFinal) {
             if (chunk.isNotEmpty) _committed = _join(_committed, chunk);
             partial.value = _committed;
@@ -98,6 +105,9 @@ class SpeechService extends GetxService {
           }
           final full = partial.value.trim();
           if (full.isNotEmpty) onFinal(full);
+        },
+        onSoundLevelChange: (raw) {
+          soundLevel.value = normalizeSoundLevel(raw);
         },
         listenOptions: stt.SpeechListenOptions(
           localeId: _localeId,
@@ -118,8 +128,20 @@ class SpeechService extends GetxService {
     } on Exception {
       error.value = '음성 인식을 시작하지 못했어요';
       isListening.value = false;
+      soundLevel.value = 0;
       return false;
     }
+  }
+
+  /// 플러그인 raw 레벨 → 0..1.
+  ///
+  /// Android는 대략 -2~10, iOS는 dB(흔히 -60~0)라서 휴리스틱으로 나눈다.
+  static double normalizeSoundLevel(double raw) {
+    if (raw < -2) {
+      // iOS dB: -60(침묵) → 0, 0 dB → 1에 가깝게
+      return ((raw + 60) / 60).clamp(0.0, 1.0);
+    }
+    return ((raw + 2) / 12).clamp(0.0, 1.0);
   }
 
   /// 일시정지 — 지금까지 글은 유지하고 듣기만 멈춘다.
@@ -128,6 +150,7 @@ class SpeechService extends GetxService {
     _suppressFinal = true;
     await _speech.stop();
     isListening.value = false;
+    soundLevel.value = 0;
     // stop 직후 finalResult가 늦게 올 수 있어 잠깐 기다린다.
     await Future<void>.delayed(const Duration(milliseconds: 350));
     final heard = partial.value.trim();
@@ -148,6 +171,7 @@ class SpeechService extends GetxService {
     if (!isListening.value) return;
     await _speech.stop();
     isListening.value = false;
+    soundLevel.value = 0;
   }
 
   /// 화면을 벗어날 때. 결과를 버린다.
@@ -156,6 +180,7 @@ class SpeechService extends GetxService {
     _committed = '';
     if (_speech.isListening) await _speech.cancel();
     isListening.value = false;
+    soundLevel.value = 0;
     partial.value = '';
     _suppressFinal = false;
   }
@@ -164,11 +189,13 @@ class SpeechService extends GetxService {
     // 'done' · 'notListening' 은 인식기가 스스로 멈춘 경우다.
     if (status == 'done' || status == 'notListening') {
       isListening.value = false;
+      soundLevel.value = 0;
     }
   }
 
   void _onError(SpeechRecognitionError e) {
     isListening.value = false;
+    soundLevel.value = 0;
     // 일시정지용 suppress 중이면 오류 토스트로 작성 흐름을 깨지 않는다.
     if (_suppressFinal) return;
     error.value = _message(e.errorMsg);

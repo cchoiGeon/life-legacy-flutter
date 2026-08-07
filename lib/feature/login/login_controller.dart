@@ -69,10 +69,24 @@ class LoginController extends GetxController {
       // 것이다 — 별도 에러 토스트 없이 조용히 돌아간다.
       if (accessToken == null) return;
 
-      // 신규(needsIntro)면 세션 적용 후 약관·마케팅 동의 화면으로 보낸다.
+      String? name;
+      String? email;
+      try {
+        final me = await UserApi.instance.me();
+        name = me.kakaoAccount?.profile?.nickname;
+        email = me.kakaoAccount?.email;
+      } catch (_) {
+        // 프로필 조회 실패해도 토큰으로 가입은 진행한다.
+      }
+
+      // 필수 약관이 없으면 동의 화면, 있으면 온보딩/홈으로.
       await _applySession(
-        await _api.loginWithKakao(accessToken),
-        collectConsentsIfNew: true,
+        await _api.loginWithKakao(
+          accessToken,
+          name: name,
+          email: email,
+        ),
+        collectConsentsIfNeeded: true,
         loginProvider: 'kakao',
       );
     } on ApiException catch (e) {
@@ -259,12 +273,20 @@ class LoginController extends GetxController {
 
   Future<void> _applySession(
     AuthSession session, {
-    bool collectConsentsIfNew = false,
+    bool collectConsentsIfNeeded = false,
     String? loginProvider,
   }) async {
     _tick?.cancel();
     await _auth.applySession(session, loginProvider: loginProvider);
-    if (collectConsentsIfNew && session.needsIntro) {
+    // 카카오 등 phone 없는 계정 → 같은 계정에 번호 연결(필수)
+    if (session.needsPhone || session.user.phone.isEmpty) {
+      Get.offAllNamed(
+        AppRoutes.auth,
+        arguments: const {'linkPhone': true},
+      );
+      return;
+    }
+    if (collectConsentsIfNeeded && session.needsConsents) {
       Get.offAllNamed(AppRoutes.consents);
       return;
     }

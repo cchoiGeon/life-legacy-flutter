@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:life_legacy/core/network/api_client.dart';
+import 'package:life_legacy/core/route/app_pages.dart';
 import 'package:life_legacy/data/data_manager.dart';
 import 'package:life_legacy/service/services.dart';
 
@@ -26,6 +28,7 @@ class BookPreviewController extends GetxController {
   final Rxn<EbookExportResult> export = Rxn<EbookExportResult>();
   final RxBool isLoading = true.obs;
   final RxBool isDownloading = false.obs;
+  final RxBool isSharing = false.obs;
 
   /// [pages] 안에서의 위치 (0부터). 책 전체 쪽번호와 다르다.
   final RxInt index = 0.obs;
@@ -118,22 +121,28 @@ class BookPreviewController extends GetxController {
     if (hasNext) index.value++;
   }
 
+  Future<File?> _preparePdfFile() async {
+    final bookId = _requireBookId();
+    export.value = await _api.generateEbook(bookId);
+    final bytes = await _api.downloadEbookFile(bookId);
+    if (bytes.isEmpty) {
+      _toast.show('전자책 파일이 비어 있어요');
+      return null;
+    }
+    final dir = await getTemporaryDirectory();
+    final file = File(
+      '${dir.path}/lifelegacy-${bookId.substring(0, 8)}.pdf',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
+  }
+
   Future<void> downloadPdf() async {
     if (isDownloading.value) return;
     isDownloading.value = true;
     try {
-      final bookId = _requireBookId();
-      export.value = await _api.generateEbook(bookId);
-      final bytes = await _api.downloadEbookFile(bookId);
-      if (bytes.isEmpty) {
-        _toast.show('전자책 파일이 비어 있어요');
-        return;
-      }
-      final dir = await getTemporaryDirectory();
-      final file = File(
-        '${dir.path}/lifelegacy-${bookId.substring(0, 8)}.pdf',
-      );
-      await file.writeAsBytes(bytes, flush: true);
+      final file = await _preparePdfFile();
+      if (file == null) return;
       final result = await OpenFilex.open(file.path);
       if (result.type != ResultType.done) {
         _toast.show('파일을 저장했어요', description: file.path);
@@ -147,7 +156,31 @@ class BookPreviewController extends GetxController {
     }
   }
 
-  void share() => downloadPdf();
+  /// 시스템 공유 시트로 PDF 공유.
+  Future<void> share() async {
+    if (isSharing.value || isDownloading.value) return;
+    isSharing.value = true;
+    try {
+      final file = await _preparePdfFile();
+      if (file == null) return;
+      final bookTitle = book.value?.title.trim();
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'application/pdf')],
+          subject: (bookTitle == null || bookTitle.isEmpty)
+              ? '나의 자서전'
+              : bookTitle,
+          text: '기로기에서 만든 자서전 PDF를 보내드려요.',
+        ),
+      );
+    } on ApiException catch (e) {
+      _toast.showError(e);
+    } catch (_) {
+      _toast.show('공유에 실패했어요. 다시 시도해 주세요');
+    } finally {
+      isSharing.value = false;
+    }
+  }
 
   Future<void> suggestTitles() async {
     try {
@@ -186,9 +219,14 @@ class BookPreviewController extends GetxController {
     }
   }
 
-  void orderPrint() => _toast.show('인쇄본 신청은 준비 중이에요');
+  void orderPrint() {
+    Get.toNamed(
+      AppRoutes.printOrder,
+      arguments: {'bookId': _requireBookId()},
+    );
+  }
 
-  void sendToFamily() => _toast.show('가족에게 보내기는 준비 중이에요');
+  void sendToFamily() => share();
 
   String _requireBookId() {
     final fromArgs = Get.arguments;

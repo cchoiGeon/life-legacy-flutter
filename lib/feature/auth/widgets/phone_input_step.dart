@@ -27,10 +27,13 @@ class PhoneInputStep extends GetView<AuthController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const AppScreenHeading(
-            title: '전화번호를\n입력해주세요',
-            subtitle:
-                '기로기는 문자 인증으로 로그인 및 회원가입을 진행합니다. 가입된 번호면 로그인, 없으면 회원가입으로 이어집니다.',
+          AppScreenHeading(
+            title: controller.linkPhoneMode
+                ? '전화번호를\n등록해 주세요'
+                : '전화번호를\n입력해주세요',
+            subtitle: controller.linkPhoneMode
+                ? '카카오 계정에 번호를 연결하면, 이후 이 번호로도 로그인할 수 있어요.'
+                : '기로기는 문자 인증으로 로그인 및 회원가입을 진행합니다. 가입된 번호면 로그인, 없으면 회원가입으로 이어집니다.',
           ),
           const SizedBox(height: 33),
           AppField(

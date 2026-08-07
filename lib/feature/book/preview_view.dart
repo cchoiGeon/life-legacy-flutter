@@ -39,9 +39,18 @@ class BookPreviewView extends GetView<BookPreviewController> {
                   ),
                   Obx(
                     () => AppTextAction(
+                      label: controller.isSharing.value ? '공유 중…' : '공유',
+                      enabled: !controller.isSharing.value &&
+                          !controller.isDownloading.value,
+                      onTap: controller.share,
+                    ),
+                  ),
+                  Obx(
+                    () => AppTextAction(
                       label:
                           controller.isDownloading.value ? '준비 중…' : 'PDF 저장',
-                      enabled: !controller.isDownloading.value,
+                      enabled: !controller.isDownloading.value &&
+                          !controller.isSharing.value,
                       onTap: controller.downloadPdf,
                     ),
                   ),

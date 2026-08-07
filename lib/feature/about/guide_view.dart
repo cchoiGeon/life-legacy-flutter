@@ -50,6 +50,15 @@ class GuideView extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                 ],
+                const AppSettingSection('책이 만들어지는 순서'),
+                for (final s in GuideContent.bookMakingSteps) ...[
+                  _StepCard(
+                    step: s.step,
+                    title: '${s.title} · ${s.duration}',
+                    body: s.description,
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 const AppSettingSection('화면별 안내'),
                 for (final sec in GuideContent.sections) ...[
                   _SectionCard(

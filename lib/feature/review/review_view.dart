@@ -291,7 +291,7 @@ class _ReadBody extends StatelessWidget {
                 () => TextButton.icon(
                   onPressed: controller.isUploadingPhoto.value
                       ? null
-                      : () => controller.addPhoto(pi),
+                      : () => controller.navigateToPhotoSuggest(pi),
                   icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
                   label: Text(
                     '이 문단 뒤에 사진 넣기',
@@ -385,6 +385,17 @@ class _SavedPanel extends StatelessWidget {
               subtitle: '나중에 수정 가능해요',
             ),
             const Spacer(),
+            if (controller.canAddPhoto) ...[
+              AppButton(
+                label: '사진 첨부하기',
+                size: AppButtonSize.lg,
+                block: true,
+                onPressed: () {
+                  controller.navigateToPhotoSuggest(0);
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
             AppButton(
               label: '다음 장 이어서 쓰기',
               size: AppButtonSize.lg,

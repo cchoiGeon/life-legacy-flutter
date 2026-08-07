@@ -58,6 +58,14 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   /// 페이지 컨트롤러 — 단계 간 슬라이드 전환.
   final pageController = PageController();
 
+  /// 카카오 등 이미 로그인한 계정에 전화번호를 붙이는 모드.
+  /// true면 신규 signup 대신 [ApiClient.linkPhone]을 호출한다.
+  bool linkPhoneMode = false;
+
+  /// 연결 모드에서 쓸 단계 수 (phone → octomo만, signup/success 제외).
+  int get stepPageCount =>
+      linkPhoneMode ? 2 : AuthStep.values.length;
+
   // ── 전화번호 ────────────────────────────────────────────────
   final phoneController = TextEditingController();
   final RxString phoneDigits = ''.obs;
@@ -159,6 +167,10 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   @override
   void onInit() {
     super.onInit();
+    final args = Get.arguments;
+    if (args is Map && args['linkPhone'] == true) {
+      linkPhoneMode = true;
+    }
     WidgetsBinding.instance.addObserver(this);
     unawaited(tryPrefillPhone());
   }
@@ -205,6 +217,10 @@ class AuthController extends GetxController with WidgetsBindingObserver {
 
   /// 단계 전환 (PageController 애니메이션).
   void _goToStep(AuthStep step) {
+    if (linkPhoneMode &&
+        (step == AuthStep.signup || step == AuthStep.success)) {
+      return;
+    }
     const pages = AuthStep.values;
     final idx = pages.indexOf(step);
     if (idx < 0) return;
@@ -213,6 +229,29 @@ class AuthController extends GetxController with WidgetsBindingObserver {
       idx,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
+    );
+  }
+
+  /// 전화 연결을 취소하고 로그인 화면으로 (세션 폐기).
+  Future<void> cancelLinkPhone() async {
+    await _auth.logout();
+    Get.offAllNamed(AppRoutes.login);
+  }
+
+  void _routeAfterSession(AuthSession session) {
+    if (session.needsPhone || session.user.phone.isEmpty) {
+      Get.offAllNamed(
+        AppRoutes.auth,
+        arguments: const {'linkPhone': true},
+      );
+      return;
+    }
+    if (session.needsConsents) {
+      Get.offAllNamed(AppRoutes.consents);
+      return;
+    }
+    Get.offAllNamed(
+      session.needsIntro ? AppRoutes.intro : AppRoutes.home,
     );
   }
 
@@ -338,7 +377,10 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   Future<void> _doVerify() async {
     if (sessionId.value.isEmpty || isExpired.value) return;
     try {
-      final result = await _api.verifyOctomo(sessionId.value);
+      final result = await _api.verifyOctomo(
+        sessionId.value,
+        link: linkPhoneMode,
+      );
       if (result.isPending) {
         if (result.expiresIn != null) {
           final left = result.expiresIn!.clamp(0, smsTimeoutSeconds);
@@ -354,11 +396,23 @@ class AuthController extends GetxController with WidgetsBindingObserver {
       _pollTimer?.cancel();
       isChecking.value = false;
 
+      if (linkPhoneMode) {
+        try {
+          final session = await _api.linkPhone(sessionId.value);
+          await _auth.applySession(session, loginProvider: 'kakao');
+          await Storage.savePhone(phoneDigits.value);
+          _routeAfterSession(session);
+        } on ApiException catch (e) {
+          _toast.showError(e);
+          // 번호 충돌 등이면 전화 입력으로 되돌려 다시 고르게 한다.
+          _goToStep(AuthStep.phone);
+        }
+        return;
+      }
+
       if (result.isExisting && result.session != null) {
         await _auth.applySession(result.session!, loginProvider: 'phone');
-        Get.offAllNamed(
-          result.session!.needsIntro ? AppRoutes.intro : AppRoutes.home,
-        );
+        _routeAfterSession(result.session!);
       } else if (result.isNewUser) {
         signupToken.value = result.signupToken ?? '';
         consents.value = result.requiredConsents

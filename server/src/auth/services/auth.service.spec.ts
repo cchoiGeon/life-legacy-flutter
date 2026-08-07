@@ -56,6 +56,16 @@ function buildService() {
     create: jest.fn(),
     save: jest.fn(),
   };
+  const consentDocumentRepository = {
+    find: jest.fn().mockResolvedValue([]),
+    createQueryBuilder: jest.fn(),
+  };
+  const userConsentRepository = {
+    find: jest.fn().mockResolvedValue([]),
+    findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+  };
   const devicePushTokens = {
     revokeAllByUser: jest.fn(),
   };
@@ -71,6 +81,8 @@ function buildService() {
     octomoService as never,
     httpService as never,
     socialAccountRepository as never,
+    consentDocumentRepository as never,
+    userConsentRepository as never,
     devicePushTokens as never,
   );
 

@@ -10,6 +10,7 @@ export 'models/chapter.dart';
 export 'models/coupon.dart';
 export 'models/home.dart';
 export 'models/notification.dart';
+export 'models/print_order.dart';
 export 'models/support.dart';
 export 'models/user.dart';
 export 'storage.dart';

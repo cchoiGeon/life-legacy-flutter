@@ -15,9 +15,14 @@ export class AppUserModel extends BaseModel {
   @Column({ type: 'varchar', length: 11, nullable: true })
   phone: string | null;
 
-  /** 자기소개 i1에서 채워진다. 가입 직후엔 빈 문자열 */
+  /** 자기소개 i1에서 채워진다. 카카오 가입 시 닉네임으로 미리 채울 수 있다 */
   @Column({ type: 'varchar', length: 50, default: '' })
   name: string;
+
+  /** 카카오 등 소셜에서 받은 이메일. 없으면 null */
+  @Index('ux_app_user_email', { unique: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  email: string | null;
 
   /**
    * 아이디/비밀번호 로그인용 식별자.

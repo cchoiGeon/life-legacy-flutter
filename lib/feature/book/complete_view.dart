@@ -59,12 +59,17 @@ class BookCompleteView extends GetView<BookPreviewController> {
                   onPressed: controller.orderPrint,
                 ),
                 const SizedBox(height: 14),
-                AppButton(
-                  label: '가족에게 보내기',
-                  variant: AppButtonVariant.neutral,
-                  size: AppButtonSize.secondary,
-                  block: true,
-                  onPressed: controller.sendToFamily,
+                Obx(
+                  () => AppButton(
+                    label: controller.isSharing.value
+                        ? '공유 준비 중…'
+                        : '가족에게 보내기',
+                    variant: AppButtonVariant.neutral,
+                    size: AppButtonSize.secondary,
+                    block: true,
+                    enabled: !controller.isSharing.value,
+                    onPressed: controller.sendToFamily,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(

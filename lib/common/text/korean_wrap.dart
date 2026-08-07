@@ -44,6 +44,40 @@ String keepAll(String text) {
   );
 }
 
+/// 문장 끝에서 줄바꿈한 뒤 어절 단위로 묶는다 — 작성 질문 표시용.
+///
+/// 구두점(`.?!` 및 전각)과 흔한 한국어 종결 뒤에서 줄을 갈라, 가운데
+/// 정렬·큰 글씨에서도 읽기 쉽게 한다. 이미 있는 `\n`은 유지한다.
+String formatQuestionText(String text) {
+  if (text.isEmpty) return text;
+  return keepAll(_breakAtSentences(text));
+}
+
+String _breakAtSentences(String text) {
+  var s = text.replaceAll('\r\n', '\n');
+
+  // 구두점 뒤 공백 → 줄바꿈
+  s = s.replaceAllMapped(
+    RegExp(r'([.?!。？！])[ \t]+'),
+    (m) => '${m[1]}\n',
+  );
+  // 구두점 바로 다음 글자(공백 없이 이어진 경우)
+  s = s.replaceAllMapped(
+    RegExp(r'([.?!。？！])(?=[^\n\s.?!。？！])'),
+    (m) => '${m[1]}\n',
+  );
+  // 한국어 종결 + 공백 (이미 줄바꿈된 자리는 건드리지 않음)
+  s = s.replaceAllMapped(
+    RegExp(
+      r'(요|다|까|죠|네요|습니다|습니까|세요|예요|이에요)[ \t]+(?=\S)',
+    ),
+    (m) => '${m[1]}\n',
+  );
+
+  // 연속 빈 줄은 하나로
+  return s.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+}
+
 String _joinWord(String word) {
   if (!_hasHangul(word)) return word;
 

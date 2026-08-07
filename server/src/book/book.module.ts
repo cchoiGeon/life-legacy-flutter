@@ -6,6 +6,7 @@ import { AuthGuardModule } from 'src/auth/auth-guard.module';
 import { ChaptersModule } from 'src/chapters/chapters.module';
 import { EntitlementModule } from 'src/entitlement/entitlement.module';
 import { ChapterReviewModel } from 'src/review/entities/chapter-review.entity';
+import { ReviewModule } from 'src/review/review.module';
 import { UsersModule } from 'src/users/users.module';
 import { BookAccessModule } from './book-access.module';
 import { BookController } from './book.controller';
@@ -30,6 +31,7 @@ import { MediaAssetModel } from 'src/media/entities/media-asset.entity';
     AuthGuardModule,
     EntitlementModule,
     forwardRef(() => ChaptersModule),
+    forwardRef(() => ReviewModule),
     AnswersModule,
     UsersModule,
   ],

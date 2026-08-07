@@ -7,6 +7,7 @@ class User {
     required this.id,
     required this.name,
     required this.phone,
+    this.email,
     this.childLinked = false,
     this.loginId,
     this.hasPassword = false,
@@ -20,6 +21,9 @@ class User {
 
   /// 010 1234 5678 형식(하이픈 없음)
   final String phone;
+
+  /// 카카오 등에서 받은 이메일. 없으면 null.
+  final String? email;
 
   /// 자녀 계정 연결 여부 (설정 화면)
   final bool childLinked;
@@ -47,6 +51,7 @@ class User {
     id: json['id'] as String,
     name: json['name'] as String? ?? '',
     phone: json['phone'] as String? ?? '',
+    email: json['email'] as String?,
     childLinked: json['child_linked'] as bool? ?? false,
     loginId: json['login_id'] as String?,
     hasPassword: json['has_password'] as bool? ?? false,
@@ -57,6 +62,7 @@ class User {
     'id': id,
     'name': name,
     'phone': phone,
+    'email': email,
     'child_linked': childLinked,
     'login_id': loginId,
     'has_password': hasPassword,
@@ -67,6 +73,7 @@ class User {
     String? id,
     String? name,
     String? phone,
+    String? email,
     bool? childLinked,
     String? loginId,
     bool? hasPassword,
@@ -75,6 +82,7 @@ class User {
     id: id ?? this.id,
     name: name ?? this.name,
     phone: phone ?? this.phone,
+    email: email ?? this.email,
     childLinked: childLinked ?? this.childLinked,
     loginId: loginId ?? this.loginId,
     hasPassword: hasPassword ?? this.hasPassword,
@@ -143,12 +151,14 @@ class AuthTokens {
   };
 }
 
-/// 로그인 결과 — 토큰과 사용자, 그리고 다음에 가야 할 화면 정보.
+  /// 로그인 결과 — 토큰과 사용자, 그리고 다음에 가야 할 화면 정보.
 class AuthSession {
   const AuthSession({
     required this.tokens,
     required this.user,
     required this.needsIntro,
+    this.needsConsents = false,
+    this.needsPhone = false,
   });
 
   final AuthTokens tokens;
@@ -157,8 +167,14 @@ class AuthSession {
   String get accessToken => tokens.accessToken;
 
   /// 자기소개(목차 생성)를 아직 안 한 신규 사용자면 true.
-  /// 스플래시·로그인 후 분기의 유일한 근거다.
+  /// 스플래시·로그인 후 분기의 근거다.
   final bool needsIntro;
+
+  /// 필수 약관이 서버에 없으면 true — 동의 화면으로 보낸다.
+  final bool needsConsents;
+
+  /// 전화번호가 없으면 true — 카카오 가입 직후 전화 연결 화면으로 보낸다.
+  final bool needsPhone;
 
   factory AuthSession.fromJson(Map<String, dynamic> json) => AuthSession(
     // 토큰은 로그인 응답에 평평하게 실려 온다 — 갱신 응답과 같은 모양이라
@@ -166,5 +182,7 @@ class AuthSession {
     tokens: AuthTokens.fromJson(json),
     user: User.fromJson(json['user'] as Map<String, dynamic>),
     needsIntro: json['needs_intro'] as bool? ?? false,
+    needsConsents: json['needs_consents'] as bool? ?? false,
+    needsPhone: json['needs_phone'] as bool? ?? false,
   );
 }

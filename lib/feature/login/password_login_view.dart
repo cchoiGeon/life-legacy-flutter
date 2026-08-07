@@ -44,6 +44,17 @@ class PasswordLoginController extends GetxController {
         password: pw,
       );
       await _auth.applySession(session, loginProvider: 'credentials');
+      if (session.needsPhone || session.user.phone.isEmpty) {
+        Get.offAllNamed(
+          AppRoutes.auth,
+          arguments: const {'linkPhone': true},
+        );
+        return;
+      }
+      if (session.needsConsents) {
+        Get.offAllNamed(AppRoutes.consents);
+        return;
+      }
       Get.offAllNamed(
         session.needsIntro ? AppRoutes.intro : AppRoutes.home,
       );

@@ -174,6 +174,13 @@ class BookDetailController extends GetxController {
     }
   }
 
+  void openPhotoAlbum() {
+    Get.toNamed(
+      AppRoutes.bookPhotos,
+      arguments: {'bookId': _requireBookId()},
+    );
+  }
+
   Future<void> openChapter(Chapter chapter) async {
     switch (chapter.status) {
       case ChapterStatus.locked:

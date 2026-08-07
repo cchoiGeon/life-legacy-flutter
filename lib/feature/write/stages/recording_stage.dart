@@ -31,10 +31,9 @@ class RecordingStage extends GetView<WriteController> {
         Expanded(
           child: Stack(
             children: [
-              // 질문판은 D1과 **똑같은 크기**다. 말하는 동안에도 질문을 보며
+              // 질문판은 남은 높이를 채운다. 말하는 동안에도 질문을 보며
               // 답해야 하므로, 받아쓴 글에 자리를 내주고 줄어들면 안 된다.
-              Align(
-                alignment: Alignment.topCenter,
+              Positioned.fill(
                 child: Obx(
                   () => QuestionPanel(
                     question: controller.revealedQuestion.value,
@@ -89,6 +88,7 @@ class RecordingStage extends GetView<WriteController> {
           () => AppMicButton(
             recording: true,
             paused: controller.isPaused.value,
+            level: controller.micLevel.value,
             onTap: controller.stopRecording,
           ),
         ),
@@ -100,25 +100,51 @@ class RecordingStage extends GetView<WriteController> {
             AppTypography.bold,
           ).copyWith(color: AppColors.textSecondary, letterSpacing: -0.1),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Obx(
-          () => AppButton(
-            label: controller.isPaused.value ? '이어하기' : '일시정지',
-            variant: AppButtonVariant.outline,
-            size: AppButtonSize.assist,
+          () => TextButton(
             onPressed: controller.isPaused.value
                 ? controller.resumeRecording
                 : controller.pauseRecording,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.brand,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              controller.isPaused.value ? '이어하기' : '일시정지',
+              style: AppTypography.bodyBase.copyWith(
+                fontSize: 15,
+                color: AppColors.brand,
+                letterSpacing: -0.1,
+                decoration: TextDecoration.underline,
+                decorationColor: AppColors.brand.withValues(alpha: 0.45),
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: 12),
-        AppButton(
-          label: '글로 답하기',
-          variant: AppButtonVariant.neutral,
-          size: AppButtonSize.assist,
+        const SizedBox(height: 4),
+        TextButton(
           onPressed: controller.useKeyboard,
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.brand,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(
+            '글로 답하기',
+            style: AppTypography.bodyBase.copyWith(
+              fontSize: 15,
+              color: AppColors.brand,
+              letterSpacing: -0.1,
+              decoration: TextDecoration.underline,
+              decorationColor: AppColors.brand.withValues(alpha: 0.45),
+            ),
+          ),
         ),
-        SizedBox(height: AppInsets.bottom(context, 62)),
+        SizedBox(height: AppInsets.bottom(context, 28)),
       ],
     );
   }

@@ -78,6 +78,8 @@ export class SignupService {
     refresh_token: string;
     expires_in: number;
     needs_intro: boolean;
+    needs_consents: boolean;
+    needs_phone: boolean;
     user: UserResponseDto;
   }> {
     const sessionId = this.octomoService.resolveSignupToken(signupToken);
@@ -202,6 +204,8 @@ export class SignupService {
         refresh_token: refreshToken,
         expires_in: ACCESS_TOKEN_TTL_SECONDS,
         needs_intro: true,
+        needs_consents: false,
+        needs_phone: false,
         user: UserResponseDto.from(savedUser),
       };
     });

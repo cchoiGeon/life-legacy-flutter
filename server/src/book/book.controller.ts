@@ -9,6 +9,7 @@ import {
 import { UserId } from 'src/auth/decorator/user.decorator';
 import { AccessTokenGuard } from 'src/auth/guard/access-token.guard';
 import { EntitlementsResponseDto } from 'src/entitlement/dto/response/entitlements-response.dto';
+import { ReviewService } from 'src/review/services/review.service';
 import { BookPageResponseDto } from './dto/response/book-page-response.dto';
 import { BookResponseDto } from './dto/response/book-response.dto';
 import { BookService } from './services/book.service';
@@ -18,7 +19,10 @@ import { BookService } from './services/book.service';
 @UseGuards(AccessTokenGuard)
 @Controller('books')
 export class BookController {
-  constructor(private readonly bookService: BookService) {}
+  constructor(
+    private readonly bookService: BookService,
+    private readonly reviewService: ReviewService,
+  ) {}
 
   @ApiOperation({ summary: '책 목록' })
   @Get()
@@ -54,5 +58,24 @@ export class BookController {
     @Param('bookId', ParseUUIDPipe) bookId: string,
   ) {
     return { items: await this.bookService.getPages(userId, bookId) };
+  }
+
+  @ApiOperation({ summary: '책 전체 장별 사진 목록 (사진첩)' })
+  @Get(':bookId/photos')
+  getBookPhotos(
+    @UserId() userId: string,
+    @Param('bookId', ParseUUIDPipe) bookId: string,
+  ) {
+    return this.reviewService.getBookPhotos(userId, bookId);
+  }
+
+  @ApiOperation({ summary: '장 사진 상세 + 원고 (G4 chapter-read)' })
+  @Get(':bookId/photos/:chapterId')
+  getChapterPhotos(
+    @UserId() userId: string,
+    @Param('bookId', ParseUUIDPipe) bookId: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+  ) {
+    return this.reviewService.getChapterPhotos(userId, bookId, chapterId);
   }
 }

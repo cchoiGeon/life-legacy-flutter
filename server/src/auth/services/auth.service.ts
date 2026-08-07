@@ -1,4 +1,4 @@
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 
 import { randomUUID } from 'node:crypto';
 
@@ -37,6 +37,8 @@ import { RefreshTokenRepository } from '../repositories/refresh-token.repository
 import { SmsService } from './sms.service';
 import { OctomoService } from './octomo.service';
 import { AuthVerificationSessionModel } from '../entities/auth-verification-session.entity';
+import { ConsentDocumentModel } from '../entities/consent-document.entity';
+import { UserConsentModel } from '../entities/user-consent.entity';
 import { DevicePushTokensService } from 'src/notifications/services/device-push-tokens.service';
 
 const ISSUE_LIMIT_PER_HOUR = 5;
@@ -57,6 +59,10 @@ export class AuthService {
     private readonly httpService: HttpService,
     @InjectRepository(SocialAccountModel)
     private readonly socialAccountRepository: Repository<SocialAccountModel>,
+    @InjectRepository(ConsentDocumentModel)
+    private readonly consentDocumentRepository: Repository<ConsentDocumentModel>,
+    @InjectRepository(UserConsentModel)
+    private readonly userConsentRepository: Repository<UserConsentModel>,
     private readonly devicePushTokens: DevicePushTokensService,
   ) {}
 
@@ -155,14 +161,18 @@ export class AuthService {
    * 카카오 사용자 ID를 얻는다 — 토큰 자체가 카카오 서버에서 검증되므로
    * 서버는 별도 앱 키 없이 `Authorization: Bearer {token}`만 실어 보낸다.
    * `social_account(provider='kakao')`로 기존 계정을 찾거나, 없으면
-   * 전화번호 없는 계정을 새로 만들고 연결한다.
+   * 앱이 넘긴 닉네임·이메일로 전화번호 없는 계정을 새로 만들고 연결한다.
    */
   async loginWithKakao(
     kakaoAccessToken: string,
+    profile?: { name?: string; email?: string },
   ): Promise<AuthSessionResponseDto> {
+    const name = profile?.name?.trim() || '';
+    const email = profile?.email?.trim() || null;
+
     const provider = this.configService.get<string>('KAKAO_PROVIDER', 'stub');
     if (provider === 'stub') {
-      const user = await this.appUserRepository.create(null);
+      const user = await this.appUserRepository.create(null, { name, email });
       return await this.issueSession(user);
     }
 
@@ -173,10 +183,11 @@ export class AuthService {
       relations: { user: true },
     });
     if (existingLink) {
+      await this.fillMissingKakaoProfile(existingLink.user, name, email);
       return await this.issueSession(existingLink.user);
     }
 
-    const user = await this.appUserRepository.create(null);
+    const user = await this.appUserRepository.create(null, { name, email });
     await this.socialAccountRepository.save(
       this.socialAccountRepository.create({
         user,
@@ -186,6 +197,159 @@ export class AuthService {
     );
 
     return await this.issueSession(user);
+  }
+
+  /** 기존 카카오 계정에 비어 있는 name/email만 채운다 */
+  private async fillMissingKakaoProfile(
+    user: AppUserModel,
+    name: string,
+    email: string | null,
+  ): Promise<void> {
+    let dirty = false;
+    if (!user.name?.trim() && name) {
+      user.name = name;
+      dirty = true;
+    }
+    if (!user.email && email) {
+      user.email = email;
+      dirty = true;
+    }
+    if (dirty) await this.appUserRepository.save(user);
+  }
+
+  /**
+   * 카카오 등 이미 세션이 있는 사용자의 약관 동의 저장.
+   * 필수 항목이 빠지면 CONSENT_REQUIRED.
+   */
+  async saveConsents(
+    userId: string,
+    consents: { key: string; version: string; agreed: boolean }[],
+  ): Promise<AuthSessionResponseDto> {
+    const user = await this.appUserRepository.findById(userId);
+    if (!user) {
+      throw new ApiException(ERROR_CODE.AUTH.UNAUTHORIZED);
+    }
+
+    const requiredDocs = await this.consentDocumentRepository.find({
+      where: { isRequired: true, isConsentItem: true },
+    });
+    const requiredKeys = new Set(requiredDocs.map((d) => d.consentKey));
+    const consentedKeys = new Set(
+      consents.filter((c) => c.agreed).map((c) => c.key),
+    );
+    for (const key of requiredKeys) {
+      if (!consentedKeys.has(key)) {
+        throw new ApiException(ERROR_CODE.AUTH.CONSENT_REQUIRED);
+      }
+    }
+
+    const now = new Date();
+    const consentedEntries = consents.filter((c) => c.agreed);
+    const consentKeys = consentedEntries.map((c) => c.key);
+    const allDocs =
+      consentKeys.length > 0
+        ? await this.consentDocumentRepository
+            .createQueryBuilder('cd')
+            .where('cd.consent_key IN (:...keys)', { keys: consentKeys })
+            .getMany()
+        : [];
+    const docByKey = new Map(allDocs.map((d) => [d.consentKey, d]));
+
+    for (const entry of consentedEntries) {
+      const doc = docByKey.get(entry.key);
+      if (!doc) continue;
+
+      const existing = await this.userConsentRepository.findOne({
+        where: {
+          user: { id: userId },
+          consentDocument: { id: doc.id },
+        },
+      });
+      if (existing) {
+        if (existing.revokedAt) {
+          existing.revokedAt = null;
+          existing.agreedAt = now;
+          await this.userConsentRepository.save(existing);
+        }
+        continue;
+      }
+
+      await this.userConsentRepository.save(
+        this.userConsentRepository.create({
+          user,
+          consentDocument: doc,
+          agreedAt: now,
+          channel: 'app',
+        }),
+      );
+    }
+
+    return await this.issueSession(user);
+  }
+
+  /**
+   * 로그인된(카카오 등) 사용자에 OCTOMO 인증된 전화번호를 붙인다.
+   * 다른 계정이 이미 쓰는 번호면 PHONE_TAKEN.
+   */
+  async linkPhone(
+    userId: string,
+    sessionId: string,
+  ): Promise<AuthSessionResponseDto> {
+    const user = await this.appUserRepository.findById(userId);
+    if (!user) {
+      throw new ApiException(ERROR_CODE.AUTH.UNAUTHORIZED);
+    }
+
+    const session = await this.dataSource
+      .getRepository(AuthVerificationSessionModel)
+      .findOne({ where: { id: sessionId } });
+    if (!session) {
+      throw new ApiException(ERROR_CODE.COMMON.NOT_FOUND);
+    }
+
+    const now = new Date();
+    if (session.expiresAt <= now) {
+      throw new ApiException(ERROR_CODE.AUTH.VERIFICATION_EXPIRED);
+    }
+    if (!session.verifiedAt) {
+      throw new ApiException(ERROR_CODE.AUTH.VERIFICATION_NOT_COMPLETED);
+    }
+    if (session.consumedAt) {
+      throw new ApiException(ERROR_CODE.AUTH.VERIFICATION_EXPIRED);
+    }
+
+    const phone = session.normalizedPhone;
+    const owner = await this.appUserRepository.findByPhone(phone);
+    if (owner && owner.id !== userId) {
+      throw new ApiException(ERROR_CODE.AUTH.PHONE_TAKEN);
+    }
+
+    user.phone = phone;
+    await this.appUserRepository.save(user);
+
+    await this.octomoService.consumeSession(sessionId);
+
+    return await this.issueSession(user);
+  }
+
+  /** Authorization 헤더에 유효한 액세스 토큰이 있으면 user id, 아니면 null */
+  async optionalUserIdFromAuthorization(
+    authorization: string | undefined,
+  ): Promise<string | null> {
+    if (!authorization) return null;
+    const [scheme, token] = authorization.split(' ');
+    if (scheme !== 'Bearer' || !token) return null;
+    try {
+      const payload = await this.jwtService.verifyAsync<{ sub: string }>(
+        token,
+        {
+          secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        },
+      );
+      return payload.sub ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /** 카카오 액세스 토큰 → 카카오 사용자 ID(문자열). 토큰 검증은 카카오 서버가 한다 */
@@ -295,6 +459,8 @@ export class AuthService {
     refresh_token: string;
     expires_in: number;
     needs_intro: boolean;
+    needs_consents: boolean;
+    needs_phone: boolean;
     user: UserResponseDto;
   } | null> {
     const session = await this.dataSource
@@ -318,13 +484,33 @@ export class AuthService {
     await this.appUserRepository.save(user);
 
     const tokens = await this.issueTokens(user);
+    const needsConsents = await this.userNeedsConsents(user.id);
 
     return {
       ...tokens,
       // 목차 확정까지 끝내야 false가 된다. 앱 분기의 유일한 근거다.
       needs_intro: user.introCompletedAt === null,
+      needs_consents: needsConsents,
+      needs_phone: !user.phone,
       user: UserResponseDto.from(user),
     };
+  }
+
+  /** 필수 약관이 user_consent에 없으면 true */
+  private async userNeedsConsents(userId: string): Promise<boolean> {
+    const requiredDocs = await this.consentDocumentRepository.find({
+      where: { isRequired: true, isConsentItem: true },
+    });
+    if (requiredDocs.length === 0) return false;
+
+    const existing = await this.userConsentRepository.find({
+      where: { user: { id: userId }, revokedAt: IsNull() },
+      relations: { consentDocument: true },
+    });
+    const agreedKeys = new Set(
+      existing.map((c) => c.consentDocument.consentKey),
+    );
+    return requiredDocs.some((d) => !agreedKeys.has(d.consentKey));
   }
 
   private async issueTokens(

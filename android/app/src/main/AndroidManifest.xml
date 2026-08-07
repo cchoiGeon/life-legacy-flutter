@@ -36,12 +36,21 @@
             <action android:name="android.intent.action.SENDTO" />
             <data android:scheme="smsto" />
         </intent>
+        <!-- 카카오톡 설치 여부 조회 (없으면 계정 웹 로그인으로만 감) -->
+        <package android:name="com.kakao.talk" />
+        <!-- 카카오 계정 로그인 Custom Tabs -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
     </queries>
 
     <application
         android:label="기로기"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

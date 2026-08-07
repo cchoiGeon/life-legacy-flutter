@@ -163,6 +163,26 @@ class ReviewController extends GetxController {
   bool get hasAiPhoto =>
       review.value?.media.any((m) => m.source == 'ai_generated') ?? false;
 
+  void navigateToPhotoSuggest(int paragraphIndex) {
+    if (!canAddPhoto) return;
+    final r = review.value;
+    if (r == null) return;
+    final existingCount =
+        r.media.where((m) => m.source == 'user_upload').length;
+    Get.toNamed(
+      AppRoutes.bookPhotoSuggest,
+      arguments: {
+        'bookId': bookId,
+        'chapterId': chapterId,
+        'chapterTitle': r.chapterTitle,
+        'chapterOrder': r.chapterOrder,
+        'preferredParagraphIndex': paragraphIndex,
+        'returnTo': 'review',
+        'existingManualPhotoCount': existingCount,
+      },
+    );
+  }
+
   Future<void> generateAiPhoto({bool regenerate = false}) async {
     if (isGeneratingAiPhoto.value) return;
     if (regenerate && !canRegenAiPhoto) {

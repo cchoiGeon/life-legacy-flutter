@@ -9,6 +9,13 @@ export class UserResponseDto {
   @ApiProperty({ example: '김영희', description: '가입 직후엔 빈 문자열' })
   name: string;
 
+  @ApiProperty({
+    example: 'user@kakao.com',
+    nullable: true,
+    description: '카카오 등에서 받은 이메일. 없으면 null',
+  })
+  email: string | null;
+
   @ApiProperty({ example: '01012345678', nullable: true })
   phone: string | null;
 
@@ -38,6 +45,7 @@ export class UserResponseDto {
     return {
       id: user.id,
       name: user.name,
+      email: user.email,
       phone: user.phone,
       child_linked: user.childLinked,
       login_id: user.loginId,

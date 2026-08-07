@@ -12,28 +12,33 @@ import 'package:life_legacy/common/constants/typography.dart';
 ///    바뀌었지만, 새 시안은 색을 그대로 두고 **글리프만** 마이크 → 정지 사각으로
 ///    바꾼다.
 ///
-/// "지금 듣고 있다"는 **버튼에서 번져 나가는 파문**이 알려준다.
-/// 물에 돌을 던진 것처럼 원이 밖으로 커지며 옅어진다. 예전에는 그
-/// 일을 버튼 위 막대 파형과 아래 "듣고 있어요 · 0:23"이 나눠 맡았는데, 세로로
-/// 자리를 두 군데나 먹어서 작은 화면이 깨졌다. 둘 다 걷어내고 신호를 버튼
-/// 하나에 모았다.
+/// "지금 듣고 있다"는 **버튼에서 번져 나가는 파문**과 **바깥 EQ 링**이 알려준다.
+/// 파문은 장식 물결이고, EQ는 실제 마이크 음량([level])에 반응한다.
+/// 둘 다 자리를 차지하지 않아 녹음 시작 순간 버튼이 밀리지 않는다.
 class AppMicButton extends StatelessWidget {
   const AppMicButton({
     super.key,
     required this.recording,
     required this.onTap,
     this.paused = false,
+    this.level = 0,
     this.size = 160,
   });
 
   /// 파문을 테스트·디버깅에서 집어내는 손잡이.
   static const rippleKey = ValueKey('mic-ripple');
 
+  /// EQ 링을 테스트·디버깅에서 집어내는 손잡이.
+  static const eqKey = ValueKey('mic-eq');
+
   final bool recording;
   final VoidCallback onTap;
 
-  /// 일시정지 중이면 파문을 끈다. 메인 버튼은 여전히 "끝내기"다.
+  /// 일시정지 중이면 파문·EQ를 끈다. 메인 버튼은 여전히 "끝내기"다.
   final bool paused;
+
+  /// 마이크 입력 세기(0..1). [SpeechService.soundLevel]에서 온다.
+  final double level;
 
   /// 시안 실측 160. 이 화면의 유일한 조작이라 크게 잡는다.
   final double size;
@@ -83,7 +88,7 @@ class AppMicButton extends StatelessWidget {
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          // ⚠️ 파문은 버튼 밖으로 번지지만 **자리는 차지하지 않는다.**
+          // ⚠️ 파문·EQ는 버튼 밖으로 번지지만 **자리는 차지하지 않는다.**
           //    `Positioned.fill` + `OverflowBox`라 Stack 크기는 버튼이 정한다 —
           //    자리를 먹으면 녹음을 시작하는 순간 마이크가 손 밑에서 밀려난다.
           if (listening)
@@ -101,6 +106,21 @@ class AppMicButton extends StatelessWidget {
                 ),
               ),
             ),
+          if (listening)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: OverflowBox(
+                  maxWidth: size + bloom * 2,
+                  maxHeight: size + bloom * 2,
+                  child: _MicEqualizer(
+                    key: eqKey,
+                    diameter: size + bloom * 2,
+                    buttonRadius: size / 2,
+                    level: level.clamp(0.0, 1.0),
+                  ),
+                ),
+              ),
+            ),
           button,
         ],
       ),
@@ -113,8 +133,8 @@ class AppMicButton extends StatelessWidget {
 /// 물에 돌을 던졌을 때처럼 원이 밖으로 커지면서 옅어진다. 원 셋이 시차를
 /// 두고 이어 나가서 끊기지 않고 계속 번지는 것처럼 보인다.
 ///
-/// ⚠️ 실제 오디오 레벨이 아니다. `speech_to_text`가 음량을 주지 않기 때문이다.
-///    레벨을 받을 수 있게 되면 [_MicRipplePainter]의 반지름 계산에 곱해 주면 된다.
+/// 실제 오디오 레벨은 [_MicEqualizer]가 맡는다. 파문은 "듣고 있다"는
+/// 지속 신호다.
 class _MicRipple extends StatefulWidget {
   const _MicRipple({
     super.key,
@@ -218,6 +238,124 @@ class _MicRipplePainter extends CustomPainter {
   @override
   bool shouldRepaint(_MicRipplePainter old) =>
       old.t != t || old.startRadius != startRadius || old.spread != spread;
+}
+
+/// 버튼 바깥을 도는 음량 EQ 링.
+///
+/// 단일 [level]을 막대마다 위상만 다르게 펼친다(진짜 FFT 아님).
+/// 파문보다 안쪽에 그려서 물결이 바깥으로 더 멀리 보이게 한다.
+class _MicEqualizer extends StatefulWidget {
+  const _MicEqualizer({
+    super.key,
+    required this.diameter,
+    required this.buttonRadius,
+    required this.level,
+  });
+
+  final double diameter;
+  final double buttonRadius;
+  final double level;
+
+  @override
+  State<_MicEqualizer> createState() => _MicEqualizerState();
+}
+
+class _MicEqualizerState extends State<_MicEqualizer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _c.stop();
+      _c.value = 0;
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: widget.diameter,
+    height: widget.diameter,
+    child: AnimatedBuilder(
+      animation: _c,
+      builder: (_, _) => CustomPaint(
+        size: Size.square(widget.diameter),
+        painter: _MicEqualizerPainter(
+          t: _c.value,
+          buttonRadius: widget.buttonRadius,
+          level: widget.level,
+          frozen: MediaQuery.disableAnimationsOf(context),
+        ),
+      ),
+    ),
+  );
+}
+
+class _MicEqualizerPainter extends CustomPainter {
+  const _MicEqualizerPainter({
+    required this.t,
+    required this.buttonRadius,
+    required this.level,
+    required this.frozen,
+  });
+
+  final double t;
+  final double buttonRadius;
+  final double level;
+  final bool frozen;
+
+  static const _bars = 24;
+  static const _gapFromButton = 6.0;
+  static const _minLen = 3.0;
+  static const _maxLen = 14.0;
+  static const _barWidth = 3.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final paint = Paint()
+      ..color = AppColors.warm
+      ..strokeWidth = _barWidth
+      ..strokeCap = StrokeCap.round;
+
+    for (var i = 0; i < _bars; i++) {
+      final angle = (i / _bars) * math.pi * 2;
+      // 단일 레벨을 위상만 다르게 — 침묵이면 거의 최소, 크면 들쭉날쭉.
+      final phase = math.sin((t * math.pi * 2) + i * 0.55);
+      final wobble = frozen ? 0.35 : 0.55 + 0.45 * phase;
+      final len = _minLen + (_maxLen - _minLen) * level * wobble;
+
+      final inner = buttonRadius + _gapFromButton;
+      final outer = inner + len;
+      final dx = math.cos(angle);
+      final dy = math.sin(angle);
+
+      canvas.drawLine(
+        Offset(center.dx + dx * inner, center.dy + dy * inner),
+        Offset(center.dx + dx * outer, center.dy + dy * outer),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MicEqualizerPainter old) =>
+      old.t != t ||
+      old.buttonRadius != buttonRadius ||
+      old.level != level ||
+      old.frozen != frozen;
 }
 
 /// 마이크 글리프 — 시안 341:661~663의 사각형 셋을 그대로 옮긴 것.

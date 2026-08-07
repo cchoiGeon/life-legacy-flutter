@@ -41,9 +41,15 @@ class RealApiClient implements ApiClient {
   }
 
   @override
-  Future<AuthSession> loginWithKakao(String kakaoAccessToken) async {
+  Future<AuthSession> loginWithKakao(
+    String kakaoAccessToken, {
+    String? name,
+    String? email,
+  }) async {
     final body = await _post('/auth/kakao', {
       'kakao_access_token': kakaoAccessToken,
+      if (name != null && name.isNotEmpty) 'name': name,
+      if (email != null && email.isNotEmpty) 'email': email,
     });
 
     return AuthSession.fromJson(body!);
@@ -147,8 +153,14 @@ class RealApiClient implements ApiClient {
   }
 
   @override
-  Future<OctomoVerifyResult> verifyOctomo(String sessionId) async {
-    final body = await _post('/auth/octomo/verify', {'session_id': sessionId});
+  Future<OctomoVerifyResult> verifyOctomo(
+    String sessionId, {
+    bool link = false,
+  }) async {
+    final body = await _post('/auth/octomo/verify', {
+      'session_id': sessionId,
+      if (link) 'link': true,
+    });
     return OctomoVerifyResult.fromJson(body!);
   }
 
@@ -179,6 +191,22 @@ class RealApiClient implements ApiClient {
   Future<ConsentDocument> consentDocument(String key) async {
     final body = await _get('/consents/documents/$key');
     return ConsentDocument.fromJson(body!);
+  }
+
+  @override
+  Future<AuthSession> saveConsents(List<ConsentAgreement> consents) async {
+    final body = await _post('/auth/consents', {
+      'consents': consents.map((c) => c.toJson()).toList(),
+    });
+    return AuthSession.fromJson(body!);
+  }
+
+  @override
+  Future<AuthSession> linkPhone(String sessionId) async {
+    final body = await _post('/auth/phone/link', {
+      'session_id': sessionId,
+    });
+    return AuthSession.fromJson(body!);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -406,11 +434,13 @@ class RealApiClient implements ApiClient {
     required List<int> bytes,
     required String filename,
     String contentType = 'image/jpeg',
+    String? caption,
   }) async {
     try {
       final form = FormData.fromMap({
         'image': MultipartFile.fromBytes(bytes, filename: filename),
         'paragraph_index': paragraphIndex,
+        if (caption != null) 'caption': caption,
       });
       final response = await _dio.post<Map<String, dynamic>>(
         '/books/$bookId/chapters/$chapterId/review/media',
@@ -476,6 +506,42 @@ class RealApiClient implements ApiClient {
   ) async {
     final body = await _get('/books/$bookId/chapters/$chapterId/completion');
     return ChapterCompletion.fromJson(body!);
+  }
+
+  @override
+  Future<void> updateReviewMedia({
+    required String bookId,
+    required String chapterId,
+    required String placementId,
+    String? caption,
+    int? paragraphIndex,
+  }) async {
+    try {
+      await _dio.patch<dynamic>(
+        '/books/$bookId/chapters/$chapterId/review/media/$placementId',
+        data: {
+          if (caption != null) 'caption': caption,
+          if (paragraphIndex != null) 'paragraph_index': paragraphIndex,
+        },
+      );
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  @override
+  Future<BookPhotosResponse> bookPhotos(String bookId) async {
+    final body = await _get('/books/$bookId/photos');
+    return BookPhotosResponse.fromJson(body ?? const {});
+  }
+
+  @override
+  Future<ChapterPhotosDetail> chapterPhotosDetail(
+    String bookId,
+    String chapterId,
+  ) async {
+    final body = await _get('/books/$bookId/photos/$chapterId');
+    return ChapterPhotosDetail.fromJson(body!);
   }
 
   @override
@@ -831,6 +897,21 @@ class RealApiClient implements ApiClient {
     final body = await _put('/shipping-address', next.toJson());
 
     return Address.fromJson(body!);
+  }
+
+  @override
+  Future<PrintOrderResult> createPrintOrder({
+    required String bookId,
+    required int quantity,
+    String? note,
+  }) async {
+    final body = await _post('/print-orders', {
+      'book_id': bookId,
+      'quantity': quantity,
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+    });
+
+    return PrintOrderResult.fromJson(body!);
   }
 
   // ══════════════════════════════════════════════════════════

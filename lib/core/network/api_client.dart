@@ -24,7 +24,12 @@ abstract interface class ApiClient {
   Future<AuthSession> verifyCode({required String phone, required String code});
 
   /// 카카오로 시작하기. [kakaoAccessToken]은 카카오 SDK 로그인으로 얻은 토큰.
-  Future<AuthSession> loginWithKakao(String kakaoAccessToken);
+  /// [name]/[email]은 SDK `me()`에서 받은 프로필(없으면 null).
+  Future<AuthSession> loginWithKakao(
+    String kakaoAccessToken, {
+    String? name,
+    String? email,
+  });
 
   /// 아이디·비밀번호 로그인 (웹 가입 또는 설정에서 만든 계정).
   Future<AuthSession> loginWithCredentials({
@@ -73,7 +78,11 @@ abstract interface class ApiClient {
 
   /// OCTOMO 문자 수신 여부를 폴링한다.
   /// `account`가 `new`면 signup_token과 required_consents가 함께 온다.
-  Future<OctomoVerifyResult> verifyOctomo(String sessionId);
+  /// [link]가 true면 로그인 계정에 번호 연결용(`link_ready`).
+  Future<OctomoVerifyResult> verifyOctomo(
+    String sessionId, {
+    bool link = false,
+  });
 
   /// 신규 사용자 가입 — 이름 + 약관 동의를 서버에 보내고 세션을 받는다.
   Future<AuthSession> signUp({
@@ -88,6 +97,12 @@ abstract interface class ApiClient {
 
   /// 약관 문서 단건 (`terms_of_service` · `privacy_policy` · `refund_policy` 등).
   Future<ConsentDocument> consentDocument(String key);
+
+  /// 카카오 등 세션이 이미 있는 사용자의 약관 동의 저장.
+  Future<AuthSession> saveConsents(List<ConsentAgreement> consents);
+
+  /// 로그인된 계정에 OCTOMO 인증 세션의 전화번호를 연결한다.
+  Future<AuthSession> linkPhone(String sessionId);
 
   // ══════════════════════════════════════════════════════════
   // 자기소개 → 목차 생성
@@ -236,6 +251,7 @@ abstract interface class ApiClient {
     required List<int> bytes,
     required String filename,
     String contentType = 'image/jpeg',
+    String? caption,
   });
 
   /// 사진 배치 삭제.
@@ -258,6 +274,24 @@ abstract interface class ApiClient {
     required String chapterId,
     bool regenerate = false,
   });
+
+  /// 사진 배치 수정 (캡션·문단 인덱스).
+  Future<void> updateReviewMedia({
+    required String bookId,
+    required String chapterId,
+    required String placementId,
+    String? caption,
+    int? paragraphIndex,
+  });
+
+  /// 책 사진첩 — 장별 사진 그룹.
+  Future<BookPhotosResponse> bookPhotos(String bookId);
+
+  /// 장 사진 상세 + 원고.
+  Future<ChapterPhotosDetail> chapterPhotosDetail(
+    String bookId,
+    String chapterId,
+  );
 
   /// 챕터 완료 화면. 이탈 후 재진입 시에도 같은 화면을 그린다.
   Future<ChapterCompletion> chapterCompletion(String bookId, String chapterId);
@@ -399,6 +433,13 @@ abstract interface class ApiClient {
 
   Future<Address> updateShippingAddress(Address next);
 
+  /// 종이책(인쇄본) 신청 stub — 결제 없음.
+  Future<PrintOrderResult> createPrintOrder({
+    required String bookId,
+    required int quantity,
+    String? note,
+  });
+
   // ══════════════════════════════════════════════════════════
   // FAQ · QnA
   // ══════════════════════════════════════════════════════════
@@ -505,6 +546,7 @@ class OctomoVerifyResult {
   bool get isVerified => status == 'verified';
   bool get isExisting => account == 'existing';
   bool get isNewUser => account == 'new';
+  bool get isLinkReady => account == 'link_ready';
 
   factory OctomoVerifyResult.fromJson(Map<String, dynamic> json) {
     final status = json['status'] as String;

@@ -29,8 +29,17 @@ export class AppUserRepository {
     });
   }
 
-  async create(phone: string | null): Promise<AppUserModel> {
-    return await this.repository.save(this.repository.create({ phone }));
+  async create(
+    phone: string | null,
+    opts?: { name?: string; email?: string | null },
+  ): Promise<AppUserModel> {
+    return await this.repository.save(
+      this.repository.create({
+        phone,
+        name: opts?.name?.trim() ?? '',
+        email: opts?.email?.trim() || null,
+      }),
+    );
   }
 
   async save(user: AppUserModel): Promise<AppUserModel> {

@@ -836,6 +836,9 @@ class WriteController extends GetxController {
   /// 녹음 화면에 뜨는 안내/부분 결과.
   String get liveTranscript => _speech.partial.value;
 
+  /// 녹음 중 마이크 세기(0..1) — EQ 링.
+  RxDouble get micLevel => _speech.soundLevel;
+
   /// "🔊 다시 들려줘" — TTS만 다시 재생한다. 타이핑 애니는 돌리지 않는다.
   Future<void> replayQuestion() async {
     final text = displayQuestion.trim();

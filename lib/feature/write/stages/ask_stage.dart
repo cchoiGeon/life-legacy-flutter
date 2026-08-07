@@ -13,12 +13,8 @@ import 'question_panel.dart';
 /// D1 작성 · 음성 모드 (기본) — Figma 341:646.
 ///
 /// 화면이 **읽는 영역**(크림 질문판)과 **누르는 영역**(마이크)으로 위아래
-/// 나뉜다. 시안의 핵심 원칙이라 두 덩어리 사이를 비워 둔다 — 질문을 읽는
-/// 동안 손이 버튼에 닿지 않게 한 것이다.
-///
-/// ⚠️ 마이크부터 아래는 **자리가 고정이다.** D2(녹음 중)와 높이가 같아야
-///    녹음을 시작해도 버튼이 손 밑에서 움직이지 않는다 — 아래 여백 62도
-///    두 화면이 같은 값을 쓴다.
+/// 나뉜다. 질문판은 남은 높이를 채우고 긴 글은 판 안에서만 스크롤한다.
+/// 하단 보조 동작은 큰 버튼 대신 작은 텍스트 링크로 둔다.
 class AskStage extends GetView<WriteController> {
   const AskStage({super.key});
 
@@ -27,25 +23,19 @@ class AskStage extends GetView<WriteController> {
     return Column(
       children: [
         const WriteHeader(),
-        const SizedBox(height: 14), // 시안: 질문 영역이 y148에서 시작
-        // 질문판은 **남은 자리 안에서만** 큰다. 글이 그보다 길면 판 안에서
-        // 스크롤한다 — 아래 마이크 블록을 밀어내지 않는다.
+        const SizedBox(height: 14),
         Expanded(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: Obx(
-              () => KeyedSubtree(
-                key: controller.tutorialQuestionKey,
-                child: QuestionPanel(
-                  question: controller.revealedQuestion.value,
-                  isFollowup: controller.isFollowup.value,
-                  onReplay: controller.replayQuestion,
-                ),
+          child: Obx(
+            () => KeyedSubtree(
+              key: controller.tutorialQuestionKey,
+              child: QuestionPanel(
+                question: controller.revealedQuestion.value,
+                isFollowup: controller.isFollowup.value,
+                onReplay: controller.replayQuestion,
               ),
             ),
           ),
         ),
-        // 파문은 자리를 차지하지 않으므로 닿는 만큼 비워 준다.
         const SizedBox(height: AppMicButton.bloom),
         KeyedSubtree(
           key: controller.tutorialMicKey,
@@ -62,49 +52,72 @@ class AskStage extends GetView<WriteController> {
             AppTypography.bold,
           ).copyWith(color: AppColors.textSecondary, letterSpacing: -0.1),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 16),
         Obx(() {
           if (!controller.isFollowup.value) {
             return KeyedSubtree(
               key: controller.tutorialTypingKey,
-              child: AppButton(
+              child: _WriteLink(
                 label: '글로 답하기',
-                variant: AppButtonVariant.neutral,
-                size: AppButtonSize.assist,
-                onPressed: controller.useKeyboard,
+                onTap: controller.useKeyboard,
               ),
             );
           }
           return Column(
             children: [
-              AppButton(
+              _WriteLink(
                 label: '다시 답하기',
-                variant: AppButtonVariant.outline,
-                size: AppButtonSize.assist,
-                onPressed: controller.redoFirstAnswer,
+                onTap: controller.redoFirstAnswer,
               ),
-              const SizedBox(height: 10),
-              AppButton(
+              const SizedBox(height: 4),
+              _WriteLink(
                 label: '기존 답에 추가하기',
-                variant: AppButtonVariant.neutral,
-                size: AppButtonSize.assist,
-                onPressed: controller.appendToFirstAnswer,
+                onTap: controller.appendToFirstAnswer,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 4),
               KeyedSubtree(
                 key: controller.tutorialTypingKey,
-                child: AppButton(
+                child: _WriteLink(
                   label: '글로 답하기',
-                  variant: AppButtonVariant.neutral,
-                  size: AppButtonSize.assist,
-                  onPressed: controller.useKeyboard,
+                  onTap: controller.useKeyboard,
                 ),
               ),
             ],
           );
         }),
-        SizedBox(height: AppInsets.bottom(context, 62)),
+        SizedBox(height: AppInsets.bottom(context, 28)),
       ],
+    );
+  }
+}
+
+/// 보조 동작용 작은 텍스트 링크.
+class _WriteLink extends StatelessWidget {
+  const _WriteLink({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.brand,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        label,
+        style: AppTypography.bodyBase.copyWith(
+          fontSize: 15,
+          color: AppColors.brand,
+          letterSpacing: -0.1,
+          decoration: TextDecoration.underline,
+          decorationColor: AppColors.brand.withValues(alpha: 0.45),
+        ),
+      ),
     );
   }
 }

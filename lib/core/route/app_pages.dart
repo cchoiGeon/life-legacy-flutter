@@ -45,12 +45,26 @@ import 'package:life_legacy/feature/audiobook/audiobook_view.dart';
 import 'package:life_legacy/feature/notifications/binding.dart';
 import 'package:life_legacy/feature/notifications/notifications_view.dart';
 
+// ── G · 사진 첨부 / 사진첩 ────────────────────────────────────
+import 'package:life_legacy/feature/photo/binding.dart' as photo_binding;
+import 'package:life_legacy/feature/photo/g1_suggest_view.dart';
+import 'package:life_legacy/feature/photo/g2_pick_view.dart';
+import 'package:life_legacy/feature/photo/g3_caption_view.dart';
+import 'package:life_legacy/feature/photo/g25_place_view.dart';
+import 'package:life_legacy/feature/photo/g4_done_view.dart';
+import 'package:life_legacy/feature/photo/photo_album_view.dart';
+import 'package:life_legacy/feature/photo/chapter_album_view.dart';
+import 'package:life_legacy/feature/photo/chapter_read_view.dart';
+
 // ── F · 설정 ───────────────────────────────────────────────────
 import 'package:life_legacy/feature/settings/binding.dart';
 import 'package:life_legacy/feature/settings/settings_view.dart';
 import 'package:life_legacy/feature/settings/profile_view.dart';
 import 'package:life_legacy/feature/settings/address_view.dart';
 import 'package:life_legacy/feature/settings/credentials_view.dart';
+import 'package:life_legacy/feature/print_order/print_order_binding.dart';
+import 'package:life_legacy/feature/print_order/print_order_view.dart';
+import 'package:life_legacy/feature/print_order/print_order_success_view.dart';
 import 'package:life_legacy/feature/about/about_view.dart';
 import 'package:life_legacy/feature/about/guide_view.dart';
 import 'package:life_legacy/feature/login/password_login_view.dart';
@@ -183,6 +197,15 @@ abstract final class AppPages {
       page: () => const AudiobookView(),
       binding: AudiobookBinding(),
     ),
+    GetPage(
+      name: AppRoutes.printOrder,
+      page: () => const PrintOrderView(),
+      binding: PrintOrderBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.printOrderSuccess,
+      page: () => const PrintOrderSuccessView(),
+    ),
 
     // ── F 하위 ───────────────────────────────────────────────
     GetPage(
@@ -244,6 +267,48 @@ abstract final class AppPages {
       name: AppRoutes.settingsQna,
       page: () => const QnaView(),
       binding: QnaBinding(),
+    ),
+
+    // ── G · 사진 첨부 / 사진첩 ───────────────────────────────
+    GetPage(
+      name: AppRoutes.bookPhotoSuggest,
+      page: () => const G1SuggestView(),
+      binding: photo_binding.PhotoAttachBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bookPhotoPick,
+      page: () => const G2PickView(),
+      binding: photo_binding.PhotoAttachBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bookPhotoCaption,
+      page: () => const G3CaptionView(),
+      binding: photo_binding.PhotoAttachBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bookPhotoPlace,
+      page: () => const G25PlaceView(),
+      binding: photo_binding.PhotoAttachBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bookPhotoDone,
+      page: () => const G4DoneView(),
+      binding: photo_binding.PhotoAttachBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bookPhotos,
+      page: () => const PhotoAlbumView(),
+      binding: photo_binding.PhotoAlbumBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bookPhotosChapter,
+      page: () => const ChapterAlbumView(),
+      binding: photo_binding.ChapterPhotoDetailBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bookChapterRead,
+      page: () => const ChapterReadAlbumView(),
+      binding: photo_binding.ChapterPhotoDetailBinding(),
     ),
   ];
 }

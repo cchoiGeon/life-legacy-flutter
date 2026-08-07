@@ -10,7 +10,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { Injectable, StreamableFile } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 
 import { AiService } from 'src/ai/services/ai.service';
 import { AnswersRepository } from 'src/answers/repositories/answers.repository';
@@ -188,6 +188,7 @@ export class ReviewService {
     chapterId: string,
     file: Express.Multer.File,
     paragraphIndex: number,
+    caption?: string,
   ) {
     const chapter = await this.requireDoneChapter(userId, bookId, chapterId);
     const review = await this.requireReview(chapter.id);
@@ -267,6 +268,7 @@ export class ReviewService {
         paragraphIndex,
         anchor: paragraphs[paragraphIndex]?.slice(0, 80) ?? null,
         sortOrder: Number(maxSort?.max ?? -1) + 1,
+        caption: caption || null,
       }),
     );
 
@@ -276,7 +278,144 @@ export class ReviewService {
         url: mediaFilePath(bookId, chapterId, placement.id),
         paragraph_index: placement.paragraphIndex,
         source: savedAsset.source,
+        caption: placement.caption,
       },
+    };
+  }
+
+  async updatePlacement(
+    userId: string,
+    bookId: string,
+    chapterId: string,
+    placementId: string,
+    input: { caption?: string; paragraph_index?: number },
+  ) {
+    const chapter = await this.requireDoneChapter(userId, bookId, chapterId);
+    const review = await this.requireReview(chapter.id);
+    await this.requireManualPhoto(userId, bookId);
+
+    const placement = await this.placements.findOne({
+      where: { id: placementId, chapterReviewId: review.id },
+    });
+    if (!placement) {
+      throw new ApiException(ERROR_CODE.COMMON.NOT_FOUND);
+    }
+
+    if (input.caption !== undefined) {
+      placement.caption = input.caption || null;
+    }
+    if (input.paragraph_index !== undefined) {
+      const paragraphs = splitParagraphs(review.body);
+      if (
+        input.paragraph_index < 0 ||
+        input.paragraph_index >= paragraphs.length
+      ) {
+        throw new ApiException(ERROR_CODE.COMMON.INVALID_REQUEST);
+      }
+      placement.paragraphIndex = input.paragraph_index;
+    }
+
+    const saved = await this.placements.save(placement);
+    return {
+      media: {
+        id: saved.id,
+        url: mediaFilePath(bookId, chapterId, saved.id),
+        paragraph_index: saved.paragraphIndex,
+        source: 'user_upload',
+        caption: saved.caption,
+      },
+    };
+  }
+
+  async getBookPhotos(userId: string, bookId: string) {
+    await this.bookAccess.requireOwnedBook(userId, bookId);
+
+    const chapters = await this.chaptersRepository.findAllByBook(bookId);
+    const doneChapters = chapters.filter(
+      (c) => c.status === ChapterStatus.DONE,
+    );
+    const chapterIds = doneChapters.map((c) => c.id);
+
+    if (chapterIds.length === 0) return { chapters: [] };
+
+    // Find all reviews for these chapters
+    const reviews = await this.reviews.find({
+      where: { userChapterId: In(chapterIds) },
+    });
+    const reviewMap = new Map(reviews.map((r) => [r.userChapterId, r]));
+    const reviewIds = reviews.map((r) => r.id);
+
+    if (reviewIds.length === 0) return { chapters: [] };
+
+    const allPlacements = await this.placements.find({
+      where: { chapterReviewId: In(reviewIds) },
+      relations: { mediaAsset: true },
+      order: { paragraphIndex: 'ASC', sortOrder: 'ASC' },
+    });
+
+    const chaptersWithPhotos = chapters
+      .map((ch) => {
+        const rev = reviewMap.get(ch.id);
+        if (!rev) return null;
+        const photos = allPlacements
+          .filter(
+            (p) =>
+              p.chapterReviewId === rev.id &&
+              p.mediaAsset &&
+              !p.mediaAsset.deletedAt,
+          )
+          .map((p) => ({
+            id: p.id,
+            url: mediaFilePath(bookId, ch.id, p.id),
+            caption: p.caption,
+            paragraph_index: p.paragraphIndex,
+            source: p.mediaAsset.source,
+          }));
+        if (photos.length === 0) return null;
+        return {
+          chapter_id: ch.id,
+          chapter_order: ch.sortOrder,
+          chapter_title: ch.title,
+          photo_count: photos.length,
+          photos,
+        };
+      })
+      .filter((ch): ch is NonNullable<typeof ch> => ch !== null);
+
+    return { chapters: chaptersWithPhotos };
+  }
+
+  async getChapterPhotos(
+    userId: string,
+    bookId: string,
+    chapterId: string,
+  ) {
+    const chapter = await this.requireDoneChapter(userId, bookId, chapterId);
+    const review = await this.requireReview(chapter.id);
+
+    const placements = await this.placements.find({
+      where: { chapterReviewId: review.id },
+      relations: { mediaAsset: true },
+      order: { paragraphIndex: 'ASC', sortOrder: 'ASC' },
+    });
+
+    const paragraphs = splitParagraphs(review.body);
+
+    return {
+      chapter_id: chapter.id,
+      chapter_order: chapter.sortOrder,
+      chapter_title: chapter.title,
+      body: review.body,
+      paragraphs,
+      photos: placements
+        .filter((p) => p.mediaAsset && !p.mediaAsset.deletedAt)
+        .map((p) => ({
+          id: p.id,
+          url: mediaFilePath(bookId, chapterId, p.id),
+          caption: p.caption,
+          paragraph_index: p.paragraphIndex,
+          source: p.mediaAsset.source,
+        })),
     };
   }
 
@@ -626,6 +765,7 @@ export class ReviewService {
         url: mediaFilePath(bookId, chapter.id, p.id),
         paragraph_index: p.paragraphIndex,
         source: p.mediaAsset.source,
+        caption: p.caption,
       }));
 
     const hasAiPhoto = media.some((m) => m.source === MediaSource.AI_GENERATED);

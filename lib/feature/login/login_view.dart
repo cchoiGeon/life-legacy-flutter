@@ -174,7 +174,7 @@ class _KakaoButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: '카카오로 3초 만에 시작하기',
+      label: '카카오로 시작하기',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: loading ? null : onTap,
@@ -188,7 +188,7 @@ class _KakaoButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppDimens.buttonCta / 2),
             ),
             child: Text(
-              '카카오로 3초 만에 시작하기',
+              '카카오로 시작하기',
               style: AppTypography.ctaLabel.copyWith(
                 fontSize: 17,
                 height: 1.2,

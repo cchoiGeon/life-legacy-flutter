@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   Param,
   Post,
@@ -22,6 +23,8 @@ import { ApiException } from 'src/common/exception/api.exception';
 import { ERROR_CODE } from 'src/common/exception/error-code.const';
 import { UserId } from './decorator/user.decorator';
 import { KakaoLoginDto } from './dto/request/kakao-login.dto';
+import { LinkPhoneDto } from './dto/request/link-phone.dto';
+import { SaveConsentsDto } from './dto/request/save-consents.dto';
 import { RefreshTokenDto } from './dto/request/refresh-token.dto';
 import { RequestCodeDto } from './dto/request/request-code.dto';
 import { VerifyCodeDto } from './dto/request/verify-code.dto';
@@ -77,7 +80,38 @@ export class AuthController {
   @HttpCode(200)
   @Post('kakao')
   loginWithKakao(@Body() dto: KakaoLoginDto) {
-    return this.authService.loginWithKakao(dto.kakao_access_token);
+    return this.authService.loginWithKakao(dto.kakao_access_token, {
+      name: dto.name,
+      email: dto.email,
+    });
+  }
+
+  @ApiOperation({
+    summary: '약관 동의 저장',
+    description:
+      '카카오 등 세션이 이미 발급된 사용자가 필수·선택 약관 동의를 저장한다. 필수 약관이 이미 있으면 앱이 이 화면을 건너뛴다.',
+  })
+  @ApiResponse({ status: 200, type: AuthSessionResponseDto })
+  @ApiBearerAuth('access-token')
+  @UseGuards(AccessTokenGuard)
+  @HttpCode(200)
+  @Post('consents')
+  saveConsents(@UserId() userId: string, @Body() dto: SaveConsentsDto) {
+    return this.authService.saveConsents(userId, dto.consents);
+  }
+
+  @ApiOperation({
+    summary: '전화번호 연결',
+    description:
+      '카카오 등 phone이 없는 계정에 OCTOMO로 인증한 번호를 붙인다. 다른 계정이 쓰는 번호면 409 PHONE_TAKEN.',
+  })
+  @ApiResponse({ status: 200, type: AuthSessionResponseDto })
+  @ApiBearerAuth('access-token')
+  @UseGuards(AccessTokenGuard)
+  @HttpCode(200)
+  @Post('phone/link')
+  linkPhone(@UserId() userId: string, @Body() dto: LinkPhoneDto) {
+    return this.authService.linkPhone(userId, dto.session_id);
   }
 
   @ApiOperation({ summary: '아이디·비밀번호 로그인' })
@@ -163,13 +197,29 @@ export class AuthController {
   @ApiOperation({ summary: 'OCTOMO 인증 확인 (폴링)' })
   @HttpCode(200)
   @Post('octomo/verify')
-  async verify(@Body() dto: OctomoVerifyDto) {
+  async verify(
+    @Body() dto: OctomoVerifyDto,
+    @Headers('authorization') authorization?: string,
+  ) {
     const result = await this.octomoService.checkVerification(dto.session_id);
 
     if (result.status === 'pending') {
       return {
         status: 'pending',
         expires_in: result.expiresIn,
+      };
+    }
+
+    // 카카오 등 phone 연결 모드 — 다른 계정으로 로그인하지 않고 link_ready만 반환.
+    if (dto.link) {
+      const linkingUserId =
+        await this.authService.optionalUserIdFromAuthorization(authorization);
+      if (!linkingUserId) {
+        throw new ApiException(ERROR_CODE.AUTH.UNAUTHORIZED);
+      }
+      return {
+        status: 'verified',
+        account: 'link_ready',
       };
     }
 

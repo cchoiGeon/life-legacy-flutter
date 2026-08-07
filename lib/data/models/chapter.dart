@@ -377,6 +377,7 @@ class ReviewMedia {
     required this.url,
     required this.paragraphIndex,
     required this.source,
+    this.caption,
   });
 
   final String id;
@@ -388,11 +389,15 @@ class ReviewMedia {
   /// user_upload | ai_generated | system
   final String source;
 
+  /// G3 사용자 작성 사진 설명
+  final String? caption;
+
   factory ReviewMedia.fromJson(Map<String, dynamic> json) => ReviewMedia(
         id: json['id'] as String,
         url: json['url'] as String? ?? '',
         paragraphIndex: json['paragraph_index'] as int? ?? 0,
         source: json['source'] as String? ?? 'user_upload',
+        caption: json['caption'] as String?,
       );
 }
 
@@ -496,5 +501,117 @@ class ChapterCompletionNext {
         id: json['id'] as String,
         order: json['order'] as int? ?? 0,
         title: json['title'] as String? ?? '',
+      );
+}
+
+/// GET /books/{id}/photos — 책 사진첩
+class BookPhotosResponse {
+  const BookPhotosResponse({required this.chapters});
+
+  final List<ChapterPhotoGroup> chapters;
+
+  factory BookPhotosResponse.fromJson(Map<String, dynamic> json) =>
+      BookPhotosResponse(
+        chapters: (json['chapters'] as List?)
+                ?.map(
+                  (e) =>
+                      ChapterPhotoGroup.fromJson(e as Map<String, dynamic>),
+                )
+                .toList() ??
+            const [],
+      );
+}
+
+class ChapterPhotoGroup {
+  const ChapterPhotoGroup({
+    required this.chapterId,
+    required this.chapterOrder,
+    required this.chapterTitle,
+    required this.photoCount,
+    required this.photos,
+  });
+
+  final String chapterId;
+  final int chapterOrder;
+  final String chapterTitle;
+  final int photoCount;
+  final List<ChapterPhotoItem> photos;
+
+  factory ChapterPhotoGroup.fromJson(Map<String, dynamic> json) =>
+      ChapterPhotoGroup(
+        chapterId: json['chapter_id'] as String,
+        chapterOrder: json['chapter_order'] as int? ?? 0,
+        chapterTitle: json['chapter_title'] as String? ?? '',
+        photoCount: json['photo_count'] as int? ?? 0,
+        photos: (json['photos'] as List?)
+                ?.map(
+                  (e) =>
+                      ChapterPhotoItem.fromJson(e as Map<String, dynamic>),
+                )
+                .toList() ??
+            const [],
+      );
+}
+
+class ChapterPhotoItem {
+  const ChapterPhotoItem({
+    required this.id,
+    required this.url,
+    this.caption,
+    required this.paragraphIndex,
+    required this.source,
+  });
+
+  final String id;
+  final String url;
+  final String? caption;
+  final int paragraphIndex;
+  final String source;
+
+  factory ChapterPhotoItem.fromJson(Map<String, dynamic> json) =>
+      ChapterPhotoItem(
+        id: json['id'] as String,
+        url: json['url'] as String? ?? '',
+        caption: json['caption'] as String?,
+        paragraphIndex: json['paragraph_index'] as int? ?? 0,
+        source: json['source'] as String? ?? 'user_upload',
+      );
+}
+
+/// GET /books/{id}/photos/{chapterId} — 장 사진 상세 + 원고
+class ChapterPhotosDetail {
+  const ChapterPhotosDetail({
+    required this.chapterId,
+    required this.chapterOrder,
+    required this.chapterTitle,
+    required this.body,
+    required this.paragraphs,
+    required this.photos,
+  });
+
+  final String chapterId;
+  final int chapterOrder;
+  final String chapterTitle;
+  final String body;
+  final List<String> paragraphs;
+  final List<ChapterPhotoItem> photos;
+
+  factory ChapterPhotosDetail.fromJson(Map<String, dynamic> json) =>
+      ChapterPhotosDetail(
+        chapterId: json['chapter_id'] as String,
+        chapterOrder: json['chapter_order'] as int? ?? 0,
+        chapterTitle: json['chapter_title'] as String? ?? '',
+        body: json['body'] as String? ?? '',
+        paragraphs: (json['paragraphs'] as List?)
+                ?.map((e) => e as String)
+                .toList() ??
+            const [],
+        photos: (json['photos'] as List?)
+                ?.map(
+                  (e) =>
+                      ChapterPhotoItem.fromJson(e as Map<String, dynamic>),
+                )
+                .toList() ??
+            const [],
       );
 }

@@ -17,18 +17,26 @@ class AuthView extends GetView<AuthController> {
 
   @override
   Widget build(BuildContext context) {
+    final link = controller.linkPhoneMode;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            const AppTopBar(showBack: true),
+            AppTopBar(
+              showBack: true,
+              onBack: link
+                  ? () {
+                      controller.cancelLinkPhone();
+                    }
+                  : null,
+            ),
             Expanded(
               child: PageView.builder(
                 controller: controller.pageController,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: AuthStep.values.length,
+                itemCount: controller.stepPageCount,
                 itemBuilder: (context, index) {
                   final s = AuthStep.values[index];
                   return _stepWidget(s);
@@ -38,9 +46,12 @@ class AuthView extends GetView<AuthController> {
             Obx(() {
               final step = controller.currentStep.value;
               if (step == AuthStep.success) return const SizedBox.shrink();
+              final total = link
+                  ? 2
+                  : AuthStep.values.length - 1; // success 제외
               return _StepIndicator(
-                current: AuthStep.values.indexOf(step),
-                total: AuthStep.values.length - 1, // success 제외
+                current: AuthStep.values.indexOf(step).clamp(0, total - 1),
+                total: total,
               );
             }),
           ],

@@ -88,6 +88,7 @@ class BookDetailView extends GetView<BookDetailController> {
                     onEbook: controller.openPreview,
                     onAudiobook: controller.openAudiobook,
                     onStorybook: controller.openStorybook,
+                    onPhotoAlbum: controller.openPhotoAlbum,
                     ebookAllowed:
                         controller.book.value?.entitlements.ebook.allowed ??
                         true,
@@ -203,6 +204,7 @@ class _PostActions extends StatelessWidget {
     required this.onEbook,
     required this.onAudiobook,
     required this.onStorybook,
+    required this.onPhotoAlbum,
     required this.ebookAllowed,
     required this.audiobookAllowed,
     required this.storybookAllowed,
@@ -211,6 +213,7 @@ class _PostActions extends StatelessWidget {
   final VoidCallback onEbook;
   final VoidCallback onAudiobook;
   final VoidCallback onStorybook;
+  final VoidCallback onPhotoAlbum;
   final bool ebookAllowed;
   final bool audiobookAllowed;
   final bool storybookAllowed;
@@ -219,6 +222,12 @@ class _PostActions extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        _ActionTile(
+          label: '사진 모아보기',
+          locked: false,
+          onTap: onPhotoAlbum,
+        ),
+        const SizedBox(height: 8),
         _ActionTile(
           label: '전자책 미리보기',
           locked: !ebookAllowed,

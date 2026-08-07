@@ -79,6 +79,18 @@ class GenerateAiPhotoDto {
   regenerate?: boolean;
 }
 
+class UpdatePlacementDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  caption?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  paragraph_index?: number;
+}
+
 @ApiTags('Review API')
 @ApiBearerAuth('access-token')
 @UseGuards(AccessTokenGuard)
@@ -187,6 +199,7 @@ export class ReviewController {
       properties: {
         image: { type: 'string', format: 'binary' },
         paragraph_index: { type: 'integer' },
+        caption: { type: 'string' },
       },
       required: ['image', 'paragraph_index'],
     },
@@ -204,6 +217,7 @@ export class ReviewController {
     @Param('chapterId', ParseUUIDPipe) chapterId: string,
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body('paragraph_index', ParseIntPipe) paragraphIndex: number,
+    @Body('caption') caption?: string,
   ) {
     if (!file) {
       throw new ApiException(ERROR_CODE.COMMON.INVALID_REQUEST);
@@ -214,6 +228,29 @@ export class ReviewController {
       chapterId,
       file,
       paragraphIndex,
+      caption,
+    );
+  }
+
+  @ApiOperation({ summary: '사진 배치 수정 (캡션·문단 인덱스)' })
+  @HttpCode(200)
+  @Patch('media/:placementId')
+  updatePlacement(
+    @UserId() userId: string,
+    @Param('bookId', ParseUUIDPipe) bookId: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('placementId', ParseUUIDPipe) placementId: string,
+    @Body() dto: UpdatePlacementDto,
+  ) {
+    return this.reviewService.updatePlacement(
+      userId,
+      bookId,
+      chapterId,
+      placementId,
+      {
+        caption: dto.caption,
+        paragraph_index: dto.paragraph_index,
+      },
     );
   }
 

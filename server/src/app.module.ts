@@ -20,6 +20,7 @@ import { QnaModule } from './qna/qna.module';
 import { UsersModule } from './users/users.module';
 import { VoiceModule } from './voice/voice.module';
 import { CouponModule } from './coupon/coupon.module';
+import { PrintOrderModule } from './print-order/print-order.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { CouponModule } from './coupon/coupon.module';
     NotificationsModule,
     SettingsModule,
     CouponModule,
+    PrintOrderModule,
     QnaModule,
   ],
   controllers: [AppController],

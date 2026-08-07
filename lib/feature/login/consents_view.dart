@@ -160,8 +160,30 @@ class ConsentsController extends GetxController {
     if (!canSubmit || isSubmitting.value) return;
     isSubmitting.value = true;
     try {
-      // 카카오는 세션이 이미 발급된 상태. 약관·마케팅 체크 UI만 거친 뒤 온보딩.
-      Get.offAllNamed(AppRoutes.intro);
+      final session = await _api.saveConsents([
+        for (final c in consents)
+          ConsentAgreement(
+            key: c.document.key,
+            version: c.document.version,
+            agreed: c.agreed,
+          ),
+      ]);
+      await Get.find<AuthService>().applySession(
+        session,
+        loginProvider: 'kakao',
+      );
+      if (session.needsPhone || session.user.phone.isEmpty) {
+        Get.offAllNamed(
+          AppRoutes.auth,
+          arguments: const {'linkPhone': true},
+        );
+        return;
+      }
+      Get.offAllNamed(
+        session.needsIntro ? AppRoutes.intro : AppRoutes.home,
+      );
+    } on ApiException catch (e) {
+      _toast.showError(e);
     } finally {
       isSubmitting.value = false;
     }

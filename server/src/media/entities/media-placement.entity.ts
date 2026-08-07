@@ -46,4 +46,8 @@ export class MediaPlacementModel {
 
   @Column({ name: 'sort_order', type: 'smallint', default: 0 })
   sortOrder: number;
+
+  /** G3 사용자 작성 사진 설명 */
+  @Column({ type: 'text', nullable: true })
+  caption: string | null;
 }

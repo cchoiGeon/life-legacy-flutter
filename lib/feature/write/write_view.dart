@@ -18,8 +18,9 @@ import 'write_controller.dart';
 
 /// D1~D5 작성 — Figma 341:646 · 350:875 · 351:874 · 351:964 · 354:1035.
 ///
-/// 대기(ask)·로딩·완료에서는 하단 탭바를 보여 주고, 말하거나 적는 중에는
-/// 숨긴다 — 답하는 동안 다른 탭이 눈에 들어오면 이야기를 놓치기 쉽다.
+/// 작성 중(ask 포함)에는 하단 탭바를 숨긴다 — 질문·마이크에 자리를 주고,
+/// 답하는 동안 다른 탭이 눈에 들어오면 이야기를 놓치기 쉽다.
+/// 장 완료·전체 완료 등 작성 밖 화면만 탭바를 다시 쓴다.
 class WriteView extends GetView<WriteController> {
   const WriteView({super.key});
 
@@ -48,8 +49,9 @@ class WriteView extends GetView<WriteController> {
       }
 
       final stage = controller.stage.value;
-      final showTabs = stage == WriteStage.ask;
 
+      // 작성 중에는 하단 탭바를 숨긴다 — 질문이 길어도 탭에 자리를
+      // 뺏기지 않고, 답하는 동안 다른 탭이 눈에 들어오지 않게 한다.
       final stack = Stack(
         children: [
           Positioned.fill(
@@ -69,19 +71,6 @@ class WriteView extends GetView<WriteController> {
           if (controller.showVoiceCheck.value) const VoiceCheckOverlay(),
         ],
       );
-
-      if (showTabs) {
-        return TabScaffold(
-          tab: AppTab.write,
-          body: PopScope(
-            canPop: false,
-            onPopInvokedWithResult: (didPop, _) {
-              if (!didPop) controller.requestLeave();
-            },
-            child: stack,
-          ),
-        );
-      }
 
       return PopScope(
         canPop: false,

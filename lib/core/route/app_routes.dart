@@ -30,6 +30,8 @@ abstract final class AppRoutes {
   static const bookComplete = '/book/complete'; // E3
   static const bookReview = '/book/review'; // 05 챕터 리뷰
   static const bookAudiobook = '/book/audiobook'; // 6-1-2 오디오북
+  static const printOrder = '/book/print-order';
+  static const printOrderSuccess = '/book/print-order/success';
 
   // F 하위
   static const settingsProfile = '/settings/profile'; // F3
@@ -56,4 +58,14 @@ abstract final class AppRoutes {
 
   static const settingsFaq = '/settings/faq'; // FAQ
   static const settingsQna = '/settings/qna'; // QnA
+
+  // G · 사진 첨부 / 사진첩
+  static const bookPhotoSuggest = '/book/photo/suggest'; // G1
+  static const bookPhotoPick = '/book/photo/pick'; // G2
+  static const bookPhotoCaption = '/book/photo/caption'; // G3
+  static const bookPhotoPlace = '/book/photo/place'; // G2.5
+  static const bookPhotoDone = '/book/photo/done'; // G4
+  static const bookPhotos = '/book/photos'; // 사진첩
+  static const bookPhotosChapter = '/book/photos/chapter'; // 장 G4
+  static const bookChapterRead = '/book/chapter-read'; // 장 원고 조회
 }

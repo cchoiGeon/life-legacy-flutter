@@ -97,6 +97,13 @@ export const ERROR_CODE = {
       code: 'KAKAO_LOGIN_FAILED',
       message: '카카오 로그인에 실패했어요. 다시 시도해 주세요',
     },
+    /** 카카오 계정에 붙이려는 번호가 다른 계정에 이미 있음 */
+    PHONE_TAKEN: {
+      status: 409,
+      code: 'PHONE_TAKEN',
+      message:
+        '이미 다른 계정에 등록된 번호예요. 그 번호로 로그인해 주세요',
+    },
   },
 
   INTRO: {
