@@ -158,7 +158,7 @@ class PurchaseDetailView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-                AppButton(
+                const AppButton(
                   label: '쿠폰 코드로 등록',
                   size: AppButtonSize.lg,
                   block: true,

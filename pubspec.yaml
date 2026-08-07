@@ -32,7 +32,8 @@ dependencies:
   record: ^7.1.1
   url_launcher: ^6.3.2
   image_picker: ^1.2.3
-  permission_handler: ^13.0.0
+  # SDK 36 / AGP 9.0 정합 — 13.x는 compileSdk 37 강제
+  permission_handler: ^11.4.0
 
   # 카카오 로그인. UserApi(로그인·사용자 조회)만 쓴다.
   kakao_flutter_sdk_user: ^2.0.0+1

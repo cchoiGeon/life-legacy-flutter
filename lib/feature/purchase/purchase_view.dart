@@ -55,7 +55,7 @@ class PurchaseView extends StatelessWidget {
                   const SizedBox(height: 12),
                 ],
                 const SizedBox(height: 8),
-                AppButton(
+                const AppButton(
                   label: '쿠폰 코드 등록',
                   onPressed: PurchaseFlow.openCoupon,
                   variant: AppButtonVariant.outline,
